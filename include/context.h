@@ -112,7 +112,7 @@ typedef struct {
     RT_Cleanup_t RT_Cleanup;
     RT_Stop_t    RT_Stop;
 
-    HANDLE ModMutex[8];
+    HANDLE ModMutex[9];
 } Context;
 
 #endif // CONTEXT_H
