@@ -31,6 +31,9 @@ typedef struct {
     SMPause_t    Pause;
     SMContinue_t Continue;
     SMStop_t     Stop;
+
+    // data for runtime
+    HANDLE hMutex;
 } Sysmon_M;
 
 Sysmon_M* InitSysmon(Context* context);
