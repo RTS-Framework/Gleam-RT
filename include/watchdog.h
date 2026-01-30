@@ -6,7 +6,7 @@
 #include "errno.h"
 #include "context.h"
 
-#define WATCHDOG_KICK_TIMEOUT 5000 // 5s
+#define WATCHDOG_KICK_TIMEOUT 10000 // 10s
 
 typedef struct {
     BOOL  IsEnabled;
