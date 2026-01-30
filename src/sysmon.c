@@ -42,7 +42,8 @@ typedef struct {
     RT_Cleanup_t          RT_Cleanup;
     RT_Stop_t             RT_Stop;
 
-    HANDLE ModMutex[8];
+    // copy from context
+    HANDLE ModMutex[9];
 
     // global mutex
     HANDLE hMutex;
@@ -155,6 +156,8 @@ Sysmon_M* InitSysmon(Context* context)
     method->Pause    = GetFuncAddr(&SM_Pause);
     method->Continue = GetFuncAddr(&SM_Continue);
     method->Stop     = GetFuncAddr(&SM_Stop);
+    // data for runtime
+    method->hMutex = sysmon->hMutex;
     return method;
 }
 
@@ -253,6 +256,8 @@ static bool initSysmonEnvironment(Sysmon* sysmon, Context* context)
     sysmon->RT_Stop             = context->RT_Stop;
     // copy mutex from context
     mem_copy(sysmon->ModMutex, context->ModMutex, sizeof(context->ModMutex));
+    // copy self mutex for watch loop
+    sysmon->ModMutex[arrlen(sysmon->ModMutex) - 1] = hMutex;
     return true;
 }
 
@@ -395,7 +400,7 @@ static uint sm_watch()
         bool stopped = false;
 
         HANDLE objects[] = { sysmon->ModMutex[i], sysmon->hEvent };
-        switch (sysmon->WaitForMultipleObjects(2, objects, false, 10000))
+        switch (sysmon->WaitForMultipleObjects(2, objects, false, 5000))
         {
         case WAIT_OBJECT_0+0: case WAIT_ABANDONED+0:
             if (!sysmon->ReleaseMutex(sysmon->ModMutex[i]))
