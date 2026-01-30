@@ -371,7 +371,7 @@ static uint wd_watcher()
         {
             duration = watchdog->timeout;
         } else {
-            duration = 5000 + RandUint32N(0, 5) * 1000;
+            duration = WATCHDOG_KICK_TIMEOUT + RandUint32N(0, 10) * 1000;
         }
 
         switch (wd_sleep(duration))
