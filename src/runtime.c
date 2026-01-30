@@ -39,7 +39,7 @@ typedef struct {
 } API_RDR;
 
 typedef struct {
-    // store options from argument
+    // store options from InitRuntime argument
     Runtime_Opts Options;
 
     // process environment
@@ -92,8 +92,8 @@ typedef struct {
     API_RDR Redirectors[68];
 
     // try to lock submodules mutex
-    HANDLE ModMutexHandle[8];
-    bool   ModMutexStatus[8];
+    HANDLE ModMutexHandle[9];
+    bool   ModMutexStatus[9];
 
     // runtime security modules
     Detector_M* Detector;
@@ -831,7 +831,7 @@ static errno initSubmodules(Runtime* runtime)
         .flush_api_cache = GetFuncAddr(&RT_flush_api_cache),
 
         // for prevent link to internal "memset"
-        .ModMutex = {0},
+        .ModMutex = { 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     };
 
     // initialize security submodule
@@ -914,8 +914,9 @@ static errno initSubmodules(Runtime* runtime)
     {
         return err;
     }
+    context.WD_IsEnabled = runtime->Watchdog->IsEnabled;
 
-    // update context about sysmon
+    // update context for sysmon
     context.ModMutex[0] = runtime->Detector->hMutex;
     context.ModMutex[1] = runtime->LibraryTracker->hMutex;
     context.ModMutex[2] = runtime->MemoryTracker->hMutex;
@@ -925,13 +926,12 @@ static errno initSubmodules(Runtime* runtime)
     context.ModMutex[6] = runtime->InMemoryStorage->hMutex;
     context.ModMutex[7] = runtime->Watchdog->hMutex;
 
-    context.WD_IsEnabled = runtime->Watchdog->IsEnabled;
-
     err = initSysmon(runtime, &context);
     if (err != NO_ERROR)
     {
         return err;
     }
+    context.ModMutex[8] = runtime->Sysmon->hMutex;
 
     // copy mutex handle for runtime
     mem_copy(runtime->ModMutexHandle, context.ModMutex, sizeof(context.ModMutex));
