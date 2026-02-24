@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 
-	"github.com/RSSU-Shellcode/Gleam-RT/runtime"
+	"github.com/RTS-Framework/Gleam-RT/runtime"
 )
 
 func init() {
