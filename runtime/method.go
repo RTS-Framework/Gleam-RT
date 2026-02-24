@@ -132,13 +132,13 @@ func GetIMOML() uintptr {
 }
 
 // GetMetrics is used to get runtime metrics.
-func GetMetrics() (*metric.Metrics, error) {
+func GetMetrics() (*Metrics, error) {
 	var metrics metric.Metrics
 	ret, _, _ := procGetMetrics.Call(uintptr(unsafe.Pointer(&metrics))) // #nosec
 	if ret != windows.NO_ERROR {
 		return nil, fmt.Errorf("failed to call GetMetrics: 0x%08X", ret)
 	}
-	return &metrics, nil
+	return ConvertRawMetrics(&metrics), nil
 }
 
 // Sleep is used to hide and sleep, it is the core method.
