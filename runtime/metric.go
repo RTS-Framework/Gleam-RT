@@ -1,5 +1,9 @@
 package gleamrt
 
+import (
+	"github.com/RTS-Framework/GRT-Develop/metric"
+)
+
 // Metrics contains status about runtime submodules.
 type Metrics struct {
 	Library  LTStatus `json:"library"`
@@ -73,4 +77,60 @@ type SMStatus struct {
 	NumNormal  int64 `json:"num_normal"`
 	NumRecover int64 `json:"num_recover"`
 	NumPanic   int64 `json:"num_panic"`
+}
+
+// ConvertRawMetrics is used to convert raw runtime metrics to go type.
+func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
+	return &Metrics{
+		Library: LTStatus{
+			NumModules:    metrics.Library.NumModules,
+			NumProcedures: metrics.Library.NumProcedures,
+		},
+		Memory: MTStatus{
+			NumGlobals: metrics.Memory.NumGlobals,
+			NumLocals:  metrics.Memory.NumLocals,
+			NumBlocks:  metrics.Memory.NumBlocks,
+			NumRegions: metrics.Memory.NumRegions,
+			NumPages:   metrics.Memory.NumPages,
+			NumHeaps:   metrics.Memory.NumHeaps,
+		},
+		Thread: TTStatus{
+			NumThreads:  metrics.Thread.NumThreads,
+			NumTLSIndex: metrics.Thread.NumTLSIndex,
+			NumSuspend:  metrics.Thread.NumSuspend,
+		},
+		Resource: RTStatus{
+			NumMutexs:         metrics.Resource.NumMutexs,
+			NumEvents:         metrics.Resource.NumEvents,
+			NumSemaphores:     metrics.Resource.NumSemaphores,
+			NumWaitableTimers: metrics.Resource.NumWaitableTimers,
+			NumFiles:          metrics.Resource.NumFiles,
+			NumDirectories:    metrics.Resource.NumDirectories,
+			NumIOCPs:          metrics.Resource.NumIOCPs,
+			NumRegKeys:        metrics.Resource.NumRegKeys,
+			NumSockets:        metrics.Resource.NumSockets,
+		},
+		Detector: DTStatus{
+			IsEnabled:        metrics.Detector.IsEnabled.ToBool(),
+			HasDebugger:      metrics.Detector.HasDebugger.ToBool(),
+			HasMemoryScanner: metrics.Detector.HasMemoryScanner.ToBool(),
+			InSandbox:        metrics.Detector.InSandbox.ToBool(),
+			InVirtualMachine: metrics.Detector.InVirtualMachine.ToBool(),
+			InEmulator:       metrics.Detector.InEmulator.ToBool(),
+			IsAccelerated:    metrics.Detector.IsAccelerated.ToBool(),
+			SafeRank:         metrics.Detector.SafeRank,
+		},
+		Watchdog: WDStatus{
+			IsEnabled: metrics.Watchdog.IsEnabled.ToBool(),
+			NumKick:   metrics.Watchdog.NumKick,
+			NumNormal: metrics.Watchdog.NumNormal,
+			NumReset:  metrics.Watchdog.NumReset,
+		},
+		Sysmon: SMStatus{
+			IsEnabled:  metrics.Sysmon.IsEnabled.ToBool(),
+			NumNormal:  metrics.Sysmon.NumNormal,
+			NumRecover: metrics.Sysmon.NumRecover,
+			NumPanic:   metrics.Sysmon.NumPanic,
+		},
+	}
 }
