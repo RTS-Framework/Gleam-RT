@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/RSSU-Shellcode/GRT-Develop/metric"
+	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
 const (
@@ -313,7 +313,7 @@ func (rt *RuntimeM) Sleep(d time.Duration) error {
 }
 
 // Metrics is used to get runtime metric about core modules.
-func (rt *RuntimeM) Metrics() (*metric.Metrics, error) {
+func (rt *RuntimeM) Metrics() (*Metrics, error) {
 	rt.lock()
 	defer rt.unlock()
 	metrics := metric.Metrics{}
@@ -321,7 +321,7 @@ func (rt *RuntimeM) Metrics() (*metric.Metrics, error) {
 	if ret != noError {
 		return nil, &errno{method: "Core.Metrics", errno: ret}
 	}
-	return &metrics, nil
+	return ConvertRawMetrics(&metrics), nil
 }
 
 // Cleanup is used to clean all tracked object except locked.
