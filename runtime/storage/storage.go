@@ -82,7 +82,7 @@ func GetPointer(id int) (uintptr, uint32, error) {
 
 // Delete is used to delete value in in-memory storage by id.
 func Delete(id int) error {
-	ret, _, err := procDelete.Call(uintptr(id))
+	ret, _, err := procDelete.Call(uintptr(id)) // #nosec G115
 	if ret == 0 {
 		en := uintptr(err.(syscall.Errno))
 		return fmt.Errorf("failed to call storage.Delete: 0x%08X", en)
