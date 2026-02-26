@@ -278,7 +278,7 @@ func NewRuntime(ptr uintptr) *RuntimeM {
 func InitRuntime(addr uintptr, opts *Options) (*RuntimeM, error) {
 	ptr, _, err := syscall.SyscallN(addr, uintptr(unsafe.Pointer(opts))) // #nosec
 	if ptr == null {
-		return nil, fmt.Errorf("failed to initialize runtime: 0x%08X", int(err))
+		return nil, fmt.Errorf("failed to initialize runtime: 0x%08X", uint(err))
 	}
 	return NewRuntime(ptr), nil
 }
@@ -305,7 +305,7 @@ func (rt *RuntimeM) unlock() {
 func (rt *RuntimeM) Sleep(d time.Duration) error {
 	rt.lock()
 	defer rt.unlock()
-	ret, _, _ := syscall.SyscallN(rt.Core.Sleep, uintptr(d.Milliseconds()))
+	ret, _, _ := syscall.SyscallN(rt.Core.Sleep, uintptr(d.Milliseconds())) // #nosec G115
 	if ret != noError {
 		return &errno{method: "Core.Sleep", errno: ret}
 	}
