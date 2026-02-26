@@ -143,7 +143,7 @@ func GetMetrics() (*Metrics, error) {
 
 // Sleep is used to hide and sleep, it is the core method.
 func Sleep(d time.Duration) error {
-	ret, _, _ := procSleep.Call(uintptr(d.Milliseconds()))
+	ret, _, _ := procSleep.Call(uintptr(d.Milliseconds())) // #nosec G115
 	if ret != windows.NO_ERROR {
 		return fmt.Errorf("failed to call Sleep: 0x%08X", ret)
 	}
@@ -152,7 +152,7 @@ func Sleep(d time.Duration) error {
 
 // ExitProcess is used to call original ExitProcess.
 func ExitProcess(code int) {
-	_, _, _ = procExitProcess.Call(uintptr(code))
+	_, _, _ = procExitProcess.Call(uintptr(code)) // #nosec G115
 }
 
 func boolToUintptr(b bool) uintptr {
