@@ -14,7 +14,9 @@
 #include "win_http.h"
 #include "debug.h"
 
-#define DEFAULT_TIMEOUT (60*1000) // 60s
+#define DEFAULT_CONNECT_TIMEOUT (60 * 1000)  // 1m
+#define DEFAULT_SEND_TIMEOUT    (600 * 1000) // 10m
+#define DEFAULT_RECEIVE_TIMEOUT (600 * 1000) // 10m
 
 #ifdef RELEASE_MODE
     #define CHUNK_SIZE 4096
@@ -465,9 +467,9 @@ void WH_Init(HTTP_Request* req)
     req->ProxyURL       = NULL;
     req->ProxyUser      = NULL;
     req->ProxyPass      = NULL;
-    req->ConnectTimeout = DEFAULT_TIMEOUT;
-    req->SendTimeout    = 10 * DEFAULT_TIMEOUT;
-    req->ReceiveTimeout = 10 * DEFAULT_TIMEOUT;
+    req->ConnectTimeout = 0;
+    req->SendTimeout    = 0;
+    req->ReceiveTimeout = 0;
     req->MaxBodySize    = 0;
     req->AccessType     = WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
     req->Body           = NULL;
@@ -585,17 +587,17 @@ errno WH_Do(UTF16 method, HTTP_Request* req, HTTP_Response* resp)
         int connectTimeout = (int)(req->ConnectTimeout);
         if (connectTimeout == 0)
         {
-            connectTimeout = DEFAULT_TIMEOUT;
+            connectTimeout = DEFAULT_CONNECT_TIMEOUT;
         }
         int sendTimeout = (int)(req->SendTimeout);
         if (sendTimeout == 0)
         {
-            sendTimeout = 10 * DEFAULT_TIMEOUT;
+            sendTimeout = 10 * DEFAULT_SEND_TIMEOUT;
         }
         int receiveTimeout = (int)(req->ReceiveTimeout);
         if (receiveTimeout == 0)
         {
-            receiveTimeout = 10 * DEFAULT_TIMEOUT;
+            receiveTimeout = 10 * DEFAULT_RECEIVE_TIMEOUT;
         }
         if (!module->WinHttpSetTimeouts(
             hSession, 0, connectTimeout, sendTimeout, receiveTimeout
