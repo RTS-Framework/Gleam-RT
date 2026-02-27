@@ -264,6 +264,8 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     {
         Runtime_Opts opt = {
             .BootInstAddress     = NULL,
+            .ShieldModuleHash    = 0,
+            .ShieldEntryPoint    = 0,
             .EnableSecurityMode  = false,
             .DisableDetector     = false,
             .DisableWatchdog     = false,
