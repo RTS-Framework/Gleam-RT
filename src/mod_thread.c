@@ -588,9 +588,9 @@ DWORD TT_SuspendThread(HANDLE hThread)
             if (getThread(tracker, threadID, &thread))
             {
                 thread->numSuspend++;
+                tracker->NumSuspend++;
             }
-        }
-        tracker->NumSuspend++;
+        }   
     }
     dbg_log("[thread]", "SuspendThread: 0x%zX", hThread);
 
@@ -621,9 +621,9 @@ DWORD TT_ResumeThread(HANDLE hThread)
             if (getThread(tracker, threadID, &thread))
             {
                 thread->numSuspend--;
+                tracker->NumSuspend--;
             }
         }
-        tracker->NumSuspend--;
     }
     dbg_log("[thread]", "ResumeThread: 0x%zX", hThread);
 
@@ -1093,6 +1093,7 @@ errno TT_Suspend()
         if (suspendThread(tracker, thread->hThread))
         {
             thread->numSuspend++;
+            tracker->NumSuspend++;
         } else {
             delThread(tracker, thread->threadID);
             errno = ERR_THREAD_SUSPEND;
@@ -1164,6 +1165,7 @@ errno TT_Resume()
         if (count != (DWORD)(-1))
         {
             thread->numSuspend--;
+            tracker->NumSuspend--;
         } else {
             delThread(tracker, thread->threadID);
             errno = ERR_THREAD_RESUME;
