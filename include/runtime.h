@@ -687,6 +687,16 @@ typedef struct {
     // if it is NULL, Runtime will only protect self.
     void* BootInstAddress;
 
+    // ShieldModuleHash is the target module base address,
+    // if it is zero, the target module is main process.
+    // if the module is dll, this field must be set.
+    uint ShieldModuleHash;
+
+    // ShieldEntryPoint is define the RVA of the shield,
+    // if it is zero, Runtime will try to inject the
+    // built-in shield to the .text section of main process.
+    uint ShieldEntryPoint;
+
     // detect environment when initialize runtime, if not safe, 
     // stop initialization and exit runtime at once.
     bool EnableSecurityMode;
