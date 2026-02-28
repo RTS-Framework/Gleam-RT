@@ -59,8 +59,10 @@ int EntryPoint()
 
 bool testShellcode(bool erase)
 {
-    Runtime_Opts opt = {
+    Runtime_Opts opts = {
         .BootInstAddress     = NULL,
+        .ShieldModuleHash    = 0,
+        .ShieldEntryPoint    = 0,
         .EnableSecurityMode  = false,
         .DisableDetector     = false,
         .DisableWatchdog     = false,
@@ -69,7 +71,7 @@ bool testShellcode(bool erase)
         .NotAdjustProtect    = false,
         .TrackCurrentThread  = false,
     };
-    Runtime_M* RuntimeM = InitRuntime(&opt);
+    Runtime_M* RuntimeM = InitRuntime(&opts);
     if (RuntimeM == NULL)
     {
         printf_s("failed to initialize runtime: 0x%X\n", GetLastErrno());
