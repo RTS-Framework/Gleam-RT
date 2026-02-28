@@ -4,13 +4,15 @@ ENDIF
 
 ; ===================================== Runtime Options =====================================
 ;
-; bool EnableSecurityMode;  // detect environment when initialize runtime.
-; bool DisableDetector;     // disable detector for test or debug.
-; bool DisableSysmon;       // disable sysmon for implement single thread model.
-; bool DisableWatchdog;     // disable watchdog for implement single thread model.
-; bool NotEraseInstruction; // not erase runtime instructions after call Runtime_M.Exit
-; bool NotAdjustProtect;    // not adjust current memory page protect for erase runtime
-; bool TrackCurrentThread;  // track current thread for some special executable file like Go
+; uint64 ShieldModuleHash;    // set the target module base address.
+; uint64 ShieldEntryPoint;    // define the RVA of the shield.
+; bool   EnableSecurityMode;  // detect environment when initialize runtime.
+; bool   DisableDetector;     // disable detector for test or debug.
+; bool   DisableSysmon;       // disable sysmon for implement single thread model.
+; bool   DisableWatchdog;     // disable watchdog for implement single thread model.
+; bool   NotEraseInstruction; // not erase runtime instructions after call Runtime_M.Exit
+; bool   NotAdjustProtect;    // not adjust current memory page protect for erase runtime
+; bool   TrackCurrentThread;  // track current thread for some special executable file like Go
 ;
 ; ===========================================================================================
 
