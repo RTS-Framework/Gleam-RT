@@ -16,6 +16,8 @@ bool TestInitRuntime()
 {
     Runtime_Opts opts = {
         .BootInstAddress     = NULL,
+        .ShieldModuleHash    = 0,
+        .ShieldEntryPoint    = 0,
         .EnableSecurityMode  = false,
         .DisableDetector     = false,
         .DisableSysmon       = false,
@@ -87,6 +89,8 @@ bool TestRuntime_Options()
 {
     Runtime_Opts opts = {
         .BootInstAddress     = NULL,
+        .ShieldModuleHash    = 0,
+        .ShieldEntryPoint    = 0,
         .EnableSecurityMode  = false,
         .DisableDetector     = true,
         .DisableSysmon       = true,
