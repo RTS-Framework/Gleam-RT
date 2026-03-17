@@ -240,7 +240,7 @@ static bool initSysmonEnvironment(Sysmon* sysmon, Context* context)
     sysmon->statusMu = statusMu;
     // create event for stop watcher
     HANDLE hEvent = context->CreateEventA(NULL, true, false, NAME_RT_SM_EVENT_STOP);
-    if (hMutex == NULL)
+    if (hEvent == NULL)
     {
         return false;
     }
