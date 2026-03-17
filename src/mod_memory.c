@@ -2318,7 +2318,7 @@ void* MT_MemAlloc(uint size)
     // ensure the memory address is 16 bytes aligned
     byte* address = (byte*)addr;
     RandBuffer(address, 16);
-    // record user input size
+    // record buffer size
     mem_copy(address, &size, sizeof(size));
     // record buffer capacity
     uint cap = pageSize - 16;
@@ -2395,7 +2395,7 @@ void MT_MemFree(void* ptr)
     // clean the buffer data before call VirtualFree.
     void* addr = (LPVOID)((uintptr)(ptr)-16);
     uint  size = *(uint*)addr;
-    mem_init((byte*)addr, size);
+    mem_init((byte*)addr, 16+size);
     if (MT_VirtualFree(addr, 0, MEM_RELEASE))
     {
         dbg_log("[memory]", "free ptr: 0x%zX", ptr);
