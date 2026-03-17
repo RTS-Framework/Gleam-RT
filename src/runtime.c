@@ -1525,7 +1525,7 @@ void* RT_malloc(uint size)
     // ensure the memory address is 16 bytes aligned
     byte* address = (byte*)addr;
     RandBuffer(address, 16);
-    // record user input size
+    // record buffer size
     mem_copy(address, &size, sizeof(size));
     // record buffer capacity
     uint cap = pageSize - 16;
@@ -1608,7 +1608,7 @@ bool RT_free(void* ptr)
     // clean the buffer data before call VirtualFree.
     void* addr = (void*)((uintptr)(ptr)-16);
     uint  size = *(uint*)addr;
-    mem_init((byte*)addr, size);
+    mem_init((byte*)addr, 16+size);
     if (!runtime->VirtualFree(addr, 0, MEM_RELEASE))
     {
         return false;
