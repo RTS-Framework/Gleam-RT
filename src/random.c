@@ -191,7 +191,7 @@ uint8 RandUint8N(uint64 seed, uint8 n)
     {
         seed += GenerateSeed();
     }
-    return RandUint(seed) % n;
+    return RandUint8(seed) % n;
 }
 
 uint16 RandUint16N(uint64 seed, uint16 n)
