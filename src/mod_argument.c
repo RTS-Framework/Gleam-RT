@@ -210,6 +210,11 @@ static errno loadArguments(ArgumentStore* store, Context* context)
     byte*   arg  = (byte*)(stub + ARG_OFFSET_FIRST_ARG);
     uint32  num  = *(uint32*)(stub + ARG_OFFSET_NUM_ARGS);
     uint32  size = *(uint32*)(stub + ARG_OFFSET_ARGS_SIZE);
+    // check the number of arguments
+    if (num > ARG_MAX_NUM_ARGUMENTS)
+    {
+        return ERR_ARGUMENT_INVALID_NUM;
+    }
     // allocate memory page for store them
     uint32 memSize = (((size + num) / context->PageSize) + 1) * context->PageSize;
     memSize += (uint32)(1 + RandUintN(0, 16)) * context->PageSize;
@@ -221,7 +226,9 @@ static errno loadArguments(ArgumentStore* store, Context* context)
     store->Address = mem;
     store->Size    = memSize;
     store->NumArgs = num;
-    // copy encrypted arguments to new memory page
+    // copy encrypted arguments to new memory page,
+    // num is used to reserve memory for the erased
+    // field about each arguments
     byte* offAddr = mem + num;
     mem_copy(offAddr, arg, size);
     // decrypted arguments
@@ -250,21 +257,26 @@ static errno loadArguments(ArgumentStore* store, Context* context)
         // update address
         data++;
     }
-    // shift argument for set erase flag
-    byte* addr = mem;
-    byte* args = offAddr;
-    bool  flag = false;
+    // shift argument for set erased flag
+    byte*  addr = mem;
+    byte*  args = offAddr;
+    uint32 rem  = size;
     for (uint32 i = 0; i < store->NumArgs; i++)
     {
-        uint32 aid = *(uint32*)(args);
+        uint32 aid = *(uint32*)(args + 0);
         uint32 asz = *(uint32*)(args + 4);
-        byte*  src = args + 4 + 4;
+        if (4 + 4 + asz > rem)
+        {
+            return ERR_ARGUMENT_INVALID_SIZE;
+        }
+        byte* src = args + 4 + 4;
         mem_copy(addr + 0, &aid, sizeof(aid));
         mem_copy(addr + 4, &asz, sizeof(asz));
-        mem_copy(addr + 8, &flag, sizeof(flag));
         mem_copy(addr + 9, src, asz);
+        addr[8] = 0; // set erased flag
         addr += OFFSET_ARGUMENT_DATA + asz;
         args += 4 + 4 + asz;
+        rem  -= 4 + 4 + asz;
     }
     // erase argument stub after decrypt
     if (!context->NotEraseInstruction)
@@ -341,7 +353,7 @@ BOOL AS_GetValue(uint32 id, void* value, uint32* size)
     bool found = false;
     for (uint32 i = 0; i < store->NumArgs; i++)
     {
-        uint32 aid = *(uint32*)(addr);
+        uint32 aid = *(uint32*)(addr + 0);
         uint32 asz = *(uint32*)(addr + 4);
         if (aid != id)
         {
@@ -395,7 +407,7 @@ BOOL AS_GetPointer(uint32 id, void** pointer, uint32* size)
     bool found = false;
     for (uint32 i = 0; i < store->NumArgs; i++)
     {
-        uint32 aid = *(uint32*)(addr);
+        uint32 aid = *(uint32*)(addr + 0);
         uint32 asz = *(uint32*)(addr + 4);
         if (aid != id)
         {
@@ -446,7 +458,7 @@ BOOL AS_Erase(uint32 id)
     bool found = false;
     for (uint32 i = 0; i < store->NumArgs; i++)
     {
-        uint32 aid = *(uint32*)(addr);
+        uint32 aid = *(uint32*)(addr + 0);
         uint32 asz = *(uint32*)(addr + 4);
         if (aid != id)
         {
