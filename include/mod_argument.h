@@ -12,6 +12,8 @@
 // | 32 byte |  uint32  |  uint32   |  uint32  | uint32 |  uint32  |   var    |
 // +---------+----------+-----------+----------+--------+----------+----------+
 
+#define ARG_MAX_NUM_ARGUMENTS 1024
+
 #define ARG_CRYPTO_KEY_SIZE (32)
 #define ARG_HEADER_SIZE     (32 + 4 + 4 + 4)
 
