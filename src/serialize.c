@@ -10,7 +10,7 @@ uint32 Serialize(uint32* descriptor, void* data, void* serialized)
     // write magic number
     if (buffer != NULL)
     {
-        *(uint32*)buffer = SERIALIZE_HEADER_MAGIC;
+        *(uint32*)buffer = SERIALIZE_MAGIC;
         buffer += sizeof(uint32);
     }
     length += sizeof(uint32);
@@ -48,13 +48,13 @@ uint32 Serialize(uint32* descriptor, void* data, void* serialized)
             break;
         }
         uint32 size = desc & SERIALIZE_MASK_LENGTH;
-        switch (desc & SERIALIZE_MASK_FLAG)
+        switch (desc & SERIALIZE_MASK_TYPE)
         {
-        case SERIALIZE_FLAG_VALUE:
+        case SERIALIZE_TYPE_VALUE:
             mem_copy(buffer, dataPtr, size);
             dataPtr += size;
             break;
-        case SERIALIZE_FLAG_POINTER:
+        case SERIALIZE_TYPE_POINTER:
             uintptr ptr = *(uintptr*)(dataPtr);
             mem_copy(buffer, (byte*)(ptr), size);
             dataPtr += sizeof(uintptr);
@@ -71,7 +71,7 @@ BOOL Unserialize(void* serialized, void* data)
     byte* buffer  = serialized;
     byte* dataPtr = data;
     // check is valid serialized data
-    if (*(uint32*)buffer != SERIALIZE_HEADER_MAGIC)
+    if (*(uint32*)buffer != SERIALIZE_MAGIC)
     {
         return false;
     }
@@ -100,13 +100,13 @@ BOOL Unserialize(void* serialized, void* data)
             break;
         }
         uint32 size = desc & SERIALIZE_MASK_LENGTH;
-        switch (desc & SERIALIZE_MASK_FLAG)
+        switch (desc & SERIALIZE_MASK_TYPE)
         {
-        case SERIALIZE_FLAG_VALUE:
+        case SERIALIZE_TYPE_VALUE:
             mem_copy(dataPtr, dataSrc, size);
             dataPtr += size;
             break;
-        case SERIALIZE_FLAG_POINTER:
+        case SERIALIZE_TYPE_POINTER:
             uintptr ptr = (uintptr)dataSrc;
             if (size == 0)
             {
