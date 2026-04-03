@@ -14,14 +14,14 @@
 // 0······· value or pointer
 // ·0000000 data length
 
-#define SERIALIZE_HEADER_MAGIC 0xFFFFFFFF
+#define SERIALIZE_MAGIC        0xACFFFFEE
 #define SERIALIZE_ITEM_END     0x00000000
 
-#define SERIALIZE_FLAG_VALUE   0x00000000
-#define SERIALIZE_FLAG_POINTER 0x80000000
-
-#define SERIALIZE_MASK_FLAG    0x80000000
+#define SERIALIZE_MASK_TYPE    0x80000000
 #define SERIALIZE_MASK_LENGTH  0x7FFFFFFF
+
+#define SERIALIZE_TYPE_VALUE   0x00000000
+#define SERIALIZE_TYPE_POINTER 0x80000000
 
 // Serialize is used to serialize structure to a buffer.
 // If success, return the serialized data length. If failed, return 0.
