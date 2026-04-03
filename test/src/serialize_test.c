@@ -53,12 +53,12 @@ static bool TestSer_Serialize()
     s1.arg2[0] = 456;
     s1.arg2[1] = 789;
     uint32 descriptor[] = {
-        SERIALIZE_FLAG_VALUE|sizeof(s1.arg1),
-        SERIALIZE_FLAG_VALUE|sizeof(s1.arg2),
-        SERIALIZE_FLAG_POINTER|0,
-        SERIALIZE_FLAG_POINTER|4,
-        SERIALIZE_FLAG_VALUE|sizeof(s1.arg5),
-        SERIALIZE_FLAG_VALUE|sizeof(s1.arg6),
+        SERIALIZE_TYPE_VALUE|sizeof(s1.arg1),
+        SERIALIZE_TYPE_VALUE|sizeof(s1.arg2),
+        SERIALIZE_TYPE_POINTER|0,
+        SERIALIZE_TYPE_POINTER|4,
+        SERIALIZE_TYPE_VALUE|sizeof(s1.arg5),
+        SERIALIZE_TYPE_VALUE|sizeof(s1.arg6),
         SERIALIZE_ITEM_END,
     };
     uint32 expected = 4 + (7 * 4) + (4 + 8 + 0 + 4 + 1 + 2);
@@ -79,7 +79,7 @@ static bool TestSer_Serialize()
 
     printHexBytes(serialized, len);
     byte expData[] = {
-        0xFF, 0xFF, 0xFF, 0xFF, 0x04, 0x00, 0x00, 0x00, 
+        0xEE, 0xFF, 0xFF, 0xAC, 0x04, 0x00, 0x00, 0x00, 
         0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
         0x04, 0x00, 0x00, 0x80, 0x01, 0x00, 0x00, 0x00, 
         0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -111,12 +111,12 @@ static bool TestSer_Unserialize()
     s1.arg2[0] = 456;
     s1.arg2[1] = 789;
     uint32 descriptor[] = {
-        SERIALIZE_FLAG_VALUE|sizeof(s1.arg1),
-        SERIALIZE_FLAG_VALUE|sizeof(s1.arg2),
-        SERIALIZE_FLAG_POINTER|0,
-        SERIALIZE_FLAG_POINTER|4,
-        SERIALIZE_FLAG_VALUE|sizeof(s1.arg5),
-        SERIALIZE_FLAG_VALUE|sizeof(s1.arg6),
+        SERIALIZE_TYPE_VALUE|sizeof(s1.arg1),
+        SERIALIZE_TYPE_VALUE|sizeof(s1.arg2),
+        SERIALIZE_TYPE_POINTER|0,
+        SERIALIZE_TYPE_POINTER|4,
+        SERIALIZE_TYPE_VALUE|sizeof(s1.arg5),
+        SERIALIZE_TYPE_VALUE|sizeof(s1.arg6),
         SERIALIZE_ITEM_END,
     };
     uint32 expected = 4 + (7 * 4) + (4 + 8 + 0 + 4 + 1 + 2);
