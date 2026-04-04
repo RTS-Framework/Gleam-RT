@@ -207,9 +207,14 @@ static bool initStoreEnvironment(ArgumentStore* store, Context* context)
 static errno loadArguments(ArgumentStore* store, Context* context)
 {
     uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
-    byte*   arg  = (byte*)(stub + ARG_OFFSET_FIRST_ARG);
-    uint32  num  = *(uint32*)(stub + ARG_OFFSET_NUM_ARGS);
-    uint32  size = *(uint32*)(stub + ARG_OFFSET_ARGS_SIZE);
+    // decrypt argument header
+    byte header[ARG_HEADER_SIZE];
+    mem_copy(header, (byte*)stub, sizeof(header));
+    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    uint  fsz = sizeof(uint16) + sizeof(uint32);
+    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    uint16 num  = *(uint16*)(header + ARG_OFFSET_NUM_ARGS);
+    uint32 size = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
     // check the number of arguments
     if (num > ARG_MAX_NUM_ARGUMENTS)
     {
@@ -229,8 +234,9 @@ static errno loadArguments(ArgumentStore* store, Context* context)
     // copy encrypted arguments to new memory page,
     // num is used to reserve memory for the erased
     // field about each arguments
+    byte* argData = (byte*)(stub + ARG_OFFSET_FIRST_ARG);
     byte* offAddr = mem + num;
-    mem_copy(offAddr, arg, size);
+    mem_copy(offAddr, argData, size);
     // decrypted arguments
     byte* data = offAddr;
     byte* key  = (byte*)(stub + ARG_OFFSET_CRYPTO_KEY);
