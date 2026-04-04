@@ -4,10 +4,11 @@ go 1.20
 
 require (
 	github.com/davecgh/go-spew v1.1.1
-	github.com/RTS-Framework/GRT-Develop v1.9.0
 	github.com/stretchr/testify v1.11.1
 
-	golang.org/x/sys v0.29.0
+	golang.org/x/sys v0.30.0
+
+	github.com/RTS-Framework/GRT-Develop v1.9.1-0.20260403071200-5644cf245915
 )
 
 require (
