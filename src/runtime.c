@@ -528,17 +528,53 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
 
 static bool isValidArgumentStub()
 {
-    uintptr stubAddr = (uintptr)(GetFuncAddr(&Argument_Stub));
-    // calculate header checksum
-    uint32 checksum = 0;
-    for (uintptr i = 0; i < ARG_OFFSET_CHECKSUM; i++)
+    uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
+    // decrypt argument header
+    byte header[ARG_HEADER_SIZE];
+    mem_init(header, sizeof(header));
+    mem_copy(header, (byte*)stub, sizeof(header));
+    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    uint  fsz = sizeof(uint16) + sizeof(uint32);
+    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    // check the number of argument
+    uint16 numArgs  = *(uint16*)(header + ARG_OFFSET_NUM_ARGS);
+    uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
+    uint32 checksum = *(uint32*)(header + ARG_OFFSET_CHECKSUM);
+    if (numArgs > ARG_MAX_NUM_ARGUMENTS)
     {
-        byte b = *(byte*)(stubAddr + i);
-        checksum += checksum << 1;
-        checksum += b;
+        return false;
     }
-    uint32 expected = *(uint32*)(stubAddr + ARG_OFFSET_CHECKSUM);
-    return checksum == expected;
+    // check argument checksum
+    byte*  arg = (byte*)(stub + ARG_OFFSET_FIRST_ARG);
+    uint32 crc = 0xFFFFFFFF;
+    for (uint32 i = 0; i < argsSize; i++)
+    {
+        crc ^= (uint32)(arg[i]);
+        for (int j = 0; j < 8; j++)
+        {
+            if ((crc & 1) != 0)
+            {
+                crc = (crc >> 1) ^ 0xEDB88320;
+			} else {
+                crc >>= 1;
+			}
+		}
+	}
+    crc ^= 0xFFFFFFFF;
+    return crc == checksum;
+}
+
+static uint32 calcArgumentStubSize()
+{
+    uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
+    byte header[ARG_HEADER_SIZE];
+    mem_init(header, sizeof(header));
+    mem_copy(header, (byte*)stub, sizeof(header));
+    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    uint  fsz = sizeof(uint16) + sizeof(uint32);
+    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
+    return ARG_HEADER_SIZE + argsSize;
 }
 
 static void* getPEBAddress()
@@ -595,8 +631,7 @@ static void* allocRuntimeMemPage(void* IMOML)
 static void* calculateEpilogue()
 {
     uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
-    uint32  size = *(uint32*)(stub + ARG_OFFSET_ARGS_SIZE);
-    size += ARG_OFFSET_FIRST_ARG;
+    uint32  size = calcArgumentStubSize();
     return (void*)(stub + size);
 }
 
@@ -1268,8 +1303,8 @@ static void eraseArgumentStub(Runtime* runtime)
         return;
     }
     uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
-    uint32  size = *(uint32*)(stub + ARG_OFFSET_ARGS_SIZE);
-    RandBuffer((byte*)stub, ARG_HEADER_SIZE + size);
+    uint32  size = calcArgumentStubSize();
+    RandBuffer((byte*)stub, size);
 }
 
 __declspec(noinline)
@@ -1413,6 +1448,9 @@ static errno closeHandles(Runtime* runtime)
 __declspec(noinline)
 static void interruptInit(Runtime* runtime)
 {
+    uint32 oldProtect;
+    adjustPageProtect(runtime, &oldProtect);
+
     // clean submodules if it has been initialized
     if (runtime->Sysmon != NULL)
     {
@@ -1469,6 +1507,8 @@ static void interruptInit(Runtime* runtime)
     {
         runtime->Detector->Stop();
     }
+
+    recoverPageProtect(runtime, oldProtect);
 }
 
 // updateRuntimePointer will replace hard encode address to the actual address.
