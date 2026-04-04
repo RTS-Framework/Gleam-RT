@@ -16,7 +16,7 @@ func main() {
 	}
 	arg1 := &argument.Arg{
 		ID:   1,
-		Data: []byte("aaaabbbbccc\x00"),
+		Data: []byte("aaabbbccc\x00"),
 	}
 	arg2 := &argument.Arg{
 		ID:   2,
@@ -25,7 +25,11 @@ func main() {
 	stub, err := argument.Encode(arg0, arg1, arg2)
 	checkError(err)
 
-	fmt.Println(dumpBytesHex(stub))
+	data := dumpBytesHex(stub)
+	fmt.Println(data)
+
+	err = os.WriteFile("../asm/inst/argument.inst", []byte(data), 0644)
+	checkError(err)
 }
 
 func dumpBytesHex(b []byte) string {
@@ -47,7 +51,7 @@ func dumpBytesHex(b []byte) string {
 			break
 		}
 		counter++
-		if counter != 4 {
+		if counter != 8 {
 			builder.WriteString(", ")
 			continue
 		}
