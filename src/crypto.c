@@ -596,16 +596,9 @@ void XORBuf(void* buf, uint bufSize, void* key, uint keySize)
     }
     byte* b = buf;
     byte* k = key;
-    uint keyIdx = 0;
     for (uint i = 0; i < bufSize; i++)
     {
-        *b ^= *(k + keyIdx);
-        keyIdx++;
-        if (keyIdx >= keySize)
-        {
-            keyIdx = 0;
-        }
-        b++;
+        b[i] ^= k[i%keySize];
     }
 }
 #pragma optimize("", on)
