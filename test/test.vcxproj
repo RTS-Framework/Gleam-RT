@@ -19,7 +19,7 @@
     <ClInclude Include="..\include\dll_ntdll.h" />
     <ClInclude Include="..\include\dll_msvcrt.h" />
     <ClInclude Include="..\include\dll_ucrtbase.h" />
-	<ClInclude Include="..\include\dll_psapi.h" />
+    <ClInclude Include="..\include\dll_psapi.h" />
     <ClInclude Include="..\include\dll_ws2_32.h" />
     <ClInclude Include="..\include\dll_winhttp.h" />
     <ClInclude Include="..\include\dll_advapi32.h" />
@@ -51,9 +51,9 @@
     <ClInclude Include="..\include\win_file.h" />
     <ClInclude Include="..\include\win_http.h" />
     <ClInclude Include="..\include\win_crypto.h" />
-	<ClInclude Include="..\include\watchdog.h" />
+    <ClInclude Include="..\include\watchdog.h" />
     <ClInclude Include="..\include\sysmon.h" />
-	<ClInclude Include="..\include\shield.h" />
+    <ClInclude Include="..\include\shield.h" />
     <ClInclude Include="..\include\runtime.h" />
     <ClInclude Include="..\include\debug.h" />
   </ItemGroup>
@@ -108,7 +108,7 @@
     <ClCompile Include="..\src\win_file.c" />
     <ClCompile Include="..\src\win_http.c" />
     <ClCompile Include="..\src\win_crypto.c" />
-	<ClCompile Include="..\src\watchdog.c" />
+    <ClCompile Include="..\src\watchdog.c" />
     <ClCompile Include="..\src\sysmon.c" />
     <ClCompile Include="..\src\shield.c" />
     <ClCompile Include="..\src\debug.c" />
@@ -133,7 +133,6 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </MASM>
     <MASM Include="..\asm\_random.asm" />
-    <MASM Include="..\asm\align_stub.asm" />
     <MASM Include="..\asm\opts_stub.asm" />
     <MASM Include="..\asm\args_stub.asm" />
   </ItemGroup>
