@@ -4,6 +4,7 @@
 #include "win_types.h"
 #include "lib_memory.h"
 #include "rel_addr.h"
+#include "crypto.h"
 #include "errno.h"
 #include "mod_argument.h"
 #include "runtime.h"
@@ -80,9 +81,14 @@ static void* copyShellcode()
 static void* calcEpilogue()
 {
     uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
-    uint32  size = *(uint32*)(stub + ARG_OFFSET_ARGS_SIZE);
-    size += ARG_OFFSET_FIRST_ARG;
-    return (void*)(stub + size);
+    byte header[ARG_HEADER_SIZE];
+    mem_init(header, sizeof(header));
+    mem_copy(header, (byte*)stub, sizeof(header));
+    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    uint  fsz = sizeof(uint16) + sizeof(uint32);
+    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
+    return (void*)(stub + ARG_HEADER_SIZE + argsSize);
 }
 
 bool TestRuntime_Options()
