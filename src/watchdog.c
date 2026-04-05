@@ -261,7 +261,7 @@ static bool initWatchdogEnvironment(Watchdog* watchdog, Context* context)
     watchdog->statusMu = statusMu;
     // create event for stop watcher
     HANDLE hEvent = context->CreateEventA(NULL, true, false, NAME_RT_WD_EVENT_STOP);
-    if (hMutex == NULL)
+    if (hEvent == NULL)
     {
         return false;
     }
@@ -340,6 +340,8 @@ static uint wd_watcher()
 
         if (numFail == 3)
         {
+            // wd_sleep(9000000);
+
             // if program dead, use force kill threads,
             // then the Watchdog will call reset handler.
             watchdog->RT_TryLockMods();
