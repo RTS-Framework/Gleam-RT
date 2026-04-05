@@ -1,0 +1,16 @@
+  db 0FCh, 0A2h, 099h, 03Ch, 096h, 06Bh, 07Eh, 07Dh
+  db 092h, 074h, 033h, 074h, 08Dh, 031h, 0B9h, 0CBh
+  db 0D7h, 01Ah, 01Ah, 0EBh, 075h, 06Ch, 03Dh, 0DFh
+  db 09Dh, 0DDh, 0F4h, 0F6h, 0F8h, 060h, 0D6h, 0B9h
+  db 09Bh, 0F0h, 0DBh, 05Dh, 0B4h, 0B4h, 013h, 09Fh
+  db 027h, 027h, 071h, 015h, 0AFh, 0EEh, 0D2h, 049h
+  db 042h, 062h, 04Ch, 0DFh, 067h, 06Ch, 03Dh, 0DFh
+  db 09Dh, 0DDh, 0F4h, 0F6h, 0F8h, 060h, 0D6h, 0B9h
+  db 0BAh, 069h, 0DFh, 021h, 09Fh, 0FBh, 08Ah, 077h
+  db 0CFh, 098h, 01Ah, 0C9h, 00Ah, 04Dh, 01Ah, 063h
+  db 008h, 0B4h, 0FEh, 042h, 064h, 0B7h, 0F6h, 042h
+  db 07Bh, 0F5h, 03Fh, 046h, 0C2h, 018h, 0AFh, 094h
+  db 018h, 075h, 0F0h, 0D7h, 029h, 09Fh, 075h, 0FCh
+  db 080h, 0D4h, 0B1h, 0CAh, 07Dh, 062h, 0FEh, 08Eh
+  db 02Ah, 008h, 0B8h, 052h, 0D1h, 0EEh, 08Eh, 0E9h
+  db 0CEh, 0B1h, 069h, 0F0h, 072h, 089h, 01Bh, 0F4h
