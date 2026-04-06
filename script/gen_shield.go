@@ -36,7 +36,7 @@ func dump(arch string) {
 
 	path, err = filepath.Abs(path)
 	checkError(err)
-	fmt.Println("dump:", path)
+	fmt.Println("dump shield:", path)
 }
 
 func dumpBytesHex(b []byte) []byte {
@@ -58,7 +58,7 @@ func dumpBytesHex(b []byte) []byte {
 			break
 		}
 		counter++
-		if counter != 8 {
+		if counter != 16 {
 			buffer.WriteString(", ")
 			continue
 		}
