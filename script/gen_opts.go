@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	
+
 	"github.com/RTS-Framework/GRT-Develop/option"
 )
 
@@ -15,15 +15,15 @@ func main() {
 		ShieldModuleHash: option.Hash("test.dll"),
 		ShieldEntryPoint: 0x12345678,
 	}
-	
+
 	template := make([]byte, option.StubSize)
 	template[0] = option.StubMagic
 	stub, err := option.Set(template, &opts)
 	checkError(err)
-	
+
 	data := dumpBytesHex(stub)
 	fmt.Println(data)
-	
+
 	err = os.WriteFile("../asm/inst/option.inst", []byte(data), 0644)
 	checkError(err)
 }
