@@ -1,7 +1,37 @@
 #include "c_types.h"
+#include "win_types.h"
+#include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "rel_addr.h"
 #include "shield.h"
+
+typedef struct {
+    uintptr Method;
+
+    VirtualProtect_t      VirtualProtect;
+    WaitForSingleObject_t WaitForSingleObject;
+
+    uintptr Reserved;
+    void*   CriticalAddr;
+    uint    CriticalSize;
+    void*   DecoyAddr;
+    uint    DecoySize;
+    void*   Shelter;
+    HANDLE  hTimer;
+} sleep_args;
+
+typedef struct {
+    uintptr Method;
+
+    VirtualProtect_t VirtualProtect;
+    VirtualFree_t    VirtualFree;
+    ExitThread_t     ExitThread;
+
+    void* CriticalAddr;
+    uint  CriticalSize;
+    void* DecoyAddr;
+    uint  DecoySize;
+} exit_Args;
 
 // Only the instructions related to the DefenseRT function are
 // in plain text during Sleep, so if you need to advance AV, 
