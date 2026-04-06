@@ -261,9 +261,6 @@
     <MASM Include="..\asm\msvc\ullshr.asm">
       <Filter>Assembly\MSVC</Filter>
     </MASM>
-    <MASM Include="..\asm\align_stub.asm">
-      <Filter>Assembly</Filter>
-    </MASM>
     <MASM Include="..\asm\opts_stub.asm">
       <Filter>Assembly</Filter>
     </MASM>
