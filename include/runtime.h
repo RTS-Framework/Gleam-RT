@@ -9,25 +9,27 @@
 #include "errno.h"
 
 // about runtime options at the shellcode tail.
-//
-// +------------+---------+---------+-----------+
-// | magic mark | option1 | option2 | option... |
-// +------------+---------+---------+-----------+
-// |    0xFC    |   var   |   var   |    var    |
-// +------------+---------+---------+-----------+
+// 
+// +------------+---------+---------+---------+---------+
+// | magic mark | xor key | option1 | option2 | optionN |
+// +------------+---------+---------+---------+---------+
+// |    0xFC    | 32 byte |   var   |   var   |   var   |
+// +------------+---------+---------+---------+---------+
 
-#define OPTION_STUB_SIZE  64
 #define OPTION_STUB_MAGIC 0xFC
+#define OPTION_STUB_SIZE  128
 
-#define OPT_OFFSET_SHIELD_MODULE_HASH    1
-#define OPT_OFFSET_SHIELD_ENTRY_POINT    9
-#define OPT_OFFSET_ENABLE_SECURITY_MODE  17
-#define OPT_OFFSET_DISABLE_DETECTOR      18
-#define OPT_OFFSET_DISABLE_WATCHDOG      19
-#define OPT_OFFSET_DISABLE_SYSMON        20
-#define OPT_OFFSET_NOT_ERASE_INSTRUCTION 21
-#define OPT_OFFSET_NOT_ADJUST_PROTECT    22
-#define OPT_OFFSET_TRACK_CURRENT_THREAD  23
+#define OPT_OFFSET_BASE                  (1 + 32)
+#define OPT_OFFSET_IMAGE_PINNING_HASH    (OPT_OFFSET_BASE + 0)
+#define OPT_OFFSET_SHIELD_MODULE_HASH    (OPT_OFFSET_BASE + 8)
+#define OPT_OFFSET_SHIELD_ENTRY_POINT    (OPT_OFFSET_BASE + 16)
+#define OPT_OFFSET_ENABLE_SECURITY_MODE  (OPT_OFFSET_BASE + 24)
+#define OPT_OFFSET_DISABLE_DETECTOR      (OPT_OFFSET_BASE + 25)
+#define OPT_OFFSET_DISABLE_WATCHDOG      (OPT_OFFSET_BASE + 26)
+#define OPT_OFFSET_DISABLE_SYSMON        (OPT_OFFSET_BASE + 27)
+#define OPT_OFFSET_NOT_ERASE_INSTRUCTION (OPT_OFFSET_BASE + 28)
+#define OPT_OFFSET_NOT_ADJUST_PROTECT    (OPT_OFFSET_BASE + 29)
+#define OPT_OFFSET_TRACK_CURRENT_THREAD  (OPT_OFFSET_BASE + 30)
 
 // for generic shellcode development.
 
@@ -438,7 +440,7 @@ typedef void* (*GetIMOML_t)(); // get stored InMemoryOrderModuleList address
 // caller need erase the other memory data about instance.
 // 
 // Stop is same as Exit, but it will exit current thread after exit,
-// it can erase the instruction from BootInstAddress to runtime epilogue.
+// it can erase the instruction from BootAddress to runtime epilogue.
 typedef struct {
     LT_Status Library;
     MT_Status Memory;
@@ -685,43 +687,49 @@ typedef struct {
 } Runtime_M;
 
 typedef struct {
-    // protect instructions like boot before Runtime,
+    // protect instructions like Boot before Runtime,
     // if it is NULL, Runtime will only protect self.
-    void* BootInstAddress;
+    void* BootAddress;
 
-    // ShieldModuleHash is the target module base address,
-    // if it is zero, the target module is main process.
-    // if the module is dll, this field must be set.
-    uint ShieldModuleHash;
+    // for memory alignment about other languages.
+    void* Reserved;
 
-    // ShieldEntryPoint is define the RVA of the shield,
-    // if it is zero, Runtime will try to inject the
-    // built-in shield to the .text section of main process.
-    uint ShieldEntryPoint;
+	// runtime will not initialize when the exe name is not expected.
+    // if zero, runtime will skip this detection.
+    uint64 ImagePinningHash;
+
+	// the module hash of the pre-injected shield in,
+    // if 0x0000, runtime will deploy a shield from the built-in shield stub.
+    // if 0x0001, the module is the main exe.
+    // if others, the module is the target dll.
+    uint64 ShieldModuleHash;
+
+	// the RVA of the pre-injected shield in the module.
+    uint32 ShieldEntryPoint;
 
     // detect environment when initialize runtime, if not safe, 
     // stop initialization and exit runtime at once.
-    bool EnableSecurityMode;
+    BOOL EnableSecurityMode;
 
     // disable detector for test or debug.
-    bool DisableDetector;
+    BOOL DisableDetector;
 
     // disable watchdog for implement single thread model.
     // it will overwrite the control from upper module.
-    bool DisableWatchdog;
+    BOOL DisableWatchdog;
 
     // disable sysmon for implement single thread model.
-    bool DisableSysmon;
+    BOOL DisableSysmon;
 
     // not erase runtime instructions after call Runtime_M.Exit
-    bool NotEraseInstruction;
+    BOOL NotEraseInstruction;
 
-    // not adjust current memory page protect for erase runtime.
-    bool NotAdjustProtect;
+    // not adjust current memory page protect for initialize runtime.
+    BOOL NotAdjustProtect;
 
     // track current thread for test or debug mode.
     // it maybe improved the single thread model.
-    bool TrackCurrentThread;
+    BOOL TrackCurrentThread;
 } Runtime_Opts;
 
 // InitRuntime is used to initialize runtime and return module methods.
