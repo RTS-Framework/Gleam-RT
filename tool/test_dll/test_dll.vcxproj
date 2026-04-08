@@ -214,7 +214,6 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </MASM>
     <MASM Include="..\..\asm\_random.asm" />
-    <MASM Include="..\..\asm\align_stub.asm" />
     <MASM Include="..\..\asm\opts_stub.asm" />
     <MASM Include="..\..\asm\args_stub.asm" />
   </ItemGroup>
