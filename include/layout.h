@@ -1,13 +1,15 @@
 #ifndef LAYOUT_H
 #define LAYOUT_H
 
-// +--------------+-------------+-------------+-------------------+
-// |    0-4096    |  4096-8192  |  8192-20480 |    20480-32768    |
-// +--------------+-------------+-------------+-------------------+
-// | runtime core | base module |  submodules | high-level module |
-// +--------------+-------------+-------------+-------------------+
+// +--------------+-------------+------------+-------------------+---------------+
+// |    0-4096    |  4096-8192  | 8192-20480 |    20480-32768    |  32768-40960  |
+// +--------------+-------------+------------+-------------------+---------------+
+// | runtime core | base module | submodules | high-level module | suffix module | 
+// +--------------+-------------+------------+-------------------+---------------+
 
-#define MAIN_MEM_PAGE_SIZE (8 * 4096)
+// The main memory pages store the data of all the core structures.
+
+#define MAIN_MEM_PAGE_SIZE (10 * 4096)
 
 // ----------runtime core-----------
 
@@ -75,5 +77,11 @@
 // Sysmon
 #define LAYOUT_SM_STRUCT 29000
 #define LAYOUT_SM_METHOD 29500
+
+// ----------suffix module----------
+
+// Shield
+#define LAYOUT_SD_STRUCT 32768
+#define LAYOUT_SD_METHOD 33000
 
 #endif // LAYOUT_H
