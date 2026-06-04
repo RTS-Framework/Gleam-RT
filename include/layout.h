@@ -7,7 +7,8 @@
 // | runtime core | base module | submodules | high-level module | suffix module | 
 // +--------------+-------------+------------+-------------------+---------------+
 
-// The main memory pages store the data of all the core structures.
+// the main memory page store the data of all the 
+// core structures, like runtime, submodules...
 
 #define MAIN_MEM_PAGE_SIZE (10 * 4096)
 
@@ -82,6 +83,6 @@
 
 // Shield
 #define LAYOUT_SD_STRUCT 32768
-#define LAYOUT_SD_METHOD 33000
+#define LAYOUT_SD_METHOD 33500
 
 #endif // LAYOUT_H
