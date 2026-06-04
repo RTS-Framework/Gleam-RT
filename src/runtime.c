@@ -115,6 +115,9 @@ typedef struct {
     // reliability modules
     Watchdog_M* Watchdog;
     Sysmon_M*   Sysmon;
+
+    // suffix modules
+    Shield_M* Shield;
 } Runtime;
 
 // export methods about Runtime
@@ -263,7 +266,8 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     if (opts == NULL)
     {
         Runtime_Opts opt = {
-            .BootInstAddress     = NULL,
+            .BootAddress         = NULL,
+            .ImagePinningHash    = 0,
             .ShieldModuleHash    = 0,
             .ShieldEntryPoint    = 0,
             .EnableSecurityMode  = false,
@@ -818,6 +822,7 @@ static errno initSubmodules(Runtime* runtime)
         .DisableWatchdog     = runtime->Options.DisableWatchdog,
         .DisableSysmon       = runtime->Options.DisableSysmon,
         .NotEraseInstruction = runtime->Options.NotEraseInstruction,
+        .NotAdjustProtect    = runtime->Options.NotAdjustProtect,
         .TrackCurrentThread  = runtime->Options.TrackCurrentThread,
 
         .PEB   = runtime->PEB,
@@ -1331,7 +1336,7 @@ static bool adjustPageProtect(Runtime* runtime, DWORD* old)
         return true;
     }
     void* init = GetFuncAddr(&InitRuntime);
-    void* addr = runtime->Options.BootInstAddress;
+    void* addr = runtime->Options.BootAddress;
     if (addr == NULL || (uintptr)addr > (uintptr)init)
     {
         addr = init;
@@ -1355,7 +1360,7 @@ static bool recoverPageProtect(Runtime* runtime, DWORD protect)
         return true;
     }
     void* init = GetFuncAddr(&InitRuntime);
-    void* addr = runtime->Options.BootInstAddress;
+    void* addr = runtime->Options.BootAddress;
     if (addr == NULL || (uintptr)addr > (uintptr)init)
     {
         addr = init;
@@ -1371,7 +1376,7 @@ __declspec(noinline)
 static bool flushInstructionCache(Runtime* runtime)
 {
     void* init = GetFuncAddr(&InitRuntime);
-    void* addr = runtime->Options.BootInstAddress;
+    void* addr = runtime->Options.BootAddress;
     if (addr == NULL || (uintptr)addr > (uintptr)init)
     {
         addr = init;
@@ -2503,7 +2508,7 @@ __declspec(noinline)
 static errno sleep(Runtime* runtime, HANDLE hTimer)
 {
     // calculate begin and end address
-    uintptr beginAddress = (uintptr)(runtime->Options.BootInstAddress);
+    uintptr beginAddress = (uintptr)(runtime->Options.BootAddress);
     uintptr runtimeAddr  = (uintptr)(GetFuncAddr(&InitRuntime));
     if (beginAddress == 0 || beginAddress > runtimeAddr)
     {
@@ -2820,7 +2825,7 @@ errno RT_stop(bool exitThread, uint32 code)
 
     // must calculate address before erase instructions
     void* init = GetFuncAddr(&InitRuntime);
-    void* addr = runtime->Options.BootInstAddress;
+    void* addr = runtime->Options.BootAddress;
     if (!exitThread)
     {
         addr = NULL;
