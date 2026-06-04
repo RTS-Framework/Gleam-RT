@@ -48,13 +48,17 @@ typedef struct {
     bool NotEraseInstruction;
     bool NotAdjustProtect;
 
-    VirtualProtect_t      VirtualProtect;
-    VirtualFree_t         VirtualFree;
-    ExitThread_t          ExitThread;
-    WaitForSingleObject_t WaitForSingleObject;
+    VirtualAlloc_t         VirtualAlloc;
+    VirtualFree_t          VirtualFree;
+    VirtualProtect_t       VirtualProtect;
+    ExitThread_t           ExitThread;
+    CreateWaitableTimerA_t CreateWaitableTimerA;
+    SetWaitableTimer_t     SetWaitableTimer;
+    WaitForSingleObject_t  WaitForSingleObject;
+    CloseHandle_t          CloseHandle;
 
-    // global mutex
-    HANDLE hMutex;
+    // allocated shield in memory
+    void* allocated;
 
     SD_Status status;
 } Shield;
@@ -63,8 +67,6 @@ typedef struct {
 BOOL SD_GetStatus(SD_Status* status);
 
 // methods for runtime
-bool  SD_Lock();
-bool  SD_Unlock();
 void  SD_Sleep(DWORD dwMilliseconds);
 void  SD_Stop();
 errno SD_Clean();
@@ -128,15 +130,102 @@ Shield_M* InitShield(Context* context)
     // methods for user
     method->GetStatus = GetFuncAddr(&SD_GetStatus);
     // methods for runtime
-    method->Lock   = GetFuncAddr(&SD_Lock);
-    method->Unlock = GetFuncAddr(&SD_Unlock);
     method->Sleep  = GetFuncAddr(&SD_Sleep);
     method->Stop   = GetFuncAddr(&SD_Stop);
     method->Clean  = GetFuncAddr(&SD_Clean);
     return method;
 }
 
+__declspec(noinline)
+static bool initShieldAPI(Shield* shield, Context* context)
+{
+    // get original API address
+    typedef struct { 
+        uint mHash; uint pHash; uint hKey; void* proc;
+    } winapi;
+    winapi list[] =
+#ifdef _WIN64
+    {
+        { 0xB81CFE7E68817EBC, 0x9ED80CDB7C8DC7CB, 0x93DEFC8B369AEB09 }, // VirtualFree
+        { 0x09DCD4916EAF02FB, 0x07847A7F31B555AA, 0xE8CD656DB309997E }, // VirtualProtect
+        { 0xB7A6984C86379802, 0x47310D64BDB74A5A, 0xB770E3DCC3F639EF }, // ExitThread
+        { 0xBF4577A186DA850B, 0x7084089B2EECD03E, 0x859DED82D1FEBB27 }, // WaitForSingleObject
+    };
+#elif _WIN32
+    {
+        { 0xC80B8735, 0x6E1ADA58, 0xF607BBCE }, // VirtualFree
+        { 0x10AA34C4, 0xC5560D17, 0xB641E477 }, // VirtualProtect
+        { 0x88FF610F, 0xCE1AB90A, 0x1CA2C5D8 }, // ExitThread
+        { 0xEE6856BE, 0xB1FF31C3, 0xA11C1DDA }, // WaitForSingleObject
+    };
+#endif
+    for (int i = 0; i < arrlen(list); i++)
+    {
+        winapi item = list[i];
+        void*  proc = FindAPI(item.mHash, item.pHash, item.hKey);
+        if (proc == NULL)
+        {
+            return false;
+        }
+        list[i].proc = proc;
+    }
+    shield->VirtualFree         = list[0x00].proc;
+    shield->VirtualProtect      = list[0x01].proc;
+    shield->ExitThread          = list[0x02].proc;
+    shield->WaitForSingleObject = list[0x03].proc;
 
+    // copy from context
+    shield->VirtualAlloc         = context->VirtualAlloc;
+    shield->CreateWaitableTimerA = context->CreateWaitableTimerA;  
+    shield->SetWaitableTimer     = context->SetWaitableTimer;
+    shield->CloseHandle          = context->CloseHandle;
+    return true;
+}
+
+
+// CANNOT merge updateShieldPointer and recoverShieldPointer
+// to one function with two arguments, otherwise the compiler
+// will generate the incorrect instructions.
+
+__declspec(noinline)
+static bool updateShieldPointer(Shield* shield)
+{
+    bool success = false;
+    uintptr target = (uintptr)(GetFuncAddr(&getShieldPointer));
+    for (uintptr i = 0; i < 64; i++)
+    {
+        uintptr* pointer = (uintptr*)(target);
+        if (*pointer != SHIELD_POINTER)
+        {
+            target++;
+            continue;
+        }
+        *pointer = (uintptr)shield;
+        success = true;
+        break;
+    }
+    return success;
+}
+
+__declspec(noinline)
+static bool recoverShieldPointer(Shield* shield)
+{
+    bool success = false;
+    uintptr target = (uintptr)(GetFuncAddr(&getShieldPointer));
+    for (uintptr i = 0; i < 64; i++)
+    {
+        uintptr* pointer = (uintptr*)(target);
+        if (*pointer != (uintptr)shield)
+        {
+            target++;
+            continue;
+        }
+        *pointer = SHIELD_POINTER;
+        success = true;
+        break;
+    }
+    return success;
+}
 
 
 
