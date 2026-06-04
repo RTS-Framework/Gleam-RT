@@ -38,6 +38,7 @@ typedef struct {
     bool DisableWatchdog;
     bool DisableSysmon;
     bool NotEraseInstruction;
+    bool NotAdjustProtect;
     bool TrackCurrentThread;
 
     // process environment
