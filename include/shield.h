@@ -22,8 +22,6 @@ typedef struct {
 
 typedef BOOL (*SDGetStatus_t)(SD_Status* status);
 
-typedef bool  (*SDLock_t)();
-typedef bool  (*SDUnlock_t)();
 typedef void  (*SDSleep_t)(DWORD dwMilliseconds);
 typedef void  (*SDStop_t)();
 typedef errno (*SDClean_t)();
@@ -33,14 +31,9 @@ typedef struct {
     SDGetStatus_t GetStatus;
 
     // for runtime internal usage
-    SDLock_t   Lock;
-    SDUnlock_t Unlock;
-    SDSleep_t  Sleep;
-    SDStop_t   Stop;
-    SDClean_t  Clean;
-
-    // data for runtime
-    HANDLE hMutex;
+    SDSleep_t Sleep;
+    SDStop_t  Stop;
+    SDClean_t Clean;
 } Shield_M;
 
 Shield_M* InitShield(Context* context);
