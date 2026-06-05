@@ -328,6 +328,13 @@ echo [Watchdog Module]
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc ResetEvent
 echo.
 
+echo [Shield Module]
+hash_api -fmt 64 -conc -mod "kernel32.dll" -proc VirtualFree
+hash_api -fmt 64 -conc -mod "kernel32.dll" -proc VirtualProtect
+hash_api -fmt 64 -conc -mod "kernel32.dll" -proc ExitThread
+hash_api -fmt 64 -conc -mod "kernel32.dll" -proc WaitForSingleObject
+echo.
+
 echo ------------------------x86------------------------
 
 echo [Runtime Core]
@@ -649,6 +656,13 @@ echo.
 
 echo [Watchdog Module]
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc ResetEvent
+echo.
+
+echo [Shield Module]
+hash_api -fmt 32 -conc -mod "kernel32.dll" -proc VirtualFree
+hash_api -fmt 32 -conc -mod "kernel32.dll" -proc VirtualProtect
+hash_api -fmt 32 -conc -mod "kernel32.dll" -proc ExitThread
+hash_api -fmt 32 -conc -mod "kernel32.dll" -proc WaitForSingleObject
 echo.
 
 pause
