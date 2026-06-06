@@ -5,6 +5,7 @@
 #include "rel_addr.h"
 #include "hash_api.h"
 #include "random.h"
+#include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
@@ -57,8 +58,11 @@ typedef struct {
     WaitForSingleObject_t  WaitForSingleObject;
     CloseHandle_t          CloseHandle;
 
-    // allocated shield in memory
-    void* allocated;
+    // shield entry point
+    void* entry;
+
+    // allocated shield address
+    void* page;
 
     SD_Status status;
 } Shield;
@@ -139,6 +143,22 @@ Shield_M* InitShield(Context* context)
 __declspec(noinline)
 static bool initShieldAPI(Shield* shield, Context* context)
 {
+    // copy from context
+    shield->VirtualAlloc         = context->VirtualAlloc;
+    shield->CreateWaitableTimerA = context->CreateWaitableTimerA;  
+    shield->SetWaitableTimer     = context->SetWaitableTimer;
+    shield->CloseHandle          = context->CloseHandle;
+
+    // if the shield stub is NOT pre-injected, use copy from context
+    if (context->ShieldModuleHash == 0)
+    {
+        shield->VirtualFree         = context->VirtualFree;
+        shield->VirtualProtect      = context->VirtualProtect;
+        shield->ExitThread          = context->ExitThread;
+        shield->WaitForSingleObject = context->WaitForSingleObject;
+        return true;
+    }
+
     // get original API address
     typedef struct { 
         uint mHash; uint pHash; uint hKey; void* proc;
@@ -173,15 +193,8 @@ static bool initShieldAPI(Shield* shield, Context* context)
     shield->VirtualProtect      = list[0x01].proc;
     shield->ExitThread          = list[0x02].proc;
     shield->WaitForSingleObject = list[0x03].proc;
-
-    // copy from context
-    shield->VirtualAlloc         = context->VirtualAlloc;
-    shield->CreateWaitableTimerA = context->CreateWaitableTimerA;  
-    shield->SetWaitableTimer     = context->SetWaitableTimer;
-    shield->CloseHandle          = context->CloseHandle;
     return true;
 }
-
 
 // CANNOT merge updateShieldPointer and recoverShieldPointer
 // to one function with two arguments, otherwise the compiler
@@ -227,6 +240,51 @@ static bool recoverShieldPointer(Shield* shield)
     return success;
 }
 
+static bool initShieldEnvironment(Shield* shield, Context* context)
+{
+    uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
+    // check shield stub is valid
+    if (*(byte*)(stub) != SHIELD_STUB_MAGIC)
+    {
+        return false;
+    }
+    // prepare xor key
+    byte*  key = (byte*)(stub + 1);
+    uint16 off = 1 + SHIELD_KEY_SIZE;
+    // decrypt shield
+    uint16 size = *(uint16*)(stub + off);
+    off += sizeof(uint16);
+    byte* shield = (byte*)(stub + off);
+    XORBuf(shield, size, key, SHIELD_KEY_SIZE);
+    off += size;
+    // decrypt decoy
+    size = *(uint16*)(stub + off);
+    off += sizeof(uint16);
+    byte* decoy = (byte*)(stub + off);
+    XORBuf(decoy, size, key, SHIELD_KEY_SIZE);
+
+    if (context->ShieldModuleHash != 0)
+    {
+
+    }
+}
+
+static void eraseShieldMethods(Context* context)
+{
+    if (context->NotEraseInstruction)
+    {
+        return;
+    }
+    uintptr begin = (uintptr)(GetFuncAddr(&initShieldAPI));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseShieldMethods));
+    uintptr size  = end - begin;
+    RandBuffer((byte*)begin, (int64)size);
+}
+
+static void cleanShield(Shield* shield)
+{
+
+}
 
 
 // Only the instructions related to the DefenseRT function are
