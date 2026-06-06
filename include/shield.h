@@ -13,6 +13,10 @@
 // |    0xFB    | 32 byte |   uint16    |   var  |   uint16   |  var  |
 // +------------+---------+-------------+--------+------------+-------+
 
+#define SHIELD_STUB_MAGIC 0xFB
+#define SHIELD_STUB_SIZE  (8 * 1024)
+#define SHIELD_KEY_SIZE   32
+
 typedef struct {
     void* EntryPoint;
     void* BaseAddress;
