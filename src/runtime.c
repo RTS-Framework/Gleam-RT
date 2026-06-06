@@ -817,6 +817,10 @@ static errno initSubmodules(Runtime* runtime)
 {
     // create context data for initialize other modules
     Context context = {
+        .BootAddress         = runtime->Options.BootAddress,
+        .ShieldModuleHash    = runtime->Options.ShieldModuleHash,
+        .ShieldEntryPoint    = runtime->Options.ShieldEntryPoint,
+
         .EnableSecurityMode  = runtime->Options.EnableSecurityMode,
         .DisableDetector     = runtime->Options.DisableDetector,
         .DisableWatchdog     = runtime->Options.DisableWatchdog,
@@ -854,6 +858,7 @@ static errno initSubmodules(Runtime* runtime)
         .Sleep                  = GetFuncAddr(&RT_Sleep),
 
         .MainMemPage = (uintptr)(runtime->MainMemPage),
+        .Epilogue    = (uintptr)(runtime->Epilogue),
         .PageSize    = runtime->PageSize,
 
         .FindAPI = GetFuncAddr(&FindAPI_SC),
