@@ -33,6 +33,10 @@ typedef errno (*RT_Stop_t)(bool exitThread, uint32 code);
 
 typedef struct {
     // runtime options
+    void*  BootAddress;
+    uint64 ShieldModuleHash;
+    uint32 ShieldEntryPoint;
+
     bool EnableSecurityMode;
     bool DisableDetector;
     bool DisableWatchdog;
@@ -73,6 +77,7 @@ typedef struct {
 
     // runtime context data
     uintptr MainMemPage;
+    uintptr Epilogue;
     uint32  PageSize;
 
     // HashAPI with spoof call
