@@ -46,8 +46,9 @@ typedef struct {
     bool TrackCurrentThread;
 
     // process environment
-    void* PEB;
-    void* IMOML;
+    void*  PEB;
+    void*  IMOML;
+    uint32 MPS;
 
     // for initialize runtime submodules
     GetTickCount_t           GetTickCount;
@@ -77,8 +78,9 @@ typedef struct {
 
     // runtime context data
     uintptr MainMemPage;
+    uintptr Prologue;
     uintptr Epilogue;
-    uint32  PageSize;
+    uintptr InstSize;
 
     // HashAPI with spoof call
     FindAPI_t FindAPI;
