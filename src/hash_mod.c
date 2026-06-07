@@ -17,7 +17,7 @@ uint64 HashMod(uint16* module)
             c -= 0x20;
         }
         hash = ror64(hash, 7);
-        hash += uint64(c);
+        hash += c;
         hash = ror64(hash, 3);
         module++;
     }
