@@ -16,7 +16,8 @@ static void* calcEpilogue();
 bool TestInitRuntime()
 {
     Runtime_Opts opts = {
-        .BootInstAddress     = NULL,
+        .BootAddress         = NULL,
+        .ImagePinningHash    = 0,
         .ShieldModuleHash    = 0,
         .ShieldEntryPoint    = 0,
         .EnableSecurityMode  = false,
@@ -94,7 +95,8 @@ static void* calcEpilogue()
 bool TestRuntime_Options()
 {
     Runtime_Opts opts = {
-        .BootInstAddress     = NULL,
+        .BootAddress         = NULL,
+        .ImagePinningHash    = 0,
         .ShieldModuleHash    = 0,
         .ShieldEntryPoint    = 0,
         .EnableSecurityMode  = false,
