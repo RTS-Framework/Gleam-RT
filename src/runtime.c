@@ -79,7 +79,9 @@ typedef struct {
 
     // runtime data
     void*  MainMemPage; // store all structures
-    void*  Epilogue;    // store shellcode epilogue
+    void*  Prologue;    // store instance start address
+    void*  Epilogue;    // store instance end address
+    uint32 InstSize;    // store instance size
     uint32 PageSize;    // for memory management
     HANDLE hMutex;      // global method mutex
 
@@ -284,9 +286,18 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     // store process environment
     runtime->PEB   = PEB;
     runtime->IMOML = IMOML;
+    // calculate the instance entry point
+    uintptr init = (uintptr)(GetFuncAddr(&InitRuntime));
+    uintptr boot = (uintptr)(runtime->Options.BootAddress);
+    if (boot == 0 || boot > init)
+    {
+        boot = init;
+    }
     // set runtime data
     runtime->MainMemPage = memPage;
-    runtime->Epilogue    = calculateEpilogue();
+    runtime->Prologue = (void*)boot;
+    runtime->Epilogue = calculateEpilogue();
+    runtime->InstSize = (uint32)((uintptr)(runtime->Epilogue) - boot);
     // set init value
     runtime->ErrorMode = (UINT)(-1);
     // initialize runtime
@@ -348,7 +359,7 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     }
     // check initialize elapsed time is too long
     int32 tick = runtime->GetTickCount();
-    if (tick - runtime->InitTick > 150)
+    if (tick - runtime->InitTick > 200)
     {
         errno = ERR_RUNTIME_INIT_TIMEOUT;
     }
@@ -831,6 +842,7 @@ static errno initSubmodules(Runtime* runtime)
 
         .PEB   = runtime->PEB,
         .IMOML = runtime->IMOML,
+        .MPS   = runtime->PageSize,
 
         .GetTickCount           = runtime->GetTickCount,
         .LoadLibraryA           = runtime->LoadLibraryA,
@@ -858,8 +870,9 @@ static errno initSubmodules(Runtime* runtime)
         .Sleep                  = GetFuncAddr(&RT_Sleep),
 
         .MainMemPage = (uintptr)(runtime->MainMemPage),
+        .Prologue    = (uintptr)(runtime->Prologue),
         .Epilogue    = (uintptr)(runtime->Epilogue),
-        .PageSize    = runtime->PageSize,
+        .InstSize    = runtime->InstSize,
 
         .FindAPI = GetFuncAddr(&FindAPI_SC),
 
@@ -1340,20 +1353,8 @@ static bool adjustPageProtect(Runtime* runtime, DWORD* old)
     {
         return true;
     }
-    void* init = GetFuncAddr(&InitRuntime);
-    void* addr = runtime->Options.BootAddress;
-    if (addr == NULL || (uintptr)addr > (uintptr)init)
-    {
-        addr = init;
-    }
-    uintptr begin = (uintptr)(addr);
-    uintptr end   = (uintptr)(runtime->Epilogue);
-    uint    size  = end - begin;
-    if (old == NULL)
-    {
-        DWORD oldProtect = 0;
-        old = &oldProtect;
-    }
+    LPVOID addr = runtime->Prologue;
+    SIZE_T size = runtime->InstSize;
     return runtime->VirtualProtect(addr, size, PAGE_EXECUTE_READWRITE, old);
 }
 
@@ -1364,31 +1365,17 @@ static bool recoverPageProtect(Runtime* runtime, DWORD protect)
     {
         return true;
     }
-    void* init = GetFuncAddr(&InitRuntime);
-    void* addr = runtime->Options.BootAddress;
-    if (addr == NULL || (uintptr)addr > (uintptr)init)
-    {
-        addr = init;
-    }
-    uintptr begin = (uintptr)(addr);
-    uintptr end   = (uintptr)(runtime->Epilogue);
-    uint    size  = end - begin;
-    DWORD   old;
+    LPVOID addr = runtime->Prologue;
+    SIZE_T size = runtime->InstSize;
+    DWORD old;
     return runtime->VirtualProtect(addr, size, protect, &old);
 }
 
 __declspec(noinline)
 static bool flushInstructionCache(Runtime* runtime)
 {
-    void* init = GetFuncAddr(&InitRuntime);
-    void* addr = runtime->Options.BootAddress;
-    if (addr == NULL || (uintptr)addr > (uintptr)init)
-    {
-        addr = init;
-    }
-    uintptr begin = (uintptr)(addr);
-    uintptr end   = (uintptr)(runtime->Epilogue);
-    uint    size  = end - begin;
+    LPVOID addr = runtime->Prologue;
+    SIZE_T size = runtime->InstSize;
     return runtime->FlushInstructionCache(CURRENT_PROCESS, addr, size);
 }
 
@@ -2829,15 +2816,10 @@ errno RT_stop(bool exitThread, uint32 code)
     runtime = &clone;
 
     // must calculate address before erase instructions
-    void* init = GetFuncAddr(&InitRuntime);
-    void* addr = runtime->Options.BootAddress;
+    void* addr = runtime->Prologue;
     if (!exitThread)
     {
-        addr = NULL;
-    }
-    if (addr == NULL || (uintptr)addr > (uintptr)init)
-    {
-        addr = init;
+        addr = GetFuncAddr(&InitRuntime);
     }
 
     // recover instructions for generate shellcode must
