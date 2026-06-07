@@ -94,7 +94,7 @@ func TestGetPointer(t *testing.T) {
 		require.Equal(t, uint32(12), size)
 		require.NotZero(t, ptr)
 
-		expected := "aaaabbbbccc\x00"
+		expected := "aaabbbccc\x00"
 		actual := unsafe.String((*byte)(unsafe.Pointer(ptr)), int(size)) // #nosec
 		require.Equal(t, expected, actual)
 	})
