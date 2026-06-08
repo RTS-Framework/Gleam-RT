@@ -28,7 +28,7 @@ typedef struct {
     uint    DecoySize;
 
     uintptr Shelter;
-    HANDLE  hTimer;
+    HANDLE  Timer;
 } Sleep_Args;
 
 typedef struct {
@@ -53,19 +53,18 @@ typedef struct {
     VirtualFree_t          VirtualFree;
     VirtualProtect_t       VirtualProtect;
     ExitThread_t           ExitThread;
-    CreateWaitableTimerA_t CreateWaitableTimerA;
     SetWaitableTimer_t     SetWaitableTimer;
     WaitForSingleObject_t  WaitForSingleObject;
     CloseHandle_t          CloseHandle;
 
     // runtime data
+    uintptr MainMemPage;
     uintptr InstAddr;
     uint    InstSize;
 
-    // about decoy
+    // about decoy and shelter
     uintptr DecoyAddr;
     uint    DecoySize;
-
     uintptr Shelter;
 
     // shield entry point
@@ -74,6 +73,9 @@ typedef struct {
     // allocated shield address
     void* MemPage;
 
+    // for sleep
+    HANDLE Timer;
+
     SD_Status status;
 } Shield;
 
@@ -81,7 +83,7 @@ typedef struct {
 BOOL SD_GetStatus(SD_Status* status);
 
 // methods for runtime
-void  SD_Sleep(DWORD dwMilliseconds);
+errno SD_Sleep(uint32 milliseconds);
 void  SD_Stop();
 errno SD_Clean();
 
@@ -154,10 +156,9 @@ __declspec(noinline)
 static bool initShieldAPI(Shield* shield, Context* context)
 {
     // copy from context
-    shield->VirtualAlloc         = context->VirtualAlloc;
-    shield->CreateWaitableTimerA = context->CreateWaitableTimerA;  
-    shield->SetWaitableTimer     = context->SetWaitableTimer;
-    shield->CloseHandle          = context->CloseHandle;
+    shield->VirtualAlloc     = context->VirtualAlloc;
+    shield->SetWaitableTimer = context->SetWaitableTimer;
+    shield->CloseHandle      = context->CloseHandle;
 
     // if the shield stub is NOT pre-injected, use copy from context
     if (context->ShieldModuleHash == 0)
@@ -277,6 +278,18 @@ static bool initShieldEnvironment(Shield* shield, Context* context)
     {
 
     }
+
+    // prepare VirtualProtect address
+    if (shield->NotAdjustProtect)
+    {
+        shield->VirtualProtect = NULL;
+    }
+    // align instance size to 4 or 8
+    uint instSize = context->InstSize;
+    instSize = ((instSize + sizeof(uint) - 1) / instSize) * instSize;
+    shield->InstSize = instSize;
+    // copy runtime data
+    shield->MainMemPage = context->MainMemPage;
 }
 
 static void eraseShieldMethods(Context* context)
@@ -316,35 +329,74 @@ BOOL SD_GetStatus(SD_Status* status)
 }
 
 __declspec(noinline)
-void SD_Sleep(DWORD dwMilliseconds)
+errno SD_Sleep(uint32 milliseconds)
 {
     Shield* shield = getShieldPointer();
 
-    typedef void (*Shield_Sleep_t)(Sleep_Args* args);
-    Shield_Sleep_t sleep = shield->EntryPoint;
+    // prepare waitable timer
+    int64 dueTime = -((int64)milliseconds * 1000 * 10);
+    if (!shield->SetWaitableTimer(shield->Timer, &dueTime, 0, NULL, NULL, false))
+    {
+        return ERR_SHIELD_SET_TIMER;
+    }
 
+    // build sleep arguments
     Sleep_Args args = {
         .Method = METHOD_SLEEP,
-
+    
         .VirtualProtect      = shield->VirtualProtect,
         .WaitForSingleObject = shield->WaitForSingleObject,
-
+    
         .CriticalAddr = shield->InstAddr,
         .CriticalSize = shield->InstSize,
         .DecoyAddr    = shield->DecoyAddr,
         .DecoySize    = shield->DecoySize,
-
+    
         .Shelter = shield->Shelter,
+        .Timer   = shield->Timer,
     };
 
+    // encrypt main memory page
+    void* mmp = (void*)(shield->MainMemPage);
+    byte key[CRYPTO_KEY_SIZE];
+    byte iv [CRYPTO_IV_SIZE];
+    RandBuffer(key, CRYPTO_KEY_SIZE);
+    RandBuffer(iv,  CRYPTO_IV_SIZE);
+    EncryptBuf(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
 
+    // call shield stub
+    typedef void (*Shield_Sleep_t)(Sleep_Args* args);
+    Shield_Sleep_t sleep = shield->EntryPoint;
+    sleep(&args);
 
+    // decrypt main memory page
+    DecryptBuf(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
+    return NO_ERROR;
 }
 
 __declspec(noinline)
 void SD_Stop()
 {
+    Shield* shield = getShieldPointer();
+
+    // build stop arguments
+    Stop_Args args = {
+        .Method = METHOD_STOP,
+        
+        .VirtualProtect = shield->VirtualProtect,
+        .VirtualFree    = shield->VirtualFree,
+        .ExitThread     = shield->ExitThread,
+        
+        .CriticalAddr = shield->InstAddr,
+        .CriticalSize = shield->InstSize,
+        .DecoyAddr    = shield->DecoyAddr,
+        .DecoySize    = shield->DecoySize,
+    };
+
+    // call shield stub
     typedef void (*Shield_Stop_t)(Stop_Args* args);
+    Shield_Stop_t stop = shield->EntryPoint;
+    stop(&args);
 }
 
 __declspec(noinline)
