@@ -6,7 +6,6 @@
 
 #ifdef RELEASE_MODE
     #define NAME_RT_MUTEX_GLOBAL     NULL
-    #define NAME_RT_TIMER_SLEEPHR    NULL
     #define NAME_RT_DETECTOR_MUTEX   NULL
     #define NAME_RT_LT_MUTEX_GLOBAL  NULL
     #define NAME_RT_MT_MUTEX_GLOBAL  NULL
@@ -25,10 +24,10 @@
     #define NAME_RT_SM_MUTEX_STATUS  NULL
     #define NAME_RT_SM_EVENT_STOP    NULL
     #define NAME_RT_SM_TIMER_SLEEP   NULL
+    #define NAME_RT_SD_TIMER_SLEEP   NULL
 #else
 #ifdef _WIN64
     #define NAME_RT_MUTEX_GLOBAL     "RT_Core_Global-x64"
-    #define NAME_RT_TIMER_SLEEPHR    "RT_Core_SleepHR-x64"
     #define NAME_RT_DETECTOR_MUTEX   "RT_Detector-x64"
     #define NAME_RT_LT_MUTEX_GLOBAL  "RT_LibraryTracker_Global-x64"
     #define NAME_RT_MT_MUTEX_GLOBAL  "RT_MemoryTracker_Global-x64"
@@ -47,9 +46,9 @@
     #define NAME_RT_SM_MUTEX_STATUS  "RT_Sysmon_Status-x64"
     #define NAME_RT_SM_EVENT_STOP    "RT_Sysmon_Stop-x64"
     #define NAME_RT_SM_TIMER_SLEEP   "RT_Sysmon_Sleep-x64"
+    #define NAME_RT_SD_TIMER_SLEEP   "RT_Shield_Sleep-x64"
 #elif _WIN32
     #define NAME_RT_MUTEX_GLOBAL     "RT_Core_Global-x86"
-    #define NAME_RT_TIMER_SLEEPHR    "RT_Core_SleepHR-x86"
     #define NAME_RT_DETECTOR_MUTEX   "RT_Detector-x86"
     #define NAME_RT_LT_MUTEX_GLOBAL  "RT_LibraryTracker_Global-x86"
     #define NAME_RT_MT_MUTEX_GLOBAL  "RT_MemoryTracker_Global-x86"
@@ -68,6 +67,7 @@
     #define NAME_RT_SM_MUTEX_STATUS  "RT_Sysmon_Status-x86"
     #define NAME_RT_SM_EVENT_STOP    "RT_Sysmon_Stop-x86"
     #define NAME_RT_SM_TIMER_SLEEP   "RT_Sysmon_Sleep-x86"
+    #define NAME_RT_SD_TIMER_SLEEP   "RT_Shield_Sleep-x86"
 #endif
 #endif // RELEASE_MODE
 
