@@ -26,7 +26,7 @@ typedef struct {
 
 typedef BOOL (*SDGetStatus_t)(SD_Status* status);
 
-typedef void  (*SDSleep_t)(DWORD dwMilliseconds);
+typedef errno (*SDSleep_t)(uint32 milliseconds);
 typedef void  (*SDStop_t)();
 typedef errno (*SDClean_t)();
 
