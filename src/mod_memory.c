@@ -495,7 +495,7 @@ static bool initTrackerEnvironment(MemoryTracker* tracker, Context* context)
     tracker->RT_realloc = context->realloc;
     tracker->RT_free    = context->free;
     // copy runtime context data
-    tracker->PageSize = context->PageSize;
+    tracker->PageSize = context->MPS;
     return true;
 }
 
