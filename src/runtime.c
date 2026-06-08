@@ -227,7 +227,7 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName);
 static void* getAPIRedirector(Runtime* runtime, void* proc);
 static void* getLazyAPIRedirector(Runtime* runtime, void* proc);
 
-static errno sleep(Runtime* runtime, HANDLE hTimer);
+static errno sleep(Runtime* runtime, uint32 milliseconds);
 static errno hide(Runtime* runtime);
 static errno recover(Runtime* runtime);
 
@@ -2378,29 +2378,15 @@ errno RT_SleepHR(DWORD dwMilliseconds)
     dwMilliseconds = 5 + (DWORD)RandUintN(0, 50);
 #endif
 
-    HANDLE hTimer = NULL;
-    errno  error  = NO_ERROR;
+    errno error = NO_ERROR;
     for (;;)
     {
-        // create and set waitable timer
-        hTimer = runtime->CreateWaitableTimerA(NULL, false, NAME_RT_TIMER_SLEEPHR);
-        if (hTimer == NULL)
-        {
-            error = ERR_RUNTIME_CREATE_WAITABLE_TIMER;
-            break;
-        }
-        int64 dueTime = -((int64)dwMilliseconds * 1000 * 10);
-        if (!runtime->SetWaitableTimer(hTimer, &dueTime, 0, NULL, NULL, true))
-        {
-            error = ERR_RUNTIME_SET_WAITABLE_TIMER;
-            break;
-        }
         errno err = hide(runtime);
         if (err != NO_ERROR && error == NO_ERROR)
         {
             error = err;
         }
-        err = sleep(runtime, hTimer);
+        err = sleep(runtime, dwMilliseconds);
         if (err != NO_ERROR && error == NO_ERROR)
         {
             error = err;
@@ -2411,15 +2397,6 @@ errno RT_SleepHR(DWORD dwMilliseconds)
             error = err;
         }
         break;
-    }
-
-    // clean created waitable timer
-    if (hTimer != NULL)
-    {
-        if (!runtime->CloseHandle(hTimer) && error == NO_ERROR)
-        {
-            error = ERR_RUNTIME_CLOSE_WAITABLE_TIMER;
-        }
     }
 
     // detect environment after each sleep
@@ -2497,57 +2474,14 @@ static errno recover(Runtime* runtime)
 }
 
 __declspec(noinline)
-static errno sleep(Runtime* runtime, HANDLE hTimer)
+static errno sleep(Runtime* runtime, uint32 milliseconds)
 {
-    // calculate begin and end address
-    uintptr beginAddress = (uintptr)(runtime->Options.BootAddress);
-    uintptr runtimeAddr  = (uintptr)(GetFuncAddr(&InitRuntime));
-    if (beginAddress == 0 || beginAddress > runtimeAddr)
+    errno errno = runtime->Shield->Sleep(milliseconds);
+    if (errno != NO_ERROR)
     {
-        beginAddress = runtimeAddr;
+        return errno;
     }
-    uintptr endAddress = (uintptr)(runtime->Epilogue);
-    // must adjust protect before call shield stub // TODO update protect
-    void* addr = (void*)beginAddress;
-    DWORD size = (DWORD)(endAddress - beginAddress);
-    DWORD oldProtect;
-    if (!runtime->VirtualProtect(addr, size, PAGE_EXECUTE_READWRITE, &oldProtect))
-    {
-        return ERR_RUNTIME_ADJUST_PROTECT;
-    }
-    // build shield context before encrypt main memory page
-    Shield_Ctx ctx = {
-        .BeginAddress = beginAddress,
-        .EndAddress   = endAddress,
-        .hTimer       = hTimer,
-
-        .WaitForSingleObject = runtime->WaitForSingleObject,
-    };
-    RandBuffer(ctx.CryptoKey, sizeof(ctx.CryptoKey));
-    // encrypt main page
-    void* buf = runtime->MainMemPage;
-    byte key[CRYPTO_KEY_SIZE];
-    byte iv [CRYPTO_IV_SIZE];
-    RandBuffer(key, CRYPTO_KEY_SIZE);
-    RandBuffer(iv,  CRYPTO_IV_SIZE);
-    EncryptBuf(buf, MAIN_MEM_PAGE_SIZE, key, iv);
-    // call shield!!!
-    if (!DefenseRT(&ctx))
-    {
-        // TODO if failed to defense, need to recover them
-        return ERR_RUNTIME_DEFENSE_RT;
-    }
-    // decrypt main page
-    DecryptBuf(buf, MAIN_MEM_PAGE_SIZE, key, iv);
-    // TODO remove this call, stub will adjust it
-    if (!runtime->VirtualProtect(addr, size, oldProtect, &oldProtect))
-    {
-        return ERR_RUNTIME_RECOVER_PROTECT;
-    }
-    // flush instruction cache after decrypt
-    void* baseAddr = (void*)beginAddress;
-    uint  instSize = (uint)size;
-    if (!runtime->FlushInstructionCache(CURRENT_PROCESS, baseAddr, instSize))
+    if (!flushInstructionCache(runtime))
     {
         return ERR_RUNTIME_FLUSH_INST_CACHE;
     }
