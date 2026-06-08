@@ -22,13 +22,13 @@ typedef struct {
     WaitForSingleObject_t WaitForSingleObject;
     uintptr               Reserved;
 
-    void* CriticalAddr;
-    uint  CriticalSize;
-    void* DecoyAddr;
-    uint  DecoySize;
+    uintptr CriticalAddr;
+    uint    CriticalSize;
+    uintptr DecoyAddr;
+    uint    DecoySize;
 
-    void*  Shelter;
-    HANDLE hTimer;
+    uintptr Shelter;
+    HANDLE  hTimer;
 } Sleep_Args;
 
 typedef struct {
@@ -38,10 +38,10 @@ typedef struct {
     VirtualFree_t    VirtualFree;
     ExitThread_t     ExitThread;
 
-    void* CriticalAddr;
-    uint  CriticalSize;
-    void* DecoyAddr;
-    uint  DecoySize;
+    uintptr CriticalAddr;
+    uint    CriticalSize;
+    uintptr DecoyAddr;
+    uint    DecoySize;
 } Stop_Args;
 
 typedef struct {
@@ -58,11 +58,21 @@ typedef struct {
     WaitForSingleObject_t  WaitForSingleObject;
     CloseHandle_t          CloseHandle;
 
+    // runtime data
+    uintptr InstAddr;
+    uint    InstSize;
+
+    // about decoy
+    uintptr DecoyAddr;
+    uint    DecoySize;
+
+    uintptr Shelter;
+
     // shield entry point
-    void* entry;
+    void* EntryPoint;
 
     // allocated shield address
-    void* page;
+    void* MemPage;
 
     SD_Status status;
 } Shield;
@@ -243,7 +253,7 @@ static bool recoverShieldPointer(Shield* shield)
 static bool initShieldEnvironment(Shield* shield, Context* context)
 {
     uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
-    // check shield stub is valid
+    // check stub is valid
     if (*(byte*)(stub) != SHIELD_STUB_MAGIC)
     {
         return false;
@@ -254,14 +264,14 @@ static bool initShieldEnvironment(Shield* shield, Context* context)
     // decrypt shield
     uint16 size = *(uint16*)(stub + off);
     off += sizeof(uint16);
-    byte* shield = (byte*)(stub + off);
-    XORBuf(shield, size, key, SHIELD_KEY_SIZE);
+    byte* shieldInst = (byte*)(stub + off);
+    XORBuf(shieldInst, size, key, SHIELD_KEY_SIZE);
     off += size;
     // decrypt decoy
     size = *(uint16*)(stub + off);
     off += sizeof(uint16);
-    byte* decoy = (byte*)(stub + off);
-    XORBuf(decoy, size, key, SHIELD_KEY_SIZE);
+    byte* decoyInst = (byte*)(stub + off);
+    XORBuf(decoyInst, size, key, SHIELD_KEY_SIZE);
 
     if (context->ShieldModuleHash != 0)
     {
@@ -286,6 +296,62 @@ static void cleanShield(Shield* shield)
 
 }
 
+// updateShieldPointer will replace hard encode address to the actual address.
+// Must disable compiler optimize, otherwise updateShieldPointer will fail.
+#pragma optimize("", off)
+static Shield* getShieldPointer()
+{
+    uintptr pointer = SHIELD_POINTER;
+    return (Shield*)(pointer);
+}
+#pragma optimize("", on)
+
+__declspec(noinline)
+BOOL SD_GetStatus(SD_Status* status)
+{
+    Shield* shield = getShieldPointer();
+
+    *status = shield->status;
+    return true;
+}
+
+__declspec(noinline)
+void SD_Sleep(DWORD dwMilliseconds)
+{
+    Shield* shield = getShieldPointer();
+
+    typedef void (*Shield_Sleep_t)(Sleep_Args* args);
+    Shield_Sleep_t sleep = shield->EntryPoint;
+
+    Sleep_Args args = {
+        .Method = METHOD_SLEEP,
+
+        .VirtualProtect      = shield->VirtualProtect,
+        .WaitForSingleObject = shield->WaitForSingleObject,
+
+        .CriticalAddr = shield->InstAddr,
+        .CriticalSize = shield->InstSize,
+        .DecoyAddr    = shield->DecoyAddr,
+        .DecoySize    = shield->DecoySize,
+
+        .Shelter = shield->Shelter,
+    };
+
+
+
+}
+
+__declspec(noinline)
+void SD_Stop()
+{
+    typedef void (*Shield_Stop_t)(Stop_Args* args);
+}
+
+__declspec(noinline)
+errno SD_Clean()
+{
+
+}
 
 // Only the instructions related to the DefenseRT function are
 // in plain text during Sleep, so if you need to advance AV, 
