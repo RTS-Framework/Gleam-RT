@@ -221,8 +221,9 @@ static errno loadArguments(ArgumentStore* store, Context* context)
         return ERR_ARGUMENT_INVALID_NUM;
     }
     // allocate memory page for store them
-    uint32 memSize = (((size + num) / context->PageSize) + 1) * context->PageSize;
-    memSize += (uint32)(1 + RandUintN(0, 16)) * context->PageSize;
+    uint32 pageSize = context->MPS;
+    uint32 memSize  = (((size + num) / pageSize) + 1) * pageSize;
+    memSize += (uint32)(1 + RandUintN(0, 16)) * pageSize;
     byte* mem = store->VirtualAlloc(NULL, memSize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
     if (mem == NULL)
     {
