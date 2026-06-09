@@ -11,13 +11,13 @@ typedef struct {
 } LIST_ENTRY;
 
 typedef struct {
-    WORD  Length;
-    WORD  MaximumLength;
-    PWSTR Buffer;
+    USHORT Length;
+    USHORT MaximumLength;
+    PWSTR  Buffer;
 } UNICODE_STRING;
 
 typedef struct {
-    DWORD  Length;
+    ULONG  Length;
     BOOL   Initialized;
     HANDLE SsHandle;
 
@@ -33,7 +33,7 @@ typedef struct {
 
     PVOID DllBase;
     PVOID EntryPoint;
-    DWORD SizeOfImage;
+    ULONG SizeOfImage;
 
     UNICODE_STRING FullDllName;
     UNICODE_STRING BaseDllName;
