@@ -18,7 +18,7 @@ var (
 	procStatus = modGleamRT.NewProc("SD_Status")
 )
 
-// Status contains sysmon status.
+// Status contains shield status.
 type Status struct {
 	EntryPoint    uintptr `json:"entry_point"`
 	BaseAddress   uintptr `json:"base_address"`
@@ -26,7 +26,7 @@ type Status struct {
 	IsAllocated   bool    `json:"is_allocated"`
 }
 
-// GetStatus is used to get sysmon status.
+// GetStatus is used to get shield status.
 func GetStatus() (*Status, error) {
 	var status metric.SDStatus
 	ret, _, err := procStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
