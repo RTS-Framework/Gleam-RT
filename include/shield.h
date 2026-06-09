@@ -42,17 +42,6 @@ typedef struct {
 
 Shield_M* InitShield(Context* context);
 
-typedef struct {
-    uintptr BeginAddress;
-    uintptr EndAddress;
-    byte    CryptoKey[32];
-    HANDLE  hTimer;
-
-    WaitForSingleObject_t WaitForSingleObject;
-} Shield_Ctx;
-
-bool DefenseRT(Shield_Ctx* ctx);
-
 // reserved stub for store shield and decoy
 #pragma warning(push)
 #pragma warning(disable : 4276)
