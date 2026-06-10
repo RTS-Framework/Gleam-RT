@@ -214,6 +214,7 @@ static errno initWinHTTP(Runtime* runtime, Context* context);
 static errno initWinCrypto(Runtime* runtime, Context* context);
 static errno initWatchdog(Runtime* runtime, Context* context);
 static errno initSysmon(Runtime* runtime, Context* context);
+static errno initShield(Runtime* runtime, Context* context);
 static bool  initAPIRedirector(Runtime* runtime);
 static bool  flushInstructionCache(Runtime* runtime);
 static void  eraseArgumentStub(Runtime* runtime);
@@ -521,6 +522,10 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     module->Sysmon.Status    = runtime->Sysmon->GetStatus;
     module->Sysmon._Pause    = runtime->Sysmon->Pause;
     module->Sysmon._Continue = runtime->Sysmon->Continue;
+    // about shield
+    module->Shield.Status = runtime->Shield->GetStatus;
+    module->Shield._Sleep = runtime->Shield->Sleep;
+    module->Shield._Stop  = runtime->Shield->Stop;
     // about process environment
     module->Env.GetPEB   = GetFuncAddr(&RT_GetPEB);
     module->Env.GetTEB   = GetFuncAddr(&RT_GetTEB);
@@ -996,6 +1001,13 @@ static errno initSubmodules(Runtime* runtime)
     // copy mutex handle for runtime
     mem_copy(runtime->ModMutexHandle, context.ModMutex, sizeof(context.ModMutex));
 
+    // prepare shield
+    err = initShield(runtime, &context);
+    if (err != NO_ERROR)
+    {
+        return err;
+    }
+
     // clean useless API functions in runtime structure
     RandBuffer((byte*)(&runtime->GetSystemInfo), sizeof(uintptr));
     RandBuffer((byte*)(&runtime->CreateMutexA),  sizeof(uintptr));
@@ -1142,6 +1154,17 @@ static errno initSysmon(Runtime* runtime, Context* context)
         return GetLastErrno();
     }
     runtime->Sysmon = Sysmon;
+    return NO_ERROR;
+}
+
+static errno initShield(Runtime* runtime, Context* context)
+{
+    Shield_M* Shield = InitShield(context);
+    if (Shield == NULL)
+    {
+        return GetLastErrno();
+    }
+    runtime->Shield = Shield;
     return NO_ERROR;
 }
 
