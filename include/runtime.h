@@ -18,8 +18,9 @@
 
 #define OPTION_STUB_MAGIC 0xFC
 #define OPTION_STUB_SIZE  128
+#define OPTION_KEY_SIZE   32
 
-#define OPT_OFFSET_BASE                  (1 + 32)
+#define OPT_OFFSET_BASE                  (1 + OPTION_KEY_SIZE)
 #define OPT_OFFSET_IMAGE_PINNING_HASH    (OPT_OFFSET_BASE + 0)
 #define OPT_OFFSET_SHIELD_MODULE_HASH    (OPT_OFFSET_BASE + 8)
 #define OPT_OFFSET_SHIELD_ENTRY_POINT    (OPT_OFFSET_BASE + 16)
@@ -418,6 +419,20 @@ typedef BOOL  (*SMGetStatus_t)(SM_Status* status);
 typedef errno (*SMPause_t)();
 typedef errno (*SMContinue_t)();
 
+// =============================== shield ===============================
+#ifndef SHIELD_H
+typedef struct {
+    void* EntryPoint;
+    void* BaseAddress;
+    BOOL  IsPreInjected;
+    BOOL  IsAllocated;
+} SD_Status;
+#endif // SHIELD_H
+
+typedef BOOL  (*SDGetStatus_t)(SD_Status* status);
+typedef errno (*SDSleep_t)(uint32 milliseconds);
+typedef void  (*SDStop_t)();
+
 // about process environment
 //
 // These methods are used to ensure that __readgsqword or __readfsdword
@@ -449,6 +464,7 @@ typedef struct {
     DT_Status Detector;
     WD_Status Watchdog;
     SM_Status Sysmon;
+    SD_Status Shield;
 } Runtime_Metrics;
 
 typedef errno (*RTSleepHR_t)(uint32 milliseconds);
@@ -659,6 +675,14 @@ typedef struct {
         SMPause_t    _Pause;
         SMContinue_t _Continue;
     } Sysmon;
+
+    struct {
+        SDGetStatus_t Status;
+
+        // only for test, NOT use it.
+        SDSleep_t _Sleep;
+        SDStop_t  _Stop;
+    } Shield;
 
     struct {
         GetPEB_t   GetPEB;
