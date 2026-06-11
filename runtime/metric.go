@@ -13,6 +13,7 @@ type Metrics struct {
 	Detector DTStatus `json:"detector"`
 	Watchdog WDStatus `json:"watchdog"`
 	Sysmon   SMStatus `json:"sysmon"`
+	Shield   SDStatus `json:"shield"`
 }
 
 // LTStatus contains status about library tracker.
@@ -79,6 +80,14 @@ type SMStatus struct {
 	NumPanic   int64 `json:"num_panic"`
 }
 
+// SDStatus contains status about shield.
+type SDStatus struct {
+	EntryPoint    uintptr `json:"entry_point"`
+	BaseAddress   uintptr `json:"base_address"`
+	IsPreInjected bool    `json:"is_pre_injected"`
+	IsAllocated   bool    `json:"is_allocated"`
+}
+
 // ConvertRawMetrics is used to convert raw runtime metrics to go type.
 func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 	return &Metrics{
@@ -131,6 +140,12 @@ func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 			NumNormal:  metrics.Sysmon.NumNormal,
 			NumRecover: metrics.Sysmon.NumRecover,
 			NumPanic:   metrics.Sysmon.NumPanic,
+		},
+		Shield: SDStatus{
+			EntryPoint:    metrics.Shield.EntryPoint,
+			BaseAddress:   metrics.Shield.BaseAddress,
+			IsPreInjected: metrics.Shield.IsPreInjected.ToBool(),
+			IsAllocated:   metrics.Shield.IsAllocated.ToBool(),
 		},
 	}
 }
