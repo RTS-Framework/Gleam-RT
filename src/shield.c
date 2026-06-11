@@ -49,7 +49,6 @@ typedef struct {
     bool NotEraseInstruction;
     bool NotAdjustProtect;
 
-    VirtualAlloc_t         VirtualAlloc;
     VirtualFree_t          VirtualFree;
     VirtualProtect_t       VirtualProtect;
     ExitThread_t           ExitThread;
@@ -71,7 +70,7 @@ typedef struct {
     void* EntryPoint;
 
     // allocated shield address
-    void* MemPage;
+    void* ShieldPage;
 
     // for sleep
     HANDLE Timer;
@@ -95,12 +94,12 @@ errno SD_Clean();
 #endif
 static Shield* getShieldPointer();
 
-static bool initShieldAPI(Shield* shield, Context* context);
-static bool updateShieldPointer(Shield* shield);
-static bool recoverShieldPointer(Shield* shield);
-static bool initShieldEnvironment(Shield* shield, Context* context);
-static void eraseShieldMethods(Context* context);
-static void cleanShield(Shield* shield);
+static bool  initShieldAPI(Shield* shield, Context* context);
+static bool  updateShieldPointer(Shield* shield);
+static bool  recoverShieldPointer(Shield* shield);
+static errno initShieldEnvironment(Shield* shield, Context* context);
+static void  eraseShieldMethods(Context* context);
+static void  cleanShield(Shield* shield);
 
 Shield_M* InitShield(Context* context)
 {
@@ -128,9 +127,9 @@ Shield_M* InitShield(Context* context)
             errno = ERR_SHIELD_UPDATE_PTR;
             break;
         }
-        if (!initShieldEnvironment(shield, context))
+        errno = initShieldEnvironment(shield, context);
+        if (errno != NO_ERROR)
         {
-            errno = ERR_SHIELD_INIT_ENV;
             break;
         }
         break;
@@ -156,7 +155,6 @@ __declspec(noinline)
 static bool initShieldAPI(Shield* shield, Context* context)
 {
     // copy from context
-    shield->VirtualAlloc     = context->VirtualAlloc;
     shield->SetWaitableTimer = context->SetWaitableTimer;
     shield->CloseHandle      = context->CloseHandle;
 
@@ -251,33 +249,85 @@ static bool recoverShieldPointer(Shield* shield)
     return success;
 }
 
-static bool initShieldEnvironment(Shield* shield, Context* context)
+static errno initShieldEnvironment(Shield* shield, Context* context)
 {
-    uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
     // check stub is valid
+    uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
     if (*(byte*)(stub) != SHIELD_STUB_MAGIC)
     {
-        return false;
+        return ERR_SHIELD_INVALID_STUB;
     }
     // prepare xor key
     byte*  key = (byte*)(stub + 1);
     uint16 off = 1 + SHIELD_KEY_SIZE;
-    // decrypt shield
-    uint16 size = *(uint16*)(stub + off);
+    // check shield
+    uint16 shieldSize = *(uint16*)(stub + off);
     off += sizeof(uint16);
     byte* shieldInst = (byte*)(stub + off);
-    XORBuf(shieldInst, size, key, SHIELD_KEY_SIZE);
-    off += size;
+    XORBuf(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
+    off += shieldSize;
     // decrypt decoy
-    size = *(uint16*)(stub + off);
+    uint16 decoySize = *(uint16*)(stub + off);
     off += sizeof(uint16);
     byte* decoyInst = (byte*)(stub + off);
-    XORBuf(decoyInst, size, key, SHIELD_KEY_SIZE);
+    XORBuf(decoyInst, decoySize, key, SHIELD_KEY_SIZE);
 
-    if (context->ShieldModuleHash != 0)
+    // deploy shield
+    if (context->ShieldModuleHash == 0)
     {
+        // allocate RWX memory page for shield
+        SIZE_T size = shieldSize + (2 + RandUintN(0, 8)) * 1024;
+        DWORD  type = MEM_COMMIT|MEM_RESERVE;
+        LPVOID addr = context->VirtualAlloc(NULL, size, type, PAGE_EXECUTE_READWRITE);
+        if (addr == NULL)
+        {
+            return ERR_SHIELD_ALLOC_SHIELD;
+        }
+        shield->ShieldPage = addr;
+        // copy shield to memory page
+        void* entryPoint = (uintptr)addr + 256 + RandUintN(0, 1024);
+        mem_copy(entryPoint, shieldInst, shieldSize);
+        shield->EntryPoint = entryPoint;
 
+        shield->status.EntryPoint  = entryPoint;
+        shield->status.BaseAddress = addr;
+        shield->status.IsAllocated = true;
+    } else {
+        // find target module and calculate the 
+        // pre-injected shield entry point
+
+        shield->status.EntryPoint  = NULL;
+        shield->status.BaseAddress = NULL;
+        shield->status.IsPreInjected = true;
     }
+
+    // prepare shelter for save instance
+    SIZE_T size = context->InstSize + (2 + RandUintN(0, 64)) * 4096;
+    DWORD  type = MEM_COMMIT|MEM_RESERVE;
+    LPVOID addr = context->VirtualAlloc(NULL, size, type, PAGE_READWRITE);
+    if (addr == NULL)
+    {
+        return ERR_SHIELD_ALLOC_SHELTER;
+    }
+    shield->Shelter = addr;
+
+    // prepare waitable timer
+    HANDLE hTimer = context->CreateWaitableTimerA(NULL, false, NAME_RT_SD_TIMER_SLEEP);
+    if (hTimer == NULL)
+    {
+        return ERR_SHIELD_CREATE_TIMER;
+    }
+    shield->Timer = hTimer;
+
+    // erase shield in stub after deploy
+    if (!shield->NotEraseInstruction)
+    {
+        RandBuffer(shieldInst, shieldSize);
+        XORBuf(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
+    }
+    // save status
+    shield->DecoyAddr = decoyInst;
+    shield->DecoySize = decoySize;
 
     // prepare VirtualProtect address
     if (shield->NotAdjustProtect)
@@ -288,8 +338,11 @@ static bool initShieldEnvironment(Shield* shield, Context* context)
     uint instSize = context->InstSize;
     instSize = ((instSize + sizeof(uint) - 1) / instSize) * instSize;
     shield->InstSize = instSize;
+
     // copy runtime data
     shield->MainMemPage = context->MainMemPage;
+    shield->InstAddr    = context->Prologue;
+    return NO_ERROR;
 }
 
 static void eraseShieldMethods(Context* context)
@@ -402,5 +455,5 @@ void SD_Stop()
 __declspec(noinline)
 errno SD_Clean()
 {
-
+    return NO_ERROR;
 }
