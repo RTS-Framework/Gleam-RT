@@ -20,15 +20,15 @@ typedef struct {
 
     VirtualProtect_t      VirtualProtect;
     WaitForSingleObject_t WaitForSingleObject;
-    uintptr               Reserved;
+    void*                 Reserved;
 
-    uintptr CriticalAddr;
-    uint    CriticalSize;
-    uintptr DecoyAddr;
-    uint    DecoySize;
+    void* CriticalAddr;
+    uint  CriticalSize;
+    void* DecoyAddr;
+    uint  DecoySize;
 
-    uintptr Shelter;
-    HANDLE  Timer;
+    void*  Shelter;
+    HANDLE Timer;
 } Sleep_Args;
 
 typedef struct {
@@ -38,10 +38,10 @@ typedef struct {
     VirtualFree_t    VirtualFree;
     ExitThread_t     ExitThread;
 
-    uintptr CriticalAddr;
-    uint    CriticalSize;
-    uintptr DecoyAddr;
-    uint    DecoySize;
+    void* CriticalAddr;
+    uint  CriticalSize;
+    void* DecoyAddr;
+    uint  DecoySize;
 } Stop_Args;
 
 typedef struct {
@@ -57,14 +57,14 @@ typedef struct {
     CloseHandle_t          CloseHandle;
 
     // runtime data
-    uintptr MainMemPage;
-    uintptr InstAddr;
-    uint    InstSize;
+    void* MainMemPage;
+    void* InstAddr;
+    uint  InstSize;
 
     // about decoy and shelter
-    uintptr DecoyAddr;
-    uint    DecoySize;
-    uintptr Shelter;
+    void* DecoyAddr;
+    uint  DecoySize;
+    void* Shelter;
 
     // shield entry point
     void* EntryPoint;
@@ -88,9 +88,9 @@ errno SD_Clean();
 
 // hard encoded address in getShieldPointer for replacement
 #ifdef _WIN64
-    #define SHIELD_POINTER 0x7FABCDEF111111FF
+    #define SHIELD_POINTER 0x7FABCDEF111111FE
 #elif _WIN32
-    #define SHIELD_POINTER 0x7FABCDFF
+    #define SHIELD_POINTER 0x7FABCDFE
 #endif
 static Shield* getShieldPointer();
 
@@ -264,7 +264,6 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     uint16 shieldSize = *(uint16*)(stub + off);
     off += sizeof(uint16);
     byte* shieldInst = (byte*)(stub + off);
-    XORBuf(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
     off += shieldSize;
     // decrypt decoy
     uint16 decoySize = *(uint16*)(stub + off);
@@ -285,19 +284,24 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
         }
         shield->ShieldPage = addr;
         // copy shield to memory page
-        void* entryPoint = (uintptr)addr + 256 + RandUintN(0, 1024);
+        void* entryPoint = (void*)((uintptr)addr + 256 + RandUintN(0, 1024));
+        XORBuf(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
         mem_copy(entryPoint, shieldInst, shieldSize);
+        XORBuf(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
         shield->EntryPoint = entryPoint;
-
+        // set status
         shield->status.EntryPoint  = entryPoint;
         shield->status.BaseAddress = addr;
         shield->status.IsAllocated = true;
     } else {
-        // find target module and calculate the 
-        // pre-injected shield entry point
+        // find the target module and calculate  
+        // the pre-injected shield entry point
+        
 
-        shield->status.EntryPoint  = NULL;
-        shield->status.BaseAddress = NULL;
+
+        // set status
+        shield->status.EntryPoint    = NULL;
+        shield->status.BaseAddress   = NULL;
         shield->status.IsPreInjected = true;
     }
 
@@ -323,7 +327,6 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     if (!shield->NotEraseInstruction)
     {
         RandBuffer(shieldInst, shieldSize);
-        XORBuf(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
     }
     // save status
     shield->DecoyAddr = decoyInst;
@@ -340,8 +343,8 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     shield->InstSize = instSize;
 
     // copy runtime data
-    shield->MainMemPage = context->MainMemPage;
-    shield->InstAddr    = context->Prologue;
+    shield->MainMemPage = (void*)(context->MainMemPage);
+    shield->InstAddr    = (void*)(context->Prologue);
     return NO_ERROR;
 }
 
@@ -409,6 +412,10 @@ errno SD_Sleep(uint32 milliseconds)
         .Timer   = shield->Timer,
     };
 
+    // save entry point before encrypt
+    typedef void (*Shield_Sleep_t)(Sleep_Args* args);
+    Shield_Sleep_t sleep = shield->EntryPoint;
+
     // encrypt main memory page
     void* mmp = (void*)(shield->MainMemPage);
     byte key[CRYPTO_KEY_SIZE];
@@ -418,8 +425,6 @@ errno SD_Sleep(uint32 milliseconds)
     EncryptBuf(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
 
     // call shield stub
-    typedef void (*Shield_Sleep_t)(Sleep_Args* args);
-    Shield_Sleep_t sleep = shield->EntryPoint;
     sleep(&args);
 
     // decrypt main memory page
@@ -446,9 +451,11 @@ void SD_Stop()
         .DecoySize    = shield->DecoySize,
     };
 
-    // call shield stub
+    // save entry point before encrypt
     typedef void (*Shield_Stop_t)(Stop_Args* args);
     Shield_Stop_t stop = shield->EntryPoint;
+
+    // call shield stub
     stop(&args);
 }
 
