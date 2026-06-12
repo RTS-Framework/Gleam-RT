@@ -101,6 +101,8 @@ static errno initShieldEnvironment(Shield* shield, Context* context);
 static void  eraseShieldMethods(Context* context);
 static void  cleanShield(Shield* shield);
 
+static errno cleanResource(Shield* shield);
+
 Shield_M* InitShield(Context* context)
 {
     // set structure address
@@ -137,6 +139,7 @@ Shield_M* InitShield(Context* context)
     eraseShieldMethods(context);
     if (errno != NO_ERROR)
     {
+        cleanShield(shield);
         SetLastErrno(errno);
         return NULL;
     }
@@ -362,7 +365,18 @@ static void eraseShieldMethods(Context* context)
 
 static void cleanShield(Shield* shield)
 {
-
+    if (shield->Shelter != NULL)
+    {
+        shield->VirtualFree(shield->Shelter, 0, MEM_RELEASE);
+    }
+    if (shield->ShieldPage != NULL)
+    {
+        shield->VirtualFree(shield->ShieldPage, 0, MEM_RELEASE);
+    }
+    if (shield->Timer != NULL)
+    {
+        shield->CloseHandle(shield->Timer);
+    }
 }
 
 // updateShieldPointer will replace hard encode address to the actual address.
@@ -417,18 +431,17 @@ errno SD_Sleep(uint32 milliseconds)
     Shield_Sleep_t sleep = shield->EntryPoint;
 
     // encrypt main memory page
-    void* mmp = (void*)(shield->MainMemPage);
     byte key[CRYPTO_KEY_SIZE];
     byte iv [CRYPTO_IV_SIZE];
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv,  CRYPTO_IV_SIZE);
-    EncryptBuf(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
+    EncryptBuf(shield->MainMemPage, MAIN_MEM_PAGE_SIZE, key, iv);
 
     // call shield stub
     sleep(&args);
 
     // decrypt main memory page
-    DecryptBuf(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
+    DecryptBuf(shield->MainMemPage, MAIN_MEM_PAGE_SIZE, key, iv);
     return NO_ERROR;
 }
 
@@ -436,6 +449,8 @@ __declspec(noinline)
 void SD_Stop()
 {
     Shield* shield = getShieldPointer();
+
+    cleanResource(shield);
 
     // build stop arguments
     Stop_Args args = {
@@ -451,9 +466,16 @@ void SD_Stop()
         .DecoySize    = shield->DecoySize,
     };
 
-    // save entry point before encrypt
+    // save entry point before release main page
     typedef void (*Shield_Stop_t)(Stop_Args* args);
     Shield_Stop_t stop = shield->EntryPoint;
+
+    // must copy variables in Shield before call RandBuffer
+    VirtualFree_t virtualFree = shield->VirtualFree;
+    void* memPage = shield->MainMemPage;
+    // release main memory page
+    RandBuffer(shield->MainMemPage, MAIN_MEM_PAGE_SIZE);
+    virtualFree(memPage, 0, MEM_RELEASE);
 
     // call shield stub
     stop(&args);
@@ -462,5 +484,42 @@ void SD_Stop()
 __declspec(noinline)
 errno SD_Clean()
 {
-    return NO_ERROR;
+    Shield* shield = getShieldPointer();
+
+    return cleanResource(shield);
+}
+
+__declspec(noinline)
+static errno cleanResource(Shield* shield)
+{
+    errno errno = NO_ERROR;
+
+    // free memory for shelter
+    if (!shield->VirtualFree(shield->Shelter, 0, MEM_RELEASE) && errno == NO_ERROR)
+    {
+        errno = ERR_SHIELD_FREE_SHELTER;
+    }
+
+    // close timer for sleep
+    if (!shield->CloseHandle(shield->Timer) && errno == NO_ERROR)
+    {
+        errno = ERR_SHIELD_CLOSE_TIMER;
+    }
+
+    // TODO ROP to VirtualFree and ExitThread
+    // if (shield->ShieldPage != NULL)
+    // {
+    //     
+    //     // shield->VirtualFree(shield->ShieldPage, 0, MEM_RELEASE);
+    // }
+
+    // recover instructions
+    if (shield->NotEraseInstruction)
+    {
+        if (!recoverShieldPointer(shield) && errno == NO_ERROR)
+        {
+            errno = ERR_SHIELD_RECOVER_INST;
+        }
+    }
+    return errno;
 }
