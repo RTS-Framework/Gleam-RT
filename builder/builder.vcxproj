@@ -142,6 +142,7 @@
     <ClInclude Include="..\include\errno.h" />
     <ClInclude Include="..\include\context.h" />
     <ClInclude Include="..\include\layout.h" />
+    <ClInclude Include="..\include\ptr_table.h" />
     <ClInclude Include="..\include\detector.h" />
     <ClInclude Include="..\include\mod_library.h" />
     <ClInclude Include="..\include\mod_memory.h" />
@@ -212,6 +213,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </MASM>
     <MASM Include="..\asm\_random.asm" />
+    <MASM Include="..\asm\shield_stub.asm" />
+    <MASM Include="..\asm\ptr_stub.asm" />
     <MASM Include="..\asm\opts_stub.asm" />
     <MASM Include="..\asm\args_stub.asm" />
   </ItemGroup>
