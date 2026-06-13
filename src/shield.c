@@ -9,6 +9,7 @@
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "shield.h"
 #include "debug.h"
 
@@ -385,6 +386,9 @@ static void cleanShield(Shield* shield)
 static Shield* getShieldPointer()
 {
     uintptr pointer = SHIELD_POINTER;
+
+    (Shield*)POINTER_OFFSET_SHIELD;
+
     return (Shield*)(pointer);
 }
 #pragma optimize("", on)
@@ -430,18 +434,20 @@ errno SD_Sleep(uint32 milliseconds)
     typedef void (*Shield_Sleep_t)(Sleep_Args* args);
     Shield_Sleep_t sleep = shield->EntryPoint;
 
+    // copy memory address before encrypt
+    void* mmp = shield->MainMemPage;
     // encrypt main memory page
     byte key[CRYPTO_KEY_SIZE];
     byte iv [CRYPTO_IV_SIZE];
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv,  CRYPTO_IV_SIZE);
-    EncryptBuf(shield->MainMemPage, MAIN_MEM_PAGE_SIZE, key, iv);
+    EncryptBuf(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
 
     // call shield stub
     sleep(&args);
 
     // decrypt main memory page
-    DecryptBuf(shield->MainMemPage, MAIN_MEM_PAGE_SIZE, key, iv);
+    DecryptBuf(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
     return NO_ERROR;
 }
 
@@ -472,10 +478,12 @@ void SD_Stop()
 
     // must copy variables in Shield before call RandBuffer
     VirtualFree_t virtualFree = shield->VirtualFree;
-    void* memPage = shield->MainMemPage;
+    void* mmp = shield->MainMemPage;
     // release main memory page
-    RandBuffer(shield->MainMemPage, MAIN_MEM_PAGE_SIZE);
-    virtualFree(memPage, 0, MEM_RELEASE);
+    RandBuffer(mmp, MAIN_MEM_PAGE_SIZE);
+    virtualFree(mmp, 0, MEM_RELEASE);
+
+    // TODO ROP VirtualFree and ExitThread
 
     // call shield stub
     stop(&args);
@@ -486,6 +494,11 @@ errno SD_Clean()
 {
     Shield* shield = getShieldPointer();
 
+    // free memory for shield
+    if (shield->ShieldPage != NULL)
+    {
+        shield->VirtualFree(shield->ShieldPage, 0, MEM_RELEASE);
+    }
     return cleanResource(shield);
 }
 
@@ -505,13 +518,6 @@ static errno cleanResource(Shield* shield)
     {
         errno = ERR_SHIELD_CLOSE_TIMER;
     }
-
-    // TODO ROP to VirtualFree and ExitThread
-    // if (shield->ShieldPage != NULL)
-    // {
-    //     
-    //     // shield->VirtualFree(shield->ShieldPage, 0, MEM_RELEASE);
-    // }
 
     // recover instructions
     if (shield->NotEraseInstruction)
