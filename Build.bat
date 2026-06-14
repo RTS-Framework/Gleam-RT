@@ -19,12 +19,12 @@ echo ==================== generate builder ====================
 MSBuild.exe Gleam-RT.sln /t:builder /p:Configuration=Release /p:Platform=x86
 MSBuild.exe Gleam-RT.sln /t:builder /p:Configuration=Release /p:Platform=x64
 
-echo ================ extract runtime shellcode ===============
+echo ================ extract runtime template ================
 del /S /Q dist
 cd builder
-echo --------extract shellcode for x86--------
+echo --------extract template for x86--------
 "..\Release\builder.exe"
-echo --------extract shellcode for x64--------
+echo --------extract template for x64--------
 "..\x64\Release\builder.exe"
 cd ..
 
@@ -49,5 +49,5 @@ echo ================== test runtime package ==================
 call test.bat
 
 echo ==========================================================
-echo                  build shellcode finish!
+echo                 build template finish!
 echo ==========================================================
