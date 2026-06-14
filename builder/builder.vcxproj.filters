@@ -110,6 +110,9 @@
     <ClCompile Include="..\src\detector.c">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\hash_mod.c">
+      <Filter>Source</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\crypto.h">
@@ -245,6 +248,9 @@
       <Filter>Header</Filter>
     </ClInclude>
     <ClInclude Include="..\include\ptr_table.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\hash_mod.h">
       <Filter>Header</Filter>
     </ClInclude>
   </ItemGroup>
