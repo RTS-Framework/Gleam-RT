@@ -1,7 +1,7 @@
 #ifndef BUILD_H
 #define BUILD_H
 
-// RELEASE_MODE:   remove debug modules for generate shellcode
+// RELEASE_MODE:   remove debug modules for generate template
 // FAST_CRYPTO:    replace original algorithm to xor for test
 // NOT_CAMOUFLAGE: disable all modules about camouflage for debug
 
