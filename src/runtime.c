@@ -220,7 +220,7 @@ static bool  flushInstructionCache(Runtime* runtime);
 static void  eraseArgumentStub(Runtime* runtime);
 static void  eraseRuntimeMethods(Runtime* runtime);
 static void  recoverErrorMode(Runtime* runtime);
-static errno cleanRuntime(Runtime* runtime);
+static errno cleanRuntime(Runtime* runtime, bool init);
 static errno closeHandles(Runtime* runtime);
 static void  interruptInit(Runtime* runtime);
 
@@ -367,7 +367,7 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     if (errno != NO_ERROR)
     {
         interruptInit(runtime);
-        cleanRuntime(runtime);
+        cleanRuntime(runtime, true);
         SetLastErrno(errno);
         return NULL;
     }
@@ -1413,7 +1413,7 @@ static void recoverErrorMode(Runtime* runtime)
 }
 
 __declspec(noinline)
-static errno cleanRuntime(Runtime* runtime)
+static errno cleanRuntime(Runtime* runtime, bool init)
 {
     errno err = NO_ERROR;
     // close all handles in runtime
@@ -1422,7 +1422,11 @@ static errno cleanRuntime(Runtime* runtime)
     {
         err = enchd;
     }
-    // must copy variables in Runtime before call RandBuf
+    if (!init)
+    {
+        return err;
+    }
+    // must copy variables in Runtime before call RandBuffer
     VirtualFree_t virtualFree = runtime->VirtualFree;
     void* memPage = runtime->MainMemPage;
     // release main memory page
@@ -1924,7 +1928,7 @@ void* RT_GetProcAddressByName(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
         return runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
     }
     // use "mem_init" for prevent incorrect compiler
-    // optimize and generate incorrect shellcode
+    // optimize and generate incorrect template
     uint16 module[MAX_PATH];
     mem_init(module, sizeof(module));
     // get module file name
@@ -2760,7 +2764,7 @@ errno RT_stop(bool exitThread, uint32 code)
     mem_copy(&clone, runtime, sizeof(Runtime));
 
     // clean runtime resource
-    errno enclr = cleanRuntime(runtime);
+    errno enclr = cleanRuntime(runtime, false);
     if (enclr != NO_ERROR && error == NO_ERROR)
     {
         error = enclr;
@@ -2779,7 +2783,7 @@ errno RT_stop(bool exitThread, uint32 code)
         addr = GetFuncAddr(&InitRuntime);
     }
 
-    // recover instructions for generate shellcode must
+    // recover instructions for generate template must
     // call it after call cleanRuntime, otherwise event
     // handler will get the incorrect runtime address
     if (runtime->Options.NotEraseInstruction)
@@ -2788,6 +2792,13 @@ errno RT_stop(bool exitThread, uint32 code)
         {
             error = ERR_RUNTIME_RECOVER_INST;
         }
+    }
+
+    // TODO think it
+    errno ensdc = runtime->Shield->Clean();
+    if (ensdc != NO_ERROR && error == NO_ERROR)
+    {
+        error = ensdc;
     }
 
     // erase runtime instructions except this function
