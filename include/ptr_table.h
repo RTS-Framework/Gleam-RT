@@ -11,6 +11,8 @@
 // +------------+----------+
 
 #define POINTER_STUB_MAGIC  0xFA
+#define POINTER_STUB_SIZE   256
+
 #define POINTER_ADDR_PREFIX (uintptr)(GetFuncAddr(&Pointer_Stub))
 
 #define POINTER_OFFSET_RUNTIME           (POINTER_ADDR_PREFIX + 0x08)
