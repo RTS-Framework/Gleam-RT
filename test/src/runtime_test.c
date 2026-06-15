@@ -10,7 +10,7 @@
 #include "runtime.h"
 #include "test.h"
 
-static void* copyShellcode();
+static void* loadPICModule();
 static void* calcEpilogue();
 
 bool TestInitRuntime()
@@ -28,13 +28,13 @@ bool TestInitRuntime()
         .NotAdjustProtect    = false,
         .TrackCurrentThread  = false,
     };
-#ifdef SHELLCODE_MODE
+#ifdef PIC_MODE
     typedef Runtime_M* (*InitRuntime_t)(Runtime_Opts* opts);
-    InitRuntime_t initRuntime = copyShellcode();
+    InitRuntime_t initRuntime = loadPICModule();
     runtime = initRuntime(&opts);
 #else
     runtime = InitRuntime(&opts);
-#endif // SHELLCODE_MODE
+#endif // PIC_MODE
     if (runtime == NULL)
     {
         printf_s("failed to initialize runtime: 0x%X\n", GetLastErrno());
@@ -61,7 +61,7 @@ bool TestRuntime_Exit()
     return true;
 }
 
-static void* copyShellcode()
+static void* loadPICModule()
 {
     VirtualAlloc_t VirtualAlloc = FindAPI_A("kernel32.dll", "VirtualAlloc");
 
@@ -75,7 +75,7 @@ static void* copyShellcode()
         return NULL;
     }
     mem_copy(mem, (void*)begin, size);
-    printf_s("shellcode: 0x%zX\n", (uintptr)mem);
+    printf_s("PIC Module: 0x%zX\n", (uintptr)mem);
     return mem;
 }
 
@@ -107,13 +107,13 @@ bool TestRuntime_Options()
         .NotAdjustProtect    = false,
         .TrackCurrentThread  = false,
     };
-#ifdef SHELLCODE_MODE
+#ifdef PIC_MODE
     typedef Runtime_M* (*InitRuntime_t)(Runtime_Opts* opts);
-    InitRuntime_t initRuntime = copyShellcode();
+    InitRuntime_t initRuntime = loadPICModule();
     runtime = initRuntime(&opts);
 #else
     runtime = InitRuntime(&opts);
-#endif // SHELLCODE_MODE
+#endif // PIC_MODE
     if (runtime == NULL)
     {
         printf_s("failed to initialize runtime: 0x%X\n", GetLastErrno());
