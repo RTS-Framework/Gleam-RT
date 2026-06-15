@@ -87,17 +87,10 @@ errno SD_Sleep(uint32 milliseconds);
 void  SD_Stop();
 errno SD_Clean();
 
-// hard encoded address in getShieldPointer for replacement
-#ifdef _WIN64
-    #define SHIELD_POINTER 0x7FABCDEF111111FE
-#elif _WIN32
-    #define SHIELD_POINTER 0x7FABCDFE
-#endif
 static Shield* getShieldPointer();
 
 static bool  initShieldAPI(Shield* shield, Context* context);
-static bool  updateShieldPointer(Shield* shield);
-static bool  recoverShieldPointer(Shield* shield);
+static void  updateShieldPointer(Shield* shield);
 static errno initShieldEnvironment(Shield* shield, Context* context);
 static void  eraseShieldMethods(Context* context);
 static void  cleanShield(Shield* shield);
@@ -125,11 +118,6 @@ Shield_M* InitShield(Context* context)
             errno = ERR_SHIELD_INIT_API;
             break;
         }
-        if (!updateShieldPointer(shield))
-        {
-            errno = ERR_SHIELD_UPDATE_PTR;
-            break;
-        }
         errno = initShieldEnvironment(shield, context);
         if (errno != NO_ERROR)
         {
@@ -137,6 +125,7 @@ Shield_M* InitShield(Context* context)
         }
         break;
     }
+    updateShieldPointer(shield);
     eraseShieldMethods(context);
     if (errno != NO_ERROR)
     {
@@ -209,48 +198,9 @@ static bool initShieldAPI(Shield* shield, Context* context)
     return true;
 }
 
-// CANNOT merge updateShieldPointer and recoverShieldPointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
-__declspec(noinline)
-static bool updateShieldPointer(Shield* shield)
+static void updateShieldPointer(Shield* shield)
 {
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getShieldPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != SHIELD_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)shield;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool recoverShieldPointer(Shield* shield)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getShieldPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)shield)
-        {
-            target++;
-            continue;
-        }
-        *pointer = SHIELD_POINTER;
-        success = true;
-        break;
-    }
-    return success;
+    *(Shield**)(POINTER_OFFSET_SHIELD) = shield;
 }
 
 static errno initShieldEnvironment(Shield* shield, Context* context)
@@ -328,7 +278,7 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     shield->Timer = hTimer;
 
     // erase shield in stub after deploy
-    if (!shield->NotEraseInstruction)
+    if (!context->NotEraseInstruction)
     {
         RandBuffer(shieldInst, shieldSize);
     }
@@ -337,7 +287,7 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     shield->DecoySize = decoySize;
 
     // prepare VirtualProtect address
-    if (shield->NotAdjustProtect)
+    if (context->NotAdjustProtect)
     {
         shield->VirtualProtect = NULL;
     }
@@ -352,6 +302,7 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     return NO_ERROR;
 }
 
+__declspec(noinline)
 static void eraseShieldMethods(Context* context)
 {
     if (context->NotEraseInstruction)
@@ -380,16 +331,10 @@ static void cleanShield(Shield* shield)
     }
 }
 
-// updateShieldPointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateShieldPointer will fail.
 #pragma optimize("", off)
 static Shield* getShieldPointer()
 {
-    uintptr pointer = SHIELD_POINTER;
-
-    (Shield*)POINTER_OFFSET_SHIELD;
-
-    return (Shield*)(pointer);
+    return *(Shield**)POINTER_OFFSET_SHIELD;
 }
 #pragma optimize("", on)
 
@@ -519,13 +464,27 @@ static errno cleanResource(Shield* shield)
         errno = ERR_SHIELD_CLOSE_TIMER;
     }
 
-    // recover instructions
+    // encrypt decoy in stub again
     if (shield->NotEraseInstruction)
     {
-        if (!recoverShieldPointer(shield) && errno == NO_ERROR)
+        // check stub is valid
+        uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
+        if (*(byte*)(stub) != SHIELD_STUB_MAGIC)
         {
-            errno = ERR_SHIELD_RECOVER_INST;
+            return ERR_SHIELD_INVALID_STUB;
         }
+        // prepare xor key
+        byte*  key = (byte*)(stub + 1);
+        uint16 off = 1 + SHIELD_KEY_SIZE;
+        // skip shield
+        uint16 shieldSize = *(uint16*)(stub + off);
+        off += sizeof(uint16);
+        off += shieldSize;
+        // encrypt decoy
+        uint16 decoySize = *(uint16*)(stub + off);
+        off += sizeof(uint16);
+        byte* decoyInst = (byte*)(stub + off);
+        XORBuf(decoyInst, decoySize, key, SHIELD_KEY_SIZE);
     }
     return errno;
 }
