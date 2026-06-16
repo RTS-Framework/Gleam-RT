@@ -58,8 +58,8 @@ type DTStatus struct {
 	HasDebugger      bool  `json:"has_debugger"`
 	HasMemoryScanner bool  `json:"has_memory_scanner"`
 	InSandbox        bool  `json:"in_sandbox"`
-	InVirtualMachine bool  `json:"in_virtual_machine"`
 	InEmulator       bool  `json:"in_emulator"`
+	InVirtualMachine bool  `json:"in_virtual_machine"`
 	IsAccelerated    bool  `json:"is_accelerated"`
 	SafeRank         int32 `json:"safe_rank"`
 }
