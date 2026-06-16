@@ -30,14 +30,18 @@ func (e *errno) Error() string {
 
 // Options contains options about initialize runtime.
 type Options struct {
-	BootInstAddress     uintptr `toml:"boot_inst_address"     json:"boot_inst_address"`
-	EnableSecurityMode  bool    `toml:"enable_security_mode"  json:"enable_security_mode"`
-	DisableDetector     bool    `toml:"disable_detector"      json:"disable_detector"`
-	DisableWatchdog     bool    `toml:"disable_watchdog"      json:"disable_watchdog"`
-	DisableSysmon       bool    `toml:"disable_sysmon"        json:"disable_sysmon"`
-	NotEraseInstruction bool    `toml:"not_erase_instruction" json:"not_erase_instruction"`
-	NotAdjustProtect    bool    `toml:"not_adjust_protect"    json:"not_adjust_protect"`
-	TrackCurrentThread  bool    `toml:"track_current_thread"  json:"track_current_thread"`
+	BootAddress         uintptr
+	Reserved            uintptr
+	ImagePinningHash    uint64
+	ShieldModuleHash    uint64
+	ShieldEntryPoint    uint32
+	EnableSecurityMode  metric.BOOL
+	DisableDetector     metric.BOOL
+	DisableWatchdog     metric.BOOL
+	DisableSysmon       metric.BOOL
+	NotEraseInstruction metric.BOOL
+	NotAdjustProtect    metric.BOOL
+	TrackCurrentThread  metric.BOOL
 }
 
 // RuntimeM contains exported methods of runtime.
@@ -239,6 +243,13 @@ type RuntimeM struct {
 		_ uintptr
 	}
 
+	Shield struct {
+		Status uintptr
+
+		_ uintptr
+		_ uintptr
+	}
+
 	Env struct {
 		GetPEB   uintptr
 		GetTEB   uintptr
@@ -265,7 +276,7 @@ type RuntimeM struct {
 	}
 }
 
-// NewRuntime is used to create runtime from initialized instance.
+// NewRuntime is used to create RuntimeM from initialized instance.
 // It will copy memory for prevent runtime encrypt memory page when
 // call runtime methods or call SleepHR.
 func NewRuntime(ptr uintptr) *RuntimeM {
@@ -273,10 +284,10 @@ func NewRuntime(ptr uintptr) *RuntimeM {
 	return &rt
 }
 
-// InitRuntime is used to initialize runtime from shellcode instance.
-// Each shellcode instance can only initialize once.
-func InitRuntime(addr uintptr, opts *Options) (*RuntimeM, error) {
-	ptr, _, err := syscall.SyscallN(addr, uintptr(unsafe.Pointer(opts))) // #nosec
+// InitRuntime is used to initialize runtime from instance.
+// Each runtime instance can only initialize once.
+func InitRuntime(inst uintptr, opts *Options) (*RuntimeM, error) {
+	ptr, _, err := syscall.SyscallN(inst, uintptr(unsafe.Pointer(opts))) // #nosec
 	if ptr == null {
 		return nil, fmt.Errorf("failed to initialize runtime: 0x%08X", uint(err))
 	}
