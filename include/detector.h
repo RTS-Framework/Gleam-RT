@@ -11,8 +11,8 @@ typedef struct {
     BOOL  HasDebugger;
     BOOL  HasMemoryScanner;
     BOOL  InSandbox;
-    BOOL  InVirtualMachine;
     BOOL  InEmulator;
+    BOOL  InVirtualMachine;
     BOOL  IsAccelerated;
     int32 SafeRank;
 } DT_Status;
