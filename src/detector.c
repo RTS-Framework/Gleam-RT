@@ -16,8 +16,8 @@
 #define THRESHOLD_HAS_DEBUGGER       50
 #define THRESHOLD_HAS_MEMORY_SCANNER 10
 #define THRESHOLD_IN_SANDBOX         80
-#define THRESHOLD_IN_VIRTUAL_MACHINE 70
 #define THRESHOLD_IN_EMULATOR        70
+#define THRESHOLD_IN_VIRTUAL_MACHINE 70
 #define THRESHOLD_IS_ACCELERATED     80
 
 // MUST be a multiple of 100.
@@ -60,8 +60,8 @@ typedef struct {
     uint16 HasDebugger;
     uint16 HasMemoryScanner;
     uint16 InSandbox;
-    uint16 InVirtualMachine;
     uint16 InEmulator;
+    uint16 InVirtualMachine;
     uint16 IsAccelerated;
 } Detector;
 
@@ -95,8 +95,8 @@ static bool detectLoopItem();
 static bool detectDebugger();
 static bool detectMemoryScanner();
 static bool detectSandbox();
-static bool detectVirtualMachine();
 static bool detectEmulator();
+static bool detectVirtualMachine();
 static bool detectAccelerator();
 
 Detector_M* InitDetector(Context* context)
@@ -367,8 +367,8 @@ static bool detectOnceItem()
         GetFuncAddr(&detectDebugger),
         GetFuncAddr(&detectMemoryScanner),
         GetFuncAddr(&detectSandbox),
-        GetFuncAddr(&detectVirtualMachine),
         GetFuncAddr(&detectEmulator),
+        GetFuncAddr(&detectVirtualMachine),
         GetFuncAddr(&detectAccelerator),
     };
     int seq[arrlen(list)];
@@ -483,7 +483,7 @@ static bool detectSandbox()
 }
 
 __declspec(noinline)
-static bool detectVirtualMachine()
+static bool detectEmulator()
 {
     Detector* detector = getDetectorPointer();
 
@@ -491,7 +491,7 @@ static bool detectVirtualMachine()
 }
 
 __declspec(noinline)
-static bool detectEmulator()
+static bool detectVirtualMachine()
 {
     Detector* detector = getDetectorPointer();
 
@@ -531,8 +531,8 @@ BOOL DT_GetStatus(DT_Status* status)
         { detector->HasDebugger,      &status->HasDebugger,      THRESHOLD_HAS_DEBUGGER       },
         { detector->HasMemoryScanner, &status->HasMemoryScanner, THRESHOLD_HAS_MEMORY_SCANNER },
         { detector->InSandbox,        &status->InSandbox,        THRESHOLD_IN_SANDBOX         },
-        { detector->InVirtualMachine, &status->InVirtualMachine, THRESHOLD_IN_VIRTUAL_MACHINE },
         { detector->InEmulator,       &status->InEmulator,       THRESHOLD_IN_EMULATOR        },
+        { detector->InVirtualMachine, &status->InVirtualMachine, THRESHOLD_IN_VIRTUAL_MACHINE },
         { detector->IsAccelerated,    &status->IsAccelerated,    THRESHOLD_IS_ACCELERATED     },
     };
     for (int i = 0; i < arrlen(items); i++)
