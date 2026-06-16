@@ -110,6 +110,9 @@
     <ClCompile Include="..\..\src\detector.c">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\hash_mod.c">
+      <Filter>Source</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\include\crypto.h">
@@ -244,6 +247,9 @@
     <ClInclude Include="..\..\include\dll_psapi.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\include\hash_mod.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="..\..\asm\args_stub.asm">
@@ -272,6 +278,12 @@
     </MASM>
     <MASM Include="..\..\asm\msvc\llshr.asm">
       <Filter>Assembly\MSVC</Filter>
+    </MASM>
+    <MASM Include="..\..\asm\shield_stub.asm">
+      <Filter>Assembly</Filter>
+    </MASM>
+    <MASM Include="..\..\asm\ptr_stub.asm">
+      <Filter>Assembly</Filter>
     </MASM>
   </ItemGroup>
 </Project>
