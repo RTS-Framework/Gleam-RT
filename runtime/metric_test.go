@@ -13,25 +13,30 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 
+	"github.com/RTS-Framework/GRT-Develop"
 	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
 func TestConvertRawMetrics(t *testing.T) {
-	// load runtime shellcode
-	var sc []byte
+	// load runtime instance
+	var template []byte
 	switch runtime.GOARCH {
 	case "386":
-		sc = testRTx86
+		template = testTemplateX86
 	case "amd64":
-		sc = testRTx64
+		template = testTemplateX64
 	default:
 		t.Fatal("unsupported architecture")
 	}
-	addr := loadShellcode(t, sc)
+	instance, err := develop.Instantiate(template, nil)
+	require.NoError(t, err)
+
+	addr := loadInstance(t, instance)
 	fmt.Printf("Runtime: 0x%X\n", addr)
 
 	Runtime, err := InitRuntime(addr, nil)
 	require.NoError(t, err)
+
 	time.Sleep(time.Second)
 
 	metrics := metric.Metrics{}
