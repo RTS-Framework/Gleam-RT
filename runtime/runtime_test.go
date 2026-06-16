@@ -14,40 +14,49 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
+
+	"github.com/RTS-Framework/GRT-Develop"
+	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
 var (
-	testRTx86 []byte
-	testRTx64 []byte
+	testTemplateX86 []byte
+	testTemplateX64 []byte
 )
 
 func init() {
 	var err error
-	testRTx86, err = os.ReadFile("../dist/GleamRT_x86.bin")
+	testTemplateX86, err = os.ReadFile("../dist/GleamRT_x86.bin")
 	if err != nil {
 		panic(err)
 	}
-	testRTx64, err = os.ReadFile("../dist/GleamRT_x64.bin")
+	testTemplateX64, err = os.ReadFile("../dist/GleamRT_x64.bin")
 	if err != nil {
 		panic(err)
 	}
 }
 
 func TestRuntime(t *testing.T) {
-	// load runtime shellcode
-	var sc []byte
+	// load runtime instance
+	var template []byte
 	switch runtime.GOARCH {
 	case "386":
-		sc = testRTx86
+		template = testTemplateX86
 	case "amd64":
-		sc = testRTx64
+		template = testTemplateX64
 	default:
 		t.Fatal("unsupported architecture")
 	}
-	addr := loadShellcode(t, sc)
+	instance, err := develop.Instantiate(template, nil)
+	require.NoError(t, err)
+
+	addr := loadInstance(t, instance)
 	fmt.Printf("Runtime: 0x%X\n", addr)
 
-	Runtime, err := InitRuntime(addr, nil)
+	opts := Options{
+		NotAdjustProtect: metric.TRUE,
+	}
+	Runtime, err := InitRuntime(addr, &opts)
 	require.NoError(t, err)
 
 	t.Run("Sleep", func(t *testing.T) {
@@ -105,13 +114,13 @@ func TestRuntime(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func loadShellcode(t *testing.T, sc []byte) uintptr {
-	size := uintptr(len(sc))
+func loadInstance(t *testing.T, inst []byte) uintptr {
+	size := uintptr(len(inst))
 	mType := uint32(windows.MEM_COMMIT | windows.MEM_RESERVE)
 	mProtect := uint32(windows.PAGE_EXECUTE_READWRITE)
-	scAddr, err := windows.VirtualAlloc(0, size, mType, mProtect)
+	addr, err := windows.VirtualAlloc(0, size, mType, mProtect)
 	require.NoError(t, err)
-	dst := unsafe.Slice((*byte)(unsafe.Pointer(scAddr)), size)
-	copy(dst, sc)
-	return scAddr
+	dst := unsafe.Slice((*byte)(unsafe.Pointer(addr)), size)
+	copy(dst, inst)
+	return addr
 }
