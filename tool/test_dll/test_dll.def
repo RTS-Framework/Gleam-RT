@@ -37,3 +37,4 @@ EXPORTS
     WD_Status     = WD_GetStatus
 
     SM_Status = SM_GetStatus
+    SD_Status = SD_GetStatus
