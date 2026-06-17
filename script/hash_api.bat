@@ -140,6 +140,7 @@ hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc WD_Disable
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc WD_IsEnabled
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc WD_Status
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc SM_Status
+hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc SD_Status
 echo.
 
 echo [Lazy API Redirector]
@@ -470,6 +471,7 @@ hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc WD_Disable
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc WD_IsEnabled
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc WD_Status
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc SM_Status
+hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc SD_Status
 echo.
 
 echo [Lazy API Redirector]
