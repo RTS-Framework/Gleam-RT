@@ -63,7 +63,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// reference: script/args_gen.go
+// reference: script/gen_args.go
 
 func TestGetValue(t *testing.T) {
 	t.Run("common", func(t *testing.T) {
@@ -91,7 +91,7 @@ func TestGetPointer(t *testing.T) {
 	t.Run("common", func(t *testing.T) {
 		ptr, size, exist := GetPointer(1)
 		require.True(t, exist, "argument 1 is not exists")
-		require.Equal(t, uint32(12), size)
+		require.Equal(t, uint32(10), size)
 		require.NotZero(t, ptr)
 
 		expected := "aaabbbccc\x00"
