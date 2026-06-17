@@ -10,7 +10,7 @@
 #include "runtime.h"
 #include "test.h"
 
-static void* loadPICModule();
+static void* loadInstance();
 static void* calcEpilogue();
 
 bool TestInitRuntime()
@@ -30,7 +30,7 @@ bool TestInitRuntime()
     };
 #ifdef PIC_MODE
     typedef Runtime_M* (*InitRuntime_t)(Runtime_Opts* opts);
-    InitRuntime_t initRuntime = loadPICModule();
+    InitRuntime_t initRuntime = loadInstance();
     runtime = initRuntime(&opts);
 #else
     runtime = InitRuntime(&opts);
@@ -61,37 +61,6 @@ bool TestRuntime_Exit()
     return true;
 }
 
-static void* loadPICModule()
-{
-    VirtualAlloc_t VirtualAlloc = FindAPI_A("kernel32.dll", "VirtualAlloc");
-
-    uintptr begin = (uintptr)(&InitRuntime);
-    uintptr end   = (uintptr)(calcEpilogue());
-    uintptr size  = end - begin;
-    void* mem = VirtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-    if (mem == NULL)
-    {
-        printf_s("failed to allocate memory: 0x%X\n", GetLastErrno());
-        return NULL;
-    }
-    mem_copy(mem, (void*)begin, size);
-    printf_s("PIC Module: 0x%zX\n", (uintptr)mem);
-    return mem;
-}
-
-static void* calcEpilogue()
-{
-    uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
-    byte header[ARG_HEADER_SIZE];
-    mem_init(header, sizeof(header));
-    mem_copy(header, (byte*)stub, sizeof(header));
-    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
-    uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
-    uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
-    return (void*)(stub + ARG_HEADER_SIZE + argsSize);
-}
-
 bool TestRuntime_Options()
 {
     Runtime_Opts opts = {
@@ -109,7 +78,7 @@ bool TestRuntime_Options()
     };
 #ifdef PIC_MODE
     typedef Runtime_M* (*InitRuntime_t)(Runtime_Opts* opts);
-    InitRuntime_t initRuntime = loadPICModule();
+    InitRuntime_t initRuntime = loadInstance();
     runtime = initRuntime(&opts);
 #else
     runtime = InitRuntime(&opts);
@@ -140,4 +109,35 @@ bool TestRuntime_Options()
         return false;
     }
     return true;
+}
+
+static void* loadInstance()
+{
+    VirtualAlloc_t VirtualAlloc = FindAPI_A("kernel32.dll", "VirtualAlloc");
+
+    uintptr begin = (uintptr)(&InitRuntime);
+    uintptr end   = (uintptr)(calcEpilogue());
+    uintptr size  = end - begin;
+    void* mem = VirtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (mem == NULL)
+    {
+        printf_s("failed to allocate memory: 0x%X\n", GetLastErrno());
+        return NULL;
+    }
+    mem_copy(mem, (void*)begin, size);
+    printf_s("Instance: 0x%zX\n", (uintptr)mem);
+    return mem;
+}
+
+static void* calcEpilogue()
+{
+    uintptr stub = (uintptr)(&Argument_Stub);
+    byte header[ARG_HEADER_SIZE];
+    mem_init(header, sizeof(header));
+    mem_copy(header, (byte*)stub, sizeof(header));
+    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    uint  fsz = sizeof(uint16) + sizeof(uint32);
+    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
+    return (void*)(stub + ARG_HEADER_SIZE + argsSize);
 }
