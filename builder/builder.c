@@ -111,14 +111,14 @@ bool saveTemplate()
 
     // calculate the end address
     end = (uintptr)template + size;
-    // initialize shield stub
+    // check shield stub is valid
     uintptr shieldStub = end - (SHIELD_STUB_SIZE + POINTER_STUB_SIZE + OPTION_STUB_SIZE);
     if (*(byte*)(shieldStub) != SHIELD_STUB_MAGIC)
     {
         printf_s("invalid runtime shield stub\n");
         return false;
     }
-    mem_init((void*)(shieldStub+1), SHIELD_STUB_SIZE-1);
+    // mem_init((void*)(shieldStub + 1), SHIELD_STUB_SIZE - 1);
     // initialize pointer stub
     uintptr pointerStub = end - (POINTER_STUB_SIZE + OPTION_STUB_SIZE);
     if (*(byte*)(pointerStub) != POINTER_STUB_MAGIC)
