@@ -21,8 +21,6 @@ static byte charToValue(byte b);
 static byte valueToChar(byte b);
 static bool isRegionReadable(DWORD protect);
 
-#pragma optimize("t", on)
-
 uint MemScanByValue(MemScan_Ctx* ctx, void* value, uint size, uintptr* results, uint maxItem)
 {
     if (size == 0 || size > MAX_NUM_CONDITION)
@@ -31,6 +29,7 @@ uint MemScanByValue(MemScan_Ctx* ctx, void* value, uint size, uintptr* results, 
         return (uint)(-1);
     }
     byte pattern[MAX_NUM_CONDITION * 3 + 1];
+    mem_init(pattern, sizeof(pattern));
     BinToPattern(value, size, pattern);
     MemScan_Cfg config = {
         .Pattern = pattern,
@@ -341,4 +340,3 @@ static bool isRegionReadable(DWORD protect)
     }
 }
 
-#pragma optimize("t", off)
