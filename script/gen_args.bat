@@ -1,2 +1,2 @@
-go run args_gen.go
+go run gen_args.go
 pause
