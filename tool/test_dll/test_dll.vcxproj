@@ -145,6 +145,7 @@
     <ClInclude Include="..\..\include\errno.h" />
     <ClInclude Include="..\..\include\context.h" />
     <ClInclude Include="..\..\include\layout.h" />
+    <ClInclude Include="..\..\include\ptr_table.h" />
     <ClInclude Include="..\..\include\detector.h" />
     <ClInclude Include="..\..\include\mod_library.h" />
     <ClInclude Include="..\..\include\mod_memory.h" />

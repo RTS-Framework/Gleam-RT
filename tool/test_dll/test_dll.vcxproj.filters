@@ -250,6 +250,9 @@
     <ClInclude Include="..\..\include\hash_mod.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\include\ptr_table.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="..\..\asm\args_stub.asm">
