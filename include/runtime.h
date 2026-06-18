@@ -8,7 +8,7 @@
 #include "hash_api.h"
 #include "errno.h"
 
-// about runtime options at the shellcode tail.
+// about runtime options at the template tail.
 // 
 // +------------+---------+---------+---------+---------+
 // | magic mark | xor key | option1 | option2 | optionN |
@@ -32,7 +32,7 @@
 #define OPT_OFFSET_NOT_ADJUST_PROTECT    (OPT_OFFSET_BASE + 29)
 #define OPT_OFFSET_TRACK_CURRENT_THREAD  (OPT_OFFSET_BASE + 30)
 
-// for generic shellcode development.
+// for generic module development.
 
 #ifndef DLL_ADVAPI32_H
 typedef DWORD ALG_ID;
@@ -359,7 +359,7 @@ typedef void (*BinToPattern_t)(void* data, uint size, byte* pattern);
 // will try to use HashAPI first, then use original GetProcAddress,
 // recommend use GetProcByName with redirect FALSE instead it.
 // 
-// These methods are used for API Redirector or common shellcode.
+// These methods are used for API Redirector or common module.
 typedef void* (*GetProcByName_t)(HMODULE hModule, LPCSTR lpProcName, BOOL redirect);
 typedef void* (*GetProcByHash_t)(uint mHash, uint pHash, uint hKey, BOOL redirect);
 typedef void* (*GetProcByHashML_t)(void* list, uint mHash, uint pHash, uint hKey, BOOL redirect);
@@ -371,8 +371,8 @@ typedef struct {
     BOOL  HasDebugger;
     BOOL  HasMemoryScanner;
     BOOL  InSandbox;
-    BOOL  InVirtualMachine;
     BOOL  InEmulator;
+    BOOL  InVirtualMachine;
     BOOL  IsAccelerated;
     int32 SafeRank;
 } DT_Status;
