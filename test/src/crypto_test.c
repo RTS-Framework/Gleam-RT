@@ -5,9 +5,9 @@
 #include "crypto.h"
 #include "test.h"
 
-static bool TestEncryptBuf();
-static bool TestDecryptBuf();
-static bool TestXORBuf();
+static bool TestEncryptBuffer();
+static bool TestDecryptBuffer();
+static bool TestXORBuffer();
 
 static void printHexBytes(byte* buf, uint size);
 
@@ -15,9 +15,9 @@ bool TestCrypto()
 {
     test_t tests[] = 
     {
-        { TestEncryptBuf },
-        { TestDecryptBuf },
-        { TestXORBuf     },
+        { TestEncryptBuffer },
+        { TestDecryptBuffer },
+        { TestXORBuffer     },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -29,9 +29,9 @@ bool TestCrypto()
     return true;
 }
 
-static bool TestEncryptBuf()
+static bool TestEncryptBuffer()
 {
-    printf_s("=======TestEncryptBuf begin========\n");
+    printf_s("=======TestEncryptBuffer begin========\n");
 
     // generate key and iv
     byte key[CRYPTO_KEY_SIZE];
@@ -64,8 +64,8 @@ static bool TestEncryptBuf()
     printHexBytes(data2, sizeof(data2));
 
     printf_s("cipher data with the different iv:\n");
-    EncryptBuf(data1, sizeof(data1), key, iv1);
-    EncryptBuf(data2, sizeof(data2), key, iv2);
+    EncryptBuffer(data1, sizeof(data1), key, iv1);
+    EncryptBuffer(data2, sizeof(data2), key, iv2);
     printHexBytes(data1, sizeof(data1));
     printHexBytes(data2, sizeof(data2));
 
@@ -76,18 +76,18 @@ static bool TestEncryptBuf()
     mem_copy(data2, testdata, sizeof(data2));
     data2[0]++;
 
-    EncryptBuf(data1, sizeof(data1), key, iv1);
-    EncryptBuf(data2, sizeof(data2), key, iv1);
+    EncryptBuffer(data1, sizeof(data1), key, iv1);
+    EncryptBuffer(data2, sizeof(data2), key, iv1);
     printHexBytes(data1, sizeof(data1));
     printHexBytes(data2, sizeof(data2));
 
-    printf_s("=======TestEncryptBuf passed=======\n\n");
+    printf_s("=======TestEncryptBuffer passed=======\n\n");
     return true;
 }
 
-static bool TestDecryptBuf()
+static bool TestDecryptBuffer()
 {
-    printf_s("=======TestDecryptBuf begin========\n");
+    printf_s("=======TestDecryptBuffer begin========\n");
 
     byte key[CRYPTO_KEY_SIZE];
     RandBuffer(key, sizeof(key));
@@ -103,12 +103,12 @@ static bool TestDecryptBuf()
     printf_s("plain data:\n");
     printHexBytes(data2, sizeof(data2));
 
-    EncryptBuf(data2, sizeof(data2), key, iv);
+    EncryptBuffer(data2, sizeof(data2), key, iv);
 
     printf_s("cipher data:\n");
     printHexBytes(data2, sizeof(data2));
 
-    DecryptBuf(data2, sizeof(data2), key, iv);
+    DecryptBuffer(data2, sizeof(data2), key, iv);
 
     // compare the decrypted data
     for (uint i = 0; i < sizeof(data1); i++)
@@ -120,13 +120,13 @@ static bool TestDecryptBuf()
         }
     }
 
-    printf_s("=======TestDecryptBuf passed=======\n\n");
+    printf_s("=======TestDecryptBuffer passed=======\n\n");
     return true;
 }
 
-static bool TestXORBuf()
+static bool TestXORBuffer()
 {
-    printf_s("=========TestXORBuf begin==========\n");
+    printf_s("=========TestXORBuffer begin==========\n");
 
     // generate random data and key
     byte data[64];
@@ -139,15 +139,15 @@ static bool TestXORBuf()
     // encrypt and decrypt
     byte cipher[sizeof(data)];
     mem_copy(cipher, data, sizeof(data));
-    XORBuf(cipher, sizeof(data), key, sizeof(key));
-    XORBuf(cipher, sizeof(data), key, sizeof(key));
+    XORBuffer(cipher, sizeof(data), key, sizeof(key));
+    XORBuffer(cipher, sizeof(data), key, sizeof(key));
 
     if (mem_cmp(data, cipher, sizeof(data)) != 0)
     {
         printf_s("[error] plain data is incorrect\n");
     }
 
-    printf_s("=========TestXORBuf passed=========\n\n");
+    printf_s("=========TestXORBuffer passed=========\n\n");
     return true;
 }
 
