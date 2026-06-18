@@ -8,6 +8,7 @@
 static bool TestEncryptBuffer();
 static bool TestDecryptBuffer();
 static bool TestXORBuffer();
+static bool TestEraseBuffer();
 
 static void printHexBytes(byte* buf, uint size);
 
@@ -18,6 +19,7 @@ bool TestCrypto()
         { TestEncryptBuffer },
         { TestDecryptBuffer },
         { TestXORBuffer     },
+        { TestEraseBuffer   },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -111,13 +113,10 @@ static bool TestDecryptBuffer()
     DecryptBuffer(data2, sizeof(data2), key, iv);
 
     // compare the decrypted data
-    for (uint i = 0; i < sizeof(data1); i++)
+    if (!mem_equal(data1, data2, sizeof(data1)))
     {
-        if (data1[i] != data2[i])
-        {
-            printf_s("[error] plain data is incorrect\n");
-            return false;
-        }
+        printf_s("[error] plain data is incorrect\n");
+        return false;
     }
 
     printf_s("=======TestDecryptBuffer passed=======\n\n");
@@ -142,12 +141,31 @@ static bool TestXORBuffer()
     XORBuffer(cipher, sizeof(data), key, sizeof(key));
     XORBuffer(cipher, sizeof(data), key, sizeof(key));
 
-    if (mem_cmp(data, cipher, sizeof(data)) != 0)
+    if (!mem_equal(data, cipher, sizeof(data)))
     {
         printf_s("[error] plain data is incorrect\n");
+        return false;
     }
 
     printf_s("=========TestXORBuffer passed=========\n\n");
+    return true;
+}
+
+static bool TestEraseBuffer()
+{
+    printf_s("========TestEraseBuffer begin=========\n");
+
+
+    byte data[32];
+    EraseBuffer(data, sizeof(data));
+
+    if (!mem_is_zero(data, sizeof(data)))
+    {
+        printf_s("[error] data is not erased\n");
+        return false;
+    }
+
+    printf_s("========TestEraseBuffer passed========\n\n");
     return true;
 }
 
