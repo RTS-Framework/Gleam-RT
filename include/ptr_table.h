@@ -4,11 +4,11 @@
 #include "c_types.h"
 #include "rel_addr.h"
 
-// +------------+----------+
-// | magic mark | pointers |
-// +------------+----------+
-// |    0xFA    | 255 byte |
-// +------------+----------+
+// +------------+----------+----------+
+// | magic mark | reserved | pointers |
+// +------------+----------+----------+
+// |    0xFA    |  7 byte  | 248 byte |
+// +------------+----------+----------+
 
 #define POINTER_STUB_MAGIC  0xFA
 #define POINTER_STUB_SIZE   256
