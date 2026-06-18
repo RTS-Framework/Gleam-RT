@@ -606,8 +606,7 @@ void XORBuffer(void* buf, uint bufSize, void* key, uint keySize)
 #pragma optimize("", off)
 void EraseBuffer(void* buf, uint size)
 {
-    volatile byte* ptr = (volatile byte*)buf;
-    RandBuffer(ptr, size);
-    mem_init(ptr, size);
+    RandBuffer(buf, size);
+    mem_init(buf, size);
 }
 #pragma optimize("", on)
