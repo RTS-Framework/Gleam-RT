@@ -17,8 +17,8 @@
 
 #define PARALLEL_LEVEL 8
 
-static void encryptBuf(byte* buf, uint size, byte* key, byte* iv, byte* sBox);
-static void decryptBuf(byte* buf, uint size, byte* key, byte* iv, byte* sBox);
+static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox);
+static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox);
 static void initSBox(byte* sBox, byte* key, byte* iv);
 static void reverseSBox(byte* sBox);
 static byte ror(byte value, uint8 bits);
@@ -26,7 +26,7 @@ static byte rol(byte value, uint8 bits);
 
 #pragma optimize("t", on)
 
-void EncryptBuf(void* buf, uint size, byte* key, byte* iv)
+void EncryptBuffer(void* buf, uint size, byte* key, byte* iv)
 {
     if (size == 0)
     {
@@ -34,10 +34,10 @@ void EncryptBuf(void* buf, uint size, byte* key, byte* iv)
     }
     byte sBox[256];
     initSBox(sBox, key, iv);
-    encryptBuf(buf, size, key, iv, sBox);
+    encryptBuffer(buf, size, key, iv, sBox);
 }
 
-static void encryptBuf(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
+static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
 {
     // just generate from random data
     uint32 seeds[8] = {
@@ -263,7 +263,7 @@ static void encryptBuf(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
     }
 }
 
-void DecryptBuf(void* buf, uint size, byte* key, byte* iv)
+void DecryptBuffer(void* buf, uint size, byte* key, byte* iv)
 {
     if (size == 0)
     {
@@ -272,10 +272,10 @@ void DecryptBuf(void* buf, uint size, byte* key, byte* iv)
     byte sBox[256];
     initSBox(sBox, key, iv);
     reverseSBox(sBox);
-    decryptBuf(buf, size, key, iv, sBox);
+    decryptBuffer(buf, size, key, iv, sBox);
 }
 
-static void decryptBuf(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
+static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
 {
     // just generate from random data
     uint32 seeds[8] = {
@@ -563,7 +563,7 @@ static byte rol(byte value, uint8 bits)
 
 #else
 
-void EncryptBuf(void* buf, uint size, byte* key, byte* iv)
+void EncryptBuffer(void* buf, uint size, byte* key, byte* iv)
 {
     byte* buffer = buf;
     byte b = *key + *iv;
@@ -574,7 +574,7 @@ void EncryptBuf(void* buf, uint size, byte* key, byte* iv)
     }
 }
 
-void DecryptBuf(void* buf, uint size, byte* key, byte* iv)
+void DecryptBuffer(void* buf, uint size, byte* key, byte* iv)
 {
     byte* buffer = buf;
     byte b = *key + *iv;
@@ -588,7 +588,7 @@ void DecryptBuf(void* buf, uint size, byte* key, byte* iv)
 #endif
 
 #pragma optimize("", off)
-void XORBuf(void* buf, uint bufSize, void* key, uint keySize)
+void XORBuffer(void* buf, uint bufSize, void* key, uint keySize)
 {
     if (bufSize == 0 || keySize == 0)
     {
@@ -600,5 +600,14 @@ void XORBuf(void* buf, uint bufSize, void* key, uint keySize)
     {
         b[i] ^= k[i%keySize];
     }
+}
+#pragma optimize("", on)
+
+#pragma optimize("", off)
+void EraseBuffer(void* buf, uint size)
+{
+    volatile byte* ptr = (volatile byte*)buf;
+    RandBuffer(ptr, size);
+    mem_init(ptr, size);
 }
 #pragma optimize("", on)
