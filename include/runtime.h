@@ -263,8 +263,8 @@ typedef void   (*RandBuffer_t)(void* buf, int64 size);
 typedef void   (*RandSequence_t)(int* array, int n);
 
 // about crypto module
-typedef void (*Encrypt_t)(void* buf, uint size, byte* key, byte* iv);
-typedef void (*Decrypt_t)(void* buf, uint size, byte* key, byte* iv);
+typedef void (*XORBuffer_t)(void* buf, uint bufSize, void* key, uint keySize);
+typedef void (*EraseBuffer_t)(void* buf, uint size);
 
 // about compress module
 // 
@@ -623,8 +623,8 @@ typedef struct {
     } Random;
 
     struct {
-        Encrypt_t Encrypt;
-        Decrypt_t Decrypt;
+        XORBuffer_t   XOR;
+        EraseBuffer_t Erase;
     } Crypto;
 
     struct {
@@ -706,6 +706,13 @@ typedef struct {
     } Core;
 
     struct {
+        uint64 Version;
+        uint64 Hash;
+        uint64 Size;
+        uint64 Flags;
+    } Info;
+
+    struct {
         HANDLE Mutex;
     } Data;
 } Runtime_M;
@@ -745,7 +752,7 @@ typedef struct {
     // disable sysmon for implement single thread model.
     BOOL DisableSysmon;
 
-    // not erase runtime instructions after call Runtime_M.Exit
+    // not erase runtime instructions after call Runtime_M.Exit.
     BOOL NotEraseInstruction;
 
     // not adjust current memory page protect for initialize runtime.
