@@ -223,7 +223,7 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     uint16 decoySize = *(uint16*)(stub + off);
     off += sizeof(uint16);
     byte* decoyInst = (byte*)(stub + off);
-    XORBuf(decoyInst, decoySize, key, SHIELD_KEY_SIZE);
+    XORBuffer(decoyInst, decoySize, key, SHIELD_KEY_SIZE);
 
     // deploy shield
     if (context->ShieldModuleHash == 0)
@@ -239,18 +239,23 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
         shield->ShieldPage = addr;
         // copy shield to memory page
         void* entryPoint = (void*)((uintptr)addr + 256 + RandUintN(0, 1024));
-        XORBuf(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
+        XORBuffer(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
         mem_copy(entryPoint, shieldInst, shieldSize);
-        XORBuf(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
         shield->EntryPoint = entryPoint;
+        // erase or recover shield stub
+        if (context->NotEraseInstruction)
+        {
+            XORBuffer(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
+        } else {
+            EraseBuffer((void*)stub, SHIELD_STUB_SIZE); // TODO shift buffer ?
+        }
         // set status
         shield->status.EntryPoint  = entryPoint;
         shield->status.BaseAddress = addr;
         shield->status.IsAllocated = true;
     } else {
-        // find the target module and calculate  
+        // TODO find the target module and calculate
         // the pre-injected shield entry point
-        
 
 
         // set status
@@ -280,7 +285,8 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     // erase shield in stub after deploy
     if (!context->NotEraseInstruction)
     {
-        RandBuffer(shieldInst, shieldSize);
+        uint sz = (uint)1 + SHIELD_KEY_SIZE + 2 + shieldSize + 2;
+        EraseBuffer((void*)stub, sz);
     }
     // save status
     shield->DecoyAddr = decoyInst;
@@ -386,13 +392,13 @@ errno SD_Sleep(uint32 milliseconds)
     byte iv [CRYPTO_IV_SIZE];
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv,  CRYPTO_IV_SIZE);
-    EncryptBuf(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
+    EncryptBuffer(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
 
     // call shield stub
     sleep(&args);
 
     // decrypt main memory page
-    DecryptBuf(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
+    DecryptBuffer(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
     return NO_ERROR;
 }
 
@@ -421,11 +427,11 @@ void SD_Stop()
     typedef void (*Shield_Stop_t)(Stop_Args* args);
     Shield_Stop_t stop = shield->EntryPoint;
 
-    // must copy variables in Shield before call RandBuffer
+    // must copy variables in Shield before call EraseBuffer
     VirtualFree_t virtualFree = shield->VirtualFree;
     void* mmp = shield->MainMemPage;
     // release main memory page
-    RandBuffer(mmp, MAIN_MEM_PAGE_SIZE);
+    EraseBuffer(mmp, MAIN_MEM_PAGE_SIZE);
     virtualFree(mmp, 0, MEM_RELEASE);
 
     // TODO ROP VirtualFree and ExitThread
@@ -464,15 +470,10 @@ static errno cleanResource(Shield* shield)
         errno = ERR_SHIELD_CLOSE_TIMER;
     }
 
-    // encrypt decoy in stub again
+    // process decoy in stub
+    uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
     if (shield->NotEraseInstruction)
     {
-        // check stub is valid
-        uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
-        if (*(byte*)(stub) != SHIELD_STUB_MAGIC)
-        {
-            return ERR_SHIELD_INVALID_STUB;
-        }
         // prepare xor key
         byte*  key = (byte*)(stub + 1);
         uint16 off = 1 + SHIELD_KEY_SIZE;
@@ -484,7 +485,9 @@ static errno cleanResource(Shield* shield)
         uint16 decoySize = *(uint16*)(stub + off);
         off += sizeof(uint16);
         byte* decoyInst = (byte*)(stub + off);
-        XORBuf(decoyInst, decoySize, key, SHIELD_KEY_SIZE);
+        XORBuffer(decoyInst, decoySize, key, SHIELD_KEY_SIZE);
+    } else {
+        EraseBuffer((void*)stub, SHIELD_STUB_SIZE);
     }
     return errno;
 }
