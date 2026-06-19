@@ -42,6 +42,9 @@ typedef struct {
     // store options from InitRuntime argument
     Runtime_Opts Options;
 
+    // record runtime information
+    Runtime_Info Info;
+
     // process environment
     void* PEB;   // process environment block
     void* IMOML; // In-Memory order module list
@@ -148,6 +151,7 @@ void  RT_ExitProcess(UINT uExitCode);
 errno RT_SleepHR(DWORD dwMilliseconds);
 errno RT_Hide();
 errno RT_Recover();
+errno RT_GetInfo(Runtime_Info* info);
 errno RT_GetMetrics(Runtime_Metrics* metrics);
 errno RT_Cleanup();
 errno RT_Exit();
@@ -193,6 +197,7 @@ static bool  isValidArgumentStub();
 static void* getPEBAddress();
 static void* getIMOMLAddress(uintptr peb);
 static void* allocRuntimeMemPage(void* IMOML);
+static void  buildRuntimeInfo(Runtime* runtime);
 static void* calculateEpilogue();
 static bool  initRuntimeAPI(Runtime* runtime);
 static bool  adjustPageProtect(Runtime* runtime, DWORD* old);
@@ -284,6 +289,8 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
         opts = &opt;
     }
     runtime->Options = *opts;
+    // build runtime information
+    buildRuntimeInfo(runtime);
     // store process environment
     runtime->PEB   = PEB;
     runtime->IMOML = IMOML;
@@ -537,13 +544,16 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     module->Core.Sleep   = GetFuncAddr(&RT_SleepHR);
     module->Core.Hide    = GetFuncAddr(&RT_Hide);
     module->Core.Recover = GetFuncAddr(&RT_Recover);
+    module->Core.Info    = GetFuncAddr(&RT_GetInfo);
     module->Core.Metrics = GetFuncAddr(&RT_GetMetrics);
     module->Core.Cleanup = GetFuncAddr(&RT_Cleanup);
     module->Core.Exit    = GetFuncAddr(&RT_Exit);
     module->Core.Stop    = GetFuncAddr(&RT_Stop);
     // runtime info
-
-    module->Info.Flags = 0;
+    module->Info.Version = runtime->Info.Version;
+    module->Info.Hash    = runtime->Info.Hash;
+    module->Info.Size    = runtime->Info.Size;
+    module->Info.Flags   = runtime->Info.Flags;
     // runtime core data
     module->Data.Mutex = runtime->hMutex;
     return module;
@@ -649,6 +659,26 @@ static void* allocRuntimeMemPage(void* IMOML)
     RandBuffer(addr, (int64)size);
     dbg_log("[runtime]", "Main Memory Page: 0x%zX", addr);
     return addr;
+}
+
+static void buildRuntimeInfo(Runtime* runtime)
+{
+    Runtime_Info* info = &runtime->Info;
+
+    // calculate runtime .text size
+    uintptr begin = (uintptr)(GetFuncAddr(&InitRuntime));
+    uintptr end   = (uintptr)(GetFuncAddr(&Shield_Stub));
+    uintptr size  = end - begin;
+
+    // calculate runtime .text hash
+    // TODO sha256 and compare hash before init and after init
+
+
+    // update information fields
+    info->Version = RUNTIME_VERSION;
+    info->Hash    = 0;
+    info->Size    = size;
+    info->Flags   = 0;
 }
 
 static void* calculateEpilogue()
@@ -2056,6 +2086,7 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0x6D4433798536C490, 0x5C453B47673B57CC, 0x93836F9B160A8469, GetFuncAddr(&RT_GetPEB)                 },
         { 0xF25FE9947684FF1C, 0x286F34B40136641A, 0xDA4C40DA3D7DAE2C, GetFuncAddr(&RT_GetTEB)                 },
         { 0xA7D7243625100C78, 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetIMOML)               },
+        { 0x22B11BE6C537097F, 0xA83FF55FECA4B2D5, 0xC9C001C805631D08, GetFuncAddr(&RT_GetInfo)                },
         { 0x1942779A04B5511E, 0x3F0F1951378BA2D7, 0x3990B978D311CE13, GetFuncAddr(&RT_GetMetrics)             },
         { 0x7A14CE974C2FBB45, 0xB98129CF9127D736, 0x440466012518F4D3, GetFuncAddr(&RT_SleepHR)                },
         { 0x5CF5E9987810AD63, 0x7D7CFE6E023217B8, 0x51D583187BB49302, GetFuncAddr(&RT_ExitProcess)            },
@@ -2089,6 +2120,7 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0x1655EE6F, 0xC04FB496, 0x7EE9DDE8, GetFuncAddr(&RT_GetPEB)                 },
         { 0x4B62B8F1, 0x87C8028B, 0xD697CA60, GetFuncAddr(&RT_GetTEB)                 },
         { 0xE12D98E8, 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetIMOML)               },
+        { 0x45460AF7, 0x41205F31, 0x2E96AC51, GetFuncAddr(&RT_GetInfo)                },
         { 0xAE398258, 0xD731BCE7, 0x1E7A2A1A, GetFuncAddr(&RT_GetMetrics)             },
         { 0x0D56A3D5, 0x293D175E, 0xE6C8C8D5, GetFuncAddr(&RT_SleepHR)                },
         { 0x29542BFC, 0xC661D6AC, 0x844DD401, GetFuncAddr(&RT_ExitProcess)            },
@@ -2577,6 +2609,25 @@ errno RT_Recover()
         return ERR_RUNTIME_UNLOCK;
     }
     return err;
+}
+
+__declspec(noinline)
+errno RT_GetInfo(Runtime_Info* info)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    if (!rt_lock())
+    {
+        return ERR_RUNTIME_LOCK;
+    }
+
+    *info = runtime->Info;
+
+    if (!rt_unlock())
+    {
+        return ERR_RUNTIME_UNLOCK;
+    }
+    return NO_ERROR;
 }
 
 __declspec(noinline)
