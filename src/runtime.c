@@ -489,8 +489,8 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     module->Random.Buffer   = GetFuncAddr(&RandBuffer);
     module->Random.Sequence = GetFuncAddr(&RandSequence);
     // crypto module
-    module->Crypto.Encrypt = GetFuncAddr(&EncryptBuf);
-    module->Crypto.Decrypt = GetFuncAddr(&DecryptBuf);
+    module->Crypto.XOR   = GetFuncAddr(&XORBuffer);
+    module->Crypto.Erase = GetFuncAddr(&EraseBuffer);
     // compress module
     module->Compressor.Compress   = GetFuncAddr(&Compress);
     module->Compressor.Decompress = GetFuncAddr(&Decompress);
@@ -541,6 +541,9 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     module->Core.Cleanup = GetFuncAddr(&RT_Cleanup);
     module->Core.Exit    = GetFuncAddr(&RT_Exit);
     module->Core.Stop    = GetFuncAddr(&RT_Stop);
+    // runtime info
+
+    module->Info.Flags = 0;
     // runtime core data
     module->Data.Mutex = runtime->hMutex;
     return module;
@@ -555,7 +558,7 @@ static bool isValidArgumentStub()
     mem_copy(header, (byte*)stub, sizeof(header));
     byte* buf = header + ARG_CRYPTO_KEY_SIZE;
     uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
     // check the number of argument
     uint16 numArgs  = *(uint16*)(header + ARG_OFFSET_NUM_ARGS);
     uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
@@ -592,7 +595,7 @@ static uint32 calcArgumentStubSize()
     mem_copy(header, (byte*)stub, sizeof(header));
     byte* buf = header + ARG_CRYPTO_KEY_SIZE;
     uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
     uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
     return ARG_HEADER_SIZE + argsSize;
 }
@@ -1350,7 +1353,7 @@ static void eraseArgumentStub(Runtime* runtime)
     }
     uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
     uint32  size = calcArgumentStubSize();
-    RandBuffer((byte*)stub, size);
+    EraseBuffer((byte*)stub, size);
 }
 
 __declspec(noinline)
@@ -1940,7 +1943,7 @@ void* RT_GetProcAddressByName(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
             L'd'^0xA3EB, L'l'^0xCD20, L'l'^0x67F4, 0000^0x19B2,
         };
         uint16 key[] = { 0xA3EB, 0xCD20, 0x67F4, 0x19B2 };
-        XORBuf(mod, sizeof(mod), key, sizeof(key));
+        XORBuffer(mod, sizeof(mod), key, sizeof(key));
         mem_copy(module, mod, sizeof(mod));
     } else {
         if (GetModuleFileName(runtime->IMOML, hModule, module, sizeof(module)) == 0)
@@ -2038,6 +2041,7 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
     Detector_M*        DT = runtime->Detector;
     Watchdog_M*        WD = runtime->Watchdog;
     Sysmon_M*          SM = runtime->Sysmon;
+    Shield_M*          SD = runtime->Shield;
 
     typedef struct {
         uint mHash; uint pHash; uint hKey; void* method;
@@ -2074,6 +2078,7 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0xE24990F5D9ECC90E, 0xA203A663F5364056, 0xDE186C4522AF6A07, WD->IsEnabled  }, // WD_IsEnabled
         { 0x0D76A695E8206CC4, 0xBBAECC7687F42C00, 0xCBEC3C2610B77733, WD->GetStatus  }, // WD_Status
         { 0x93981B1E2C294E7D, 0x875CE09ECE01D337, 0x437686381E0B5F7B, SM->GetStatus  }, // SM_Status
+        { 0xF2B97A37A9F42F6C, 0x6B8B3965E7502E5A, 0x08F4BA5980133548, SD->GetStatus  }, // SD_Status
     };
 #elif _WIN32
     {
@@ -2106,6 +2111,7 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0x901B44AD, 0x219D299A, 0xBFCD277B, WD->IsEnabled  }, // WD_IsEnabled
         { 0x8F5FA00C, 0x39DED160, 0x0134B86F, WD->GetStatus  }, // WD_Status
         { 0x18F200E3, 0x7DD1B99E, 0x7F4B2915, SM->GetStatus  }, // SM_Status
+        { 0xB2C9668C, 0xD78DECB9, 0xFF2DA0F1, SD->GetStatus  }, // SD_Status
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
@@ -2611,6 +2617,10 @@ errno RT_GetMetrics(Runtime_Metrics* metrics)
     if (!runtime->Sysmon->GetStatus(&metrics->Sysmon))
     {
         errno = ERR_RUNTIME_GET_STATUS_SYSMON;
+    }
+    if (!runtime->Shield->GetStatus(&metrics->Shield))
+    {
+        errno = ERR_RUNTIME_GET_STATUS_SHIELD;
     }
 
     if (!rt_unlock())
