@@ -24,13 +24,13 @@ func dump(arch string) {
 	inst, err := os.ReadFile(fmt.Sprintf("shield_%s.bin", arch))
 	checkError(err)
 
-	template := make([]byte, shield.StubSize)
+	template := make([]byte, shield.StubSize+shield.StubSuffix)
 	template[0] = shield.StubMagic
 	stub, err := shield.Set(template, inst, decoy)
 	checkError(err)
 
 	path := fmt.Sprintf("../asm/inst/shield_%s.inst", arch)
-	data := dumpBytesHex(stub)
+	data := dumpBytesHex(stub[:shield.StubSize])
 	err = os.WriteFile(path, data, 0644)
 	checkError(err)
 
