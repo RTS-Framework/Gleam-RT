@@ -8,6 +8,9 @@
 #include "hash_api.h"
 #include "errno.h"
 
+// 0x000901 means v0.9.1
+#define RUNTIME_VERSION 0x000901
+
 // about runtime options at the template tail.
 // 
 // +------------+---------+---------+---------+---------+
@@ -456,6 +459,14 @@ typedef void* (*GetIMOML_t)(); // get stored InMemoryOrderModuleList address
 // 
 // Stop is same as Exit, but it will exit current thread after exit,
 // it can erase the instruction from BootAddress to runtime epilogue.
+
+typedef struct {
+    uint64 Version;
+    uint64 Hash;
+    uint64 Size;
+    uint64 Flags;
+} Runtime_Info;
+
 typedef struct {
     LT_Status Library;
     MT_Status Memory;
@@ -470,6 +481,7 @@ typedef struct {
 typedef errno (*RTSleepHR_t)(uint32 milliseconds);
 typedef errno (*RTHide_t)();
 typedef errno (*RTRecover_t)();
+typedef errno (*RTInfo_t)(Runtime_Info* info);
 typedef errno (*RTMetrics_t)(Runtime_Metrics* metrics);
 typedef errno (*RTCleanup_t)();
 typedef errno (*RTExit_t)();
@@ -699,6 +711,7 @@ typedef struct {
         RTSleepHR_t Sleep;
         RTHide_t    Hide;
         RTRecover_t Recover;
+        RTInfo_t    Info;
         RTMetrics_t Metrics;
         RTCleanup_t Cleanup;
         RTExit_t    Exit;
