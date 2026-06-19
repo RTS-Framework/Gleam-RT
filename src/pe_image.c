@@ -18,7 +18,7 @@ void ParsePEImage(void* address, PE_Image* image)
         't'^0x19, 000^0xF4, 000^0xBF, 000^0x8C,
     };
     byte key[] = { 0x19, 0xF4, 0xBF, 0x8C };
-    XORBuf(target, sizeof(target), key, sizeof(key));
+    XORBuffer(target, sizeof(target), key, sizeof(key));
     // get address of first section header
     uintptr fileAddr = imageAddr + hdrOffset + sizeof(ntHeaders->Signature);
     uintptr optAddr  = fileAddr + sizeof(Image_FileHeader);
