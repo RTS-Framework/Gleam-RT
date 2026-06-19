@@ -192,8 +192,8 @@ type RuntimeM struct {
 	}
 
 	Crypto struct {
-		Encrypt uintptr
-		Decrypt uintptr
+		XOR   uintptr
+		Erase uintptr
 	}
 
 	Compressor struct {
@@ -269,6 +269,13 @@ type RuntimeM struct {
 		Cleanup uintptr
 		Exit    uintptr
 		Stop    uintptr
+	}
+
+	Info struct {
+		Version uint64
+		Hash    uint64
+		Size    uint64
+		Flags   uint64
 	}
 
 	Data struct {
