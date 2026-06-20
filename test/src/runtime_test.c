@@ -137,7 +137,7 @@ static void* calcEpilogue()
     mem_copy(header, (byte*)stub, sizeof(header));
     byte* buf = header + ARG_CRYPTO_KEY_SIZE;
     uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
     uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
     return (void*)(stub + ARG_HEADER_SIZE + argsSize);
 }
