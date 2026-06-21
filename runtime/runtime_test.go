@@ -19,6 +19,8 @@ import (
 	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
+const testVersion = "v0.9.1"
+
 var (
 	testTemplateX86 []byte
 	testTemplateX64 []byte
@@ -66,6 +68,13 @@ func TestRuntime(t *testing.T) {
 		require.NoError(t, err)
 
 		require.GreaterOrEqual(t, time.Since(now).Milliseconds(), int64(1000))
+	})
+
+	t.Run("Information", func(t *testing.T) {
+		info, err := Runtime.Information()
+		require.NoError(t, err)
+		spew.Dump(info)
+		require.Equal(t, testVersion, info.Version)
 	})
 
 	t.Run("Metrics", func(t *testing.T) {
