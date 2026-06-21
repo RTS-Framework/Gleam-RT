@@ -241,6 +241,12 @@ func TestGetIMOML(t *testing.T) {
 	})
 }
 
+func TestGetInfo(t *testing.T) {
+	info, err := GetInfo()
+	require.NoError(t, err)
+	spew.Dump(info)
+}
+
 func TestGetMetrics(t *testing.T) {
 	metrics, err := GetMetrics()
 	require.NoError(t, err)
