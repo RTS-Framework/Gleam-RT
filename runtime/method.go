@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/RTS-Framework/GRT-Develop/info"
 	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
@@ -31,6 +32,7 @@ var (
 	procGetTEB   = modGleamRT.NewProc("RT_GetTEB")
 	procGetIMOML = modGleamRT.NewProc("RT_GetIMOML")
 
+	procGetInfo    = modGleamRT.NewProc("RT_GetInfo")
 	procGetMetrics = modGleamRT.NewProc("RT_GetMetrics")
 	procSleep      = modGleamRT.NewProc("RT_Sleep")
 
@@ -129,6 +131,16 @@ func GetTEB() uintptr {
 func GetIMOML() uintptr {
 	ret, _, _ := procGetIMOML.Call()
 	return ret
+}
+
+// GetInfo is used to get runtime information.
+func GetInfo() (*Info, error) {
+	var inf info.Info
+	ret, _, _ := procGetInfo.Call(uintptr(unsafe.Pointer(&inf))) // #nosec
+	if ret != windows.NO_ERROR {
+		return nil, fmt.Errorf("failed to call GetInfo: 0x%08X", ret)
+	}
+	return ConvertRawInfo(&inf), nil
 }
 
 // GetMetrics is used to get runtime metrics.
