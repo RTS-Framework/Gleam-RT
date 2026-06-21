@@ -10,6 +10,7 @@ EXPORTS
     RT_GetPEB                 = RT_GetPEB
 	RT_GetTEB                 = RT_GetTEB
 	RT_GetIMOML               = RT_GetIMOML
+	RT_GetInfo                = RT_GetInfo
 	RT_GetMetrics             = RT_GetMetrics
 	RT_Sleep                  = RT_SleepHR
 	RT_ExitProcess            = RT_ExitProcess
