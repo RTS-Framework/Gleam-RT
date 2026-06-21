@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/RTS-Framework/GRT-Develop/info"
 	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
@@ -265,6 +266,7 @@ type RuntimeM struct {
 		Sleep   uintptr
 		Hide    uintptr
 		Recover uintptr
+		Info    uintptr
 		Metrics uintptr
 		Cleanup uintptr
 		Exit    uintptr
@@ -274,8 +276,8 @@ type RuntimeM struct {
 	Info struct {
 		Version uint64
 		Hash    uint64
-		Size    uint64
-		Flags   uint64
+		Size    uint32
+		Flags   uint32
 	}
 
 	Data struct {
@@ -328,6 +330,18 @@ func (rt *RuntimeM) Sleep(d time.Duration) error {
 		return &errno{method: "Core.Sleep", errno: ret}
 	}
 	return nil
+}
+
+// Information is used to get runtime information.
+func (rt *RuntimeM) Information() (*Info, error) {
+	rt.lock()
+	defer rt.unlock()
+	inf := info.Info{}
+	ret, _, _ := syscall.SyscallN(rt.Core.Info, uintptr(unsafe.Pointer(&inf))) // #nosec
+	if ret != noError {
+		return nil, &errno{method: "Core.Info", errno: ret}
+	}
+	return ConvertRawInfo(&inf), nil
 }
 
 // Metrics is used to get runtime metric about core modules.
