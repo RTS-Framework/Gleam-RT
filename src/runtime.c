@@ -4,6 +4,7 @@
 #include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "lib_string.h"
+#include "lib_algo.h"
 #include "rel_addr.h"
 #include "hash_api.h"
 #include "random.h"
@@ -378,7 +379,18 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
         SetLastErrno(errno);
         return NULL;
     }
-    // create methods for Runtime
+    // compare the hash after initialized.
+    if (opts->NotEraseInstruction)
+    {
+        byte hash[32];
+        mem_copy(hash, runtime->Info.Hash, sizeof(hash));
+        buildRuntimeInfo(runtime);
+        if (!mem_equal(hash, runtime->Info.Hash, sizeof(hash)))
+        {
+            // TODO panic(PANIC_UNREACHABLE_CODE);
+        }
+    }
+    // create methods for runtime
     Runtime_M* module = (Runtime_M*)moduleAddr;
     // hash api
     module->HashAPI.FindAPI    = GetFuncAddr(&RT_FindAPI);
@@ -549,11 +561,6 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     module->Core.Cleanup = GetFuncAddr(&RT_Cleanup);
     module->Core.Exit    = GetFuncAddr(&RT_Exit);
     module->Core.Stop    = GetFuncAddr(&RT_Stop);
-    // runtime info
-    module->Info.Version = runtime->Info.Version;
-    module->Info.Hash    = runtime->Info.Hash;
-    module->Info.Size    = runtime->Info.Size;
-    module->Info.Flags   = runtime->Info.Flags;
     // runtime core data
     module->Data.Mutex = runtime->hMutex;
     return module;
@@ -671,13 +678,14 @@ static void buildRuntimeInfo(Runtime* runtime)
     uintptr size  = end - begin;
 
     // calculate runtime .text hash
-    // TODO sha256 and compare hash before init and after init
-
+    SHA256_Ctx ctx;
+    SHA256_Init(&ctx);
+    SHA256_Write(&ctx, (byte*)begin, size);
+    SHA256_Sum(&ctx, &info->Hash);
 
     // update information fields
     info->Version = RUNTIME_VERSION;
-    info->Hash    = 0;
-    info->Size    = size;
+    info->Size    = (uint32)size;
     info->Flags   = 0;
 }
 
