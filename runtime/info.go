@@ -1,7 +1,9 @@
 package gleamrt
 
 import (
+	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/RTS-Framework/GRT-Develop/info"
 )
@@ -9,7 +11,7 @@ import (
 // Info contains runtime information.
 type Info struct {
 	Version string `json:"version"`
-	Hash    uint64 `json:"hash"`
+	Hash    string `json:"hash"`
 	Size    int    `json:"size"`
 	Flags   uint32 `json:"flags"`
 }
@@ -20,10 +22,11 @@ func ConvertRawInfo(info *info.Info) *Info {
 	a := int((ver >> 16) & 0xFF)
 	b := int((ver >> 8) & 0xFF)
 	c := int((ver >> 0) & 0xFF)
-	vs := fmt.Sprintf("v%d.%d.%d", a, b, c)
+	version := fmt.Sprintf("v%d.%d.%d", a, b, c)
+	hash := strings.ToUpper(hex.EncodeToString(info.Hash[:]))
 	return &Info{
-		Version: vs,
-		Hash:    info.Hash,
+		Version: version,
+		Hash:    hash,
 		Size:    int(info.Size),
 		Flags:   info.Flags,
 	}
