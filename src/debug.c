@@ -41,13 +41,28 @@ bool InitDebugger()
 }
 
 __declspec(noinline)
-void dbg_log(char* mod, char* fmt, ...)
+void dbg_lock()
 {
     DWORD event = dbg_WaitForSingleObject(dbg_hMutex, INFINITE);
     if (event != WAIT_OBJECT_0 && event != WAIT_ABANDONED)
     {
-        return;
+        panic(PANIC_UNREACHABLE_CODE);
     }
+}
+
+__declspec(noinline)
+void dbg_unlock()
+{
+    if (!dbg_ReleaseMutex(dbg_hMutex))
+    {
+        panic(PANIC_UNREACHABLE_CODE);
+    }
+}
+
+__declspec(noinline)
+void dbg_log(char* mod, char* fmt, ...)
+{
+    dbg_lock();
 
     va_list args;
     va_start(args, fmt);
@@ -58,7 +73,7 @@ void dbg_log(char* mod, char* fmt, ...)
 
     va_end(args);
 
-    dbg_ReleaseMutex(dbg_hMutex);
+    dbg_unlock();
 }
 
 #endif
