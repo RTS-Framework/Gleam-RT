@@ -273,13 +273,6 @@ type RuntimeM struct {
 		Stop    uintptr
 	}
 
-	Info struct {
-		Version uint64
-		Hash    uint64
-		Size    uint32
-		Flags   uint32
-	}
-
 	Data struct {
 		Mutex uintptr
 	}
