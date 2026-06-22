@@ -462,9 +462,9 @@ typedef void* (*GetIMOML_t)(); // get stored InMemoryOrderModuleList address
 
 typedef struct {
     uint64 Version;
-    uint64 Hash;
-    uint64 Size;
-    uint64 Flags;
+    byte   Hash[32];
+    uint32 Size;
+    uint32 Flags;
 } Runtime_Info;
 
 typedef struct {
@@ -717,13 +717,6 @@ typedef struct {
         RTExit_t    Exit;
         RTStop_t    Stop;
     } Core;
-
-    struct {
-        uint64 Version;
-        uint64 Hash;
-        uint64 Size;
-        uint64 Flags;
-    } Info;
 
     struct {
         HANDLE Mutex;
