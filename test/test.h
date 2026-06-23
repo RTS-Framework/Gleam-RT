@@ -13,7 +13,8 @@ Runtime_M* runtime;
 bool TestLibMemory();
 bool TestLibString();
 bool TestLibMatch();
-bool TestLibAlgo();
+bool TestLibEncode();
+bool TestLibHash();
 bool TestRandom();
 bool TestCrypto();
 bool TestCompress();
@@ -45,7 +46,8 @@ static unit tests[] =
     { "Lib_Memory",  TestLibMemory  },
     { "Lib_String",  TestLibString  },
     { "Lib_Match",   TestLibMatch   },
-    { "Lib_Algo",    TestLibAlgo    },
+    { "Lib_Encode",  TestLibEncode  },
+    { "Lib_Hash",    TestLibHash    },
     { "Random",      TestRandom     },
     { "Crypto",      TestCrypto     },
     { "Compress",    TestCompress   },
