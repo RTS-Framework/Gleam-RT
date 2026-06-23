@@ -1,5 +1,5 @@
-#ifndef LIB_ALGO_H
-#define LIB_ALGO_H
+#ifndef LIB_HASH_H
+#define LIB_HASH_H
 
 #include "c_types.h"
 
@@ -14,7 +14,4 @@ void SHA256_Init(SHA256_Ctx* ctx);
 void SHA256_Write(SHA256_Ctx* ctx, void* data, uint len);
 void SHA256_Sum(SHA256_Ctx* ctx, byte (*hash)[32]);
 
-uint Hex_Encode(void* src, uint len, byte* dst);
-uint Hex_Decode(byte* src, uint len, void* dst);
-
-#endif // LIB_ALGO_H
+#endif // LIB_HASH_H
