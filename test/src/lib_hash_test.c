@@ -2,18 +2,16 @@
 #include "c_types.h"
 #include "lib_memory.h"
 #include "lib_string.h"
-#include "lib_algo.h"
+#include "lib_hash.h"
 #include "test.h"
 
-static bool TestLibAlgo_SHA256();
-static bool TestLibAlgo_Hex();
+static bool TestLibHash_SHA256();
 
-bool TestLibAlgo()
+bool TestLibHash()
 {
     test_t tests[] = 
     {
-        { TestLibAlgo_SHA256 },
-        { TestLibAlgo_Hex    },
+        { TestLibHash_SHA256 },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -27,7 +25,7 @@ bool TestLibAlgo()
     return true;
 }
 
-static bool TestLibAlgo_SHA256()
+static bool TestLibHash_SHA256()
 {
     byte data[] = { 1, 2, 3, 4 };
 
@@ -53,39 +51,5 @@ static bool TestLibAlgo_SHA256()
     }
 
     printf_s("test SHA256 passed\n");
-    return true;
-}
-
-static bool TestLibAlgo_Hex()
-{
-    byte data[] = { 0x12, 0x34, 0xAB, 0xCD };
-
-    byte buf[9];
-    mem_init(buf, sizeof(buf));
-
-    uint len = Hex_Encode(data, sizeof(data), buf);
-    if (len != 8)
-    {
-        printf_s("invalid encode length\n");
-        return false;
-    }
-    if (strcmp_a("1234ABCD", buf) != 0)
-    {
-        printf_s("invalid encode data\n");
-        return false;
-    }
-
-    ANSI str = "1234AbCD";
-    len = Hex_Decode(str, strlen_a(str), buf);
-    if (len != 4)
-    {
-        printf_s("invalid decode length\n");
-        return false;
-    }
-    if (!mem_equal(buf, data, sizeof(data)))
-    {
-        printf_s("invalid decode data\n");
-        return false;
-    }
     return true;
 }
