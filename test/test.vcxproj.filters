@@ -185,10 +185,16 @@
     <ClCompile Include="..\src\hash_mod.c">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\lib_algo.c">
+    <ClCompile Include="..\src\lib_hash.c">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="src\lib_algo_test.c">
+    <ClCompile Include="src\lib_hash_test.c">
+      <Filter>Test</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\lib_encode.c">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="src\lib_encode_test.c">
       <Filter>Test</Filter>
     </ClCompile>
   </ItemGroup>
@@ -334,7 +340,10 @@
     <ClInclude Include="..\include\ptr_table.h">
       <Filter>Header</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\lib_algo.h">
+    <ClInclude Include="..\include\lib_hash.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\lib_encode.h">
       <Filter>Header</Filter>
     </ClInclude>
   </ItemGroup>

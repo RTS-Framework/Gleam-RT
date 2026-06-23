@@ -26,7 +26,8 @@
     <ClInclude Include="..\include\lib_memory.h" />
     <ClInclude Include="..\include\lib_string.h" />
     <ClInclude Include="..\include\lib_match.h" />
-    <ClInclude Include="..\include\lib_algo.h" />
+    <ClInclude Include="..\include\lib_encode.h" />
+    <ClInclude Include="..\include\lib_hash.h" />
     <ClInclude Include="..\include\rel_addr.h" />
     <ClInclude Include="..\include\hash_api.h" />
     <ClInclude Include="..\include\hash_mod.h" />
@@ -65,7 +66,8 @@
     <ClCompile Include="src\lib_memory_test.c" />
     <ClCompile Include="src\lib_string_test.c" />
     <ClCompile Include="src\lib_match_test.c" />
-    <ClCompile Include="src\lib_algo_test.c" />
+    <ClCompile Include="src\lib_encode_test.c" />
+    <ClCompile Include="src\lib_hash_test.c" />
     <ClCompile Include="src\random_test.c" />
     <ClCompile Include="src\crypto_test.c" />
     <ClCompile Include="src\compress_test.c" />
@@ -89,7 +91,8 @@
     <ClCompile Include="..\src\lib_memory.c" />
     <ClCompile Include="..\src\lib_string.c" />
     <ClCompile Include="..\src\lib_match.c" />
-    <ClCompile Include="..\src\lib_algo.c" />
+    <ClCompile Include="..\src\lib_encode.c" />
+    <ClCompile Include="..\src\lib_hash.c" />
     <ClCompile Include="..\src\rel_addr.c" />
     <ClCompile Include="..\src\hash_api.c" />
     <ClCompile Include="..\src\hash_mod.c" />
