@@ -183,6 +183,28 @@ static bool TestLibEncode_Base64()
         return false;
     }
 
+    // round trip.
+    byte data4[256];
+    mem_init(data4, sizeof(data4));
+    for (uint i = 0; i < sizeof(data4); i++)
+    {
+        data4[i] = (byte)i;
+    }
+    byte enc[512];
+    byte dec[256];
+    uint encLen = Base64_Encode(data4, sizeof(data4), enc);
+    uint decLen = Base64_Decode(enc, encLen, dec);
+    if (decLen != sizeof(data4))
+    {
+        printf_s("invalid round trip length\n");
+        return false;
+    }
+    if (!mem_equal(data4, dec, sizeof(data4)))
+    {
+        printf_s("invalid round trip data\n");
+        return false;
+    }
+
     printf_s("test Base64 passed\n");
     return true;
 }
