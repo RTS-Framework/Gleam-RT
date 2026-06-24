@@ -32,7 +32,13 @@ static bool TestLibEncode_Hex()
     byte buf[9];
     mem_init(buf, sizeof(buf));
 
-    uint len = Hex_Encode(data, sizeof(data), buf);
+    uint len = Hex_Encode(data, sizeof(data), NULL);
+    if (len != 8)
+    {
+        printf_s("invalid encode length\n");
+        return false;
+    }
+    len = Hex_Encode(data, sizeof(data), buf);
     if (len != 8)
     {
         printf_s("invalid encode length\n");
@@ -45,6 +51,12 @@ static bool TestLibEncode_Hex()
     }
 
     ANSI str = "1234AbCD";
+    len = Hex_Decode(str, strlen_a(str), NULL);
+    if (len != 4)
+    {
+        printf_s("invalid decode length\n");
+        return false;
+    }
     len = Hex_Decode(str, strlen_a(str), buf);
     if (len != 4)
     {
@@ -54,6 +66,14 @@ static bool TestLibEncode_Hex()
     if (!mem_equal(buf, data, sizeof(data)))
     {
         printf_s("invalid decode data\n");
+        return false;
+    }
+
+    ANSI invalid = "invalid";
+    len = Hex_Decode(invalid, strlen_a(invalid), buf);
+    if (len != -1)
+    {
+        printf_s("invalid decode length\n");
         return false;
     }
 
