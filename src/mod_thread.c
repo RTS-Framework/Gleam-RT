@@ -452,7 +452,7 @@ HANDLE tt_createThread(
         }
 
         // use "mem_init" for prevent incorrect compiler
-        // optimize and generate incorrect shellcode
+        // optimize and generate incorrect template
         CONTEXT ctx;
         mem_init(&ctx, sizeof(CONTEXT));
 
@@ -577,6 +577,7 @@ DWORD TT_SuspendThread(HANDLE hThread)
     {
         return (DWORD)(-1);
     }
+    dbg_lock();
 
     DWORD count = tracker->SuspendThread(hThread);
     if (count != (DWORD)(-1))
@@ -594,6 +595,7 @@ DWORD TT_SuspendThread(HANDLE hThread)
     }
     dbg_log("[thread]", "SuspendThread: 0x%zX", hThread);
 
+    dbg_unlock();
     if (tracker->RT_UnlockMods() != NO_ERROR)
     {
         return (DWORD)(-1);
@@ -1107,7 +1109,7 @@ errno TT_Suspend()
     byte* iv   = tracker->ThreadsIV;
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv, CRYPTO_IV_SIZE);
-    EncryptBuf(list->Data, List_Size(list), key, iv);
+    EncryptBuffer(list->Data, List_Size(list), key, iv);
 
     // encrypt TLS slot index list
     list = &tracker->TLSIndex;
@@ -1115,7 +1117,7 @@ errno TT_Suspend()
     iv   = tracker->TLSIndexIV;
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv, CRYPTO_IV_SIZE);
-    EncryptBuf(list->Data, List_Size(list), key, iv);
+    EncryptBuffer(list->Data, List_Size(list), key, iv);
     return errno;
 }
 
@@ -1134,13 +1136,13 @@ errno TT_Resume()
     List* list = &tracker->Threads;
     byte* key  = tracker->ThreadsKey;
     byte* iv   = tracker->ThreadsIV;
-    DecryptBuf(list->Data, List_Size(list), key, iv);
+    DecryptBuffer(list->Data, List_Size(list), key, iv);
 
     // decrypt TLS slot index list
     list = &tracker->TLSIndex;
     key  = tracker->TLSIndexKey;
     iv   = tracker->TLSIndexIV;
-    DecryptBuf(list->Data, List_Size(list), key, iv);
+    DecryptBuffer(list->Data, List_Size(list), key, iv);
 
     List* threads = &tracker->Threads;
     errno errno   = NO_ERROR;

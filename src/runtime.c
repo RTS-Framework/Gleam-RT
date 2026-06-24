@@ -4,7 +4,8 @@
 #include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "lib_string.h"
-#include "lib_algo.h"
+#include "lib_encode.h"
+#include "lib_hash.h"
 #include "rel_addr.h"
 #include "hash_api.h"
 #include "random.h"
@@ -1774,6 +1775,7 @@ errno RT_lock_mods()
             errno = list[i].errno;
         }
     }
+    dbg_lock();
     return errno;
 }
 
@@ -1809,6 +1811,7 @@ errno RT_unlock_mods()
             errno = list[i].errno;
         }
     }
+    dbg_unlock();
     return errno;
 }
 
