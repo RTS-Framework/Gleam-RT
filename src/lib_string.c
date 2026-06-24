@@ -84,8 +84,7 @@ int strcmp_w(UTF16 a, UTF16 b)
         if (s0 > s1)
         {
             return 1;
-        } else
-        {
+        } else {
             return -1;
         }
     }
@@ -138,8 +137,7 @@ int strncmp_w(UTF16 a, UTF16 b, int64 n)
         if (s0 > s1)
         {
             return 1;
-        } else
-        {
+        } else {
             return -1;
         }
     }
@@ -192,8 +190,7 @@ int stricmp_w(UTF16 a, UTF16 b)
         if (s0 > s1)
         {
             return 1;
-        } else
-        {
+        } else {
             return -1;
         }
     }
@@ -246,8 +243,7 @@ int strnicmp_w(UTF16 a, UTF16 b, int64 n)
         if (s0 > s1)
         {
             return 1;
-        } else
-        {
+        } else {
             return -1;
         }
     }
