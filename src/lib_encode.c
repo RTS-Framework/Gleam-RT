@@ -6,6 +6,10 @@ static int  Hex_value(byte s);
 
 uint Hex_Encode(void* src, uint len, byte* dst)
 {
+    if (dst == NULL)
+    {
+        return len * 2;
+    }
     byte* buf = (byte*)src;
     for (uint i = 0; i < len; i++)
     {
@@ -30,7 +34,11 @@ uint Hex_Decode(byte* src, uint len, void* dst)
 {
     if (len & 1)
     {
-        return 0;
+        return (uint)(-1);
+    }
+    if (dst == NULL)
+    {
+        return len / 2;
     }
     byte* buf = (byte*)dst;
     for (uint i = 0; i < len; i += 2)
@@ -39,7 +47,7 @@ uint Hex_Decode(byte* src, uint len, void* dst)
         int l = Hex_value(src[i + 1]);
         if (h < 0 || l < 0)
         {
-            return 0;
+            return (uint)(-1);
         }
         buf[i / 2] = (byte)(h * 16 + l);
     }
