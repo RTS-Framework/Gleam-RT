@@ -661,7 +661,7 @@ errno IMS_Encrypt()
         }
         RandBuffer(item->key, CRYPTO_KEY_SIZE);
         RandBuffer(item->iv, CRYPTO_IV_SIZE);
-        EncryptBuf(item->data, item->size, item->key, item->iv);
+        EncryptBuffer(item->data, item->size, item->key, item->iv);
         num++;
     }
 
@@ -670,7 +670,7 @@ errno IMS_Encrypt()
     byte* iv  = storage->ItemsIV;
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv, CRYPTO_IV_SIZE);
-    EncryptBuf(items->Data, List_Size(items), key, iv);
+    EncryptBuffer(items->Data, List_Size(items), key, iv);
 
     dbg_log("[storage]", "items: %zu", items->Len);
     return NO_ERROR;
@@ -686,7 +686,7 @@ errno IMS_Decrypt()
     // decrypt list
     byte* key = storage->ItemsKey;
     byte* iv  = storage->ItemsIV;
-    DecryptBuf(items->Data, List_Size(items), key, iv);
+    DecryptBuffer(items->Data, List_Size(items), key, iv);
 
     // decrypt items
     uint len = items->Len;
@@ -698,7 +698,7 @@ errno IMS_Decrypt()
         {
             continue;
         }
-        DecryptBuf(item->data, item->size, item->key, item->iv);
+        DecryptBuffer(item->data, item->size, item->key, item->iv);
         num++;
     }
 

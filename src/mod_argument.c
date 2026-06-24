@@ -212,7 +212,7 @@ static errno loadArguments(ArgumentStore* store, Context* context)
     mem_copy(header, (byte*)stub, sizeof(header));
     byte* buf = header + ARG_CRYPTO_KEY_SIZE;
     uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuf(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
     uint16 num  = *(uint16*)(header + ARG_OFFSET_NUM_ARGS);
     uint32 size = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
     // check the number of arguments
@@ -288,7 +288,7 @@ static errno loadArguments(ArgumentStore* store, Context* context)
     // erase argument stub after decrypt
     if (!context->NotEraseInstruction)
     {
-        RandBuffer((byte*)stub, ARG_HEADER_SIZE + size);
+        EraseBuffer((byte*)stub, ARG_HEADER_SIZE + size);
     }
     dbg_log("[argument]", "mem page: 0x%zX", store->Address);
     dbg_log("[argument]", "num args: %zu", store->NumArgs);
@@ -323,7 +323,7 @@ static void cleanStore(ArgumentStore* store)
 {
     if (store->Address != NULL)
     {
-        RandBuffer(store->Address, (int64)(store->Size));
+        EraseBuffer(store->Address, (int64)(store->Size));
     }
     if (store->VirtualFree != NULL && store->Address != NULL)
     {
@@ -482,7 +482,7 @@ BOOL AS_Erase(uint32 id)
         // write the erased flag
         *erased = true;
         // erase argument data
-        RandBuffer(addr + OFFSET_ARGUMENT_DATA, (int64)asz);
+        EraseBuffer(addr + OFFSET_ARGUMENT_DATA, (int64)asz);
         found = true;
         break;
     }
@@ -515,7 +515,7 @@ void AS_EraseAll()
             // write the erased flag
             *erased = true;
             // erase argument data
-            RandBuffer(addr + OFFSET_ARGUMENT_DATA, (int64)asz);
+            EraseBuffer(addr + OFFSET_ARGUMENT_DATA, (int64)asz);
         }
         addr += OFFSET_ARGUMENT_DATA + asz;
     }
@@ -549,7 +549,7 @@ errno AS_Encrypt()
     byte* iv  = store->IV;
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv, CRYPTO_IV_SIZE);
-    EncryptBuf(store->Address, store->Size, key, iv);
+    EncryptBuffer(store->Address, store->Size, key, iv);
     return NO_ERROR;
 }
 
@@ -560,7 +560,7 @@ errno AS_Decrypt()
 
     byte* key = store->Key;
     byte* iv  = store->IV;
-    DecryptBuf(store->Address, store->Size, key, iv);
+    DecryptBuffer(store->Address, store->Size, key, iv);
     return NO_ERROR;
 }
 
@@ -570,7 +570,7 @@ errno AS_Clean()
     ArgumentStore* store = getStorePointer();
 
     // erase all arguments
-    RandBuffer(store->Address, store->Size);
+    EraseBuffer(store->Address, store->Size);
 
     errno errno = NO_ERROR;
 

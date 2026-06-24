@@ -2666,21 +2666,21 @@ errno MT_Encrypt()
     byte* iv   = tracker->RegionsIV;
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv, CRYPTO_IV_SIZE);
-    EncryptBuf(list->Data, List_Size(list), key, iv);
+    EncryptBuffer(list->Data, List_Size(list), key, iv);
 
     list = &tracker->Pages;
     key  = tracker->PagesKey;
     iv   = tracker->PagesIV;
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv, CRYPTO_IV_SIZE);
-    EncryptBuf(list->Data, List_Size(list), key, iv);
+    EncryptBuffer(list->Data, List_Size(list), key, iv);
 
     list = &tracker->Heaps;
     key  = tracker->HeapsKey;
     iv   = tracker->HeapsIV;
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv, CRYPTO_IV_SIZE);
-    EncryptBuf(list->Data, List_Size(list), key, iv);
+    EncryptBuffer(list->Data, List_Size(list), key, iv);
     return NO_ERROR;
 }
 
@@ -2693,17 +2693,17 @@ errno MT_Decrypt()
     List* list = &tracker->Regions;
     byte* key  = tracker->RegionsKey;
     byte* iv   = tracker->RegionsIV;
-    DecryptBuf(list->Data, List_Size(list), key, iv);
+    DecryptBuffer(list->Data, List_Size(list), key, iv);
 
     list = &tracker->Pages;
     key  = tracker->PagesKey;
     iv   = tracker->PagesIV;
-    DecryptBuf(list->Data, List_Size(list), key, iv);
+    DecryptBuffer(list->Data, List_Size(list), key, iv);
 
     list = &tracker->Heaps;
     key  = tracker->HeapsKey;
     iv   = tracker->HeapsIV;
-    DecryptBuf(list->Data, List_Size(list), key, iv);
+    DecryptBuffer(list->Data, List_Size(list), key, iv);
 
     List* pages   = &tracker->Pages;
     List* regions = &tracker->Regions;
@@ -2794,7 +2794,7 @@ static bool encryptPage(MemoryTracker* tracker, memPage* page)
     RandBuffer(page->iv, CRYPTO_IV_SIZE);
     byte key[CRYPTO_KEY_SIZE];
     deriveKey(tracker, page, key);
-    EncryptBuf((byte*)(page->address), tracker->PageSize, key, page->iv);
+    EncryptBuffer((byte*)(page->address), tracker->PageSize, key, page->iv);
     return true;
 }
 
@@ -2806,7 +2806,7 @@ static bool decryptPage(MemoryTracker* tracker, memPage* page)
     }
     byte key[CRYPTO_KEY_SIZE];
     deriveKey(tracker, page, key);
-    DecryptBuf((byte*)(page->address), tracker->PageSize, key, page->iv);
+    DecryptBuffer((byte*)(page->address), tracker->PageSize, key, page->iv);
     if (!recoverPageProtect(tracker, page))
     {
         return false;
@@ -2834,7 +2834,7 @@ static bool encryptRWXRegion(MemoryTracker* tracker, memRegion* region)
     RandBuffer(region->key, CRYPTO_KEY_SIZE);
     RandBuffer(region->iv, CRYPTO_IV_SIZE);
     void* addr = (void*)(region->address);
-    EncryptBuf(addr, region->size, region->key, region->iv);
+    EncryptBuffer(addr, region->size, region->key, region->iv);
     DWORD old;
     return tracker->VirtualProtect(addr, region->size, PAGE_READWRITE, &old);
 }
@@ -2842,7 +2842,7 @@ static bool encryptRWXRegion(MemoryTracker* tracker, memRegion* region)
 static bool decryptRWXRegion(MemoryTracker* tracker, memRegion* region)
 {
     void* addr = (void*)(region->address);
-    DecryptBuf(addr, region->size, region->key, region->iv);
+    DecryptBuffer(addr, region->size, region->key, region->iv);
     DWORD old;
     return tracker->VirtualProtect(addr, region->size, PAGE_EXECUTE_READWRITE, &old);
 }
@@ -2925,10 +2925,10 @@ static bool walkHeapBlocks(HANDLE hHeap, int operation)
         switch (operation)
         {
         case OP_WALK_HEAP_ENCRYPT:
-            EncryptBuf(buf, size, key, iv);
+            EncryptBuffer(buf, size, key, iv);
             break;
         case OP_WALK_HEAP_DECRYPT:
-            DecryptBuf(buf, size, key, iv);
+            DecryptBuffer(buf, size, key, iv);
             break;
         case OP_WALK_HEAP_ERASE:
             mem_init(buf, entry.cbData);

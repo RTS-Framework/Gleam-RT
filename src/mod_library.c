@@ -631,7 +631,7 @@ static bool isGleamRT_A(LPCSTR lpLibFileName)
         'd'^0x5D, 'l'^0x2A, 'l'^0x17, 000^0xCF,
     };
     byte key[] = { 0x5D, 0x2A, 0x17, 0xCF };
-    XORBuf(module, sizeof(module), key, sizeof(key));
+    XORBuffer(module, sizeof(module), key, sizeof(key));
     return stricmp_a(module, (byte*)lpLibFileName) == 0;
 }
 
@@ -645,7 +645,7 @@ static bool isGleamRT_W(LPCWSTR lpLibFileName)
         L'd'^0x147F, L'l'^0xAA72, L'l'^0xCA43, 0000^0x19B2,
     };
     uint16 key[] = { 0x147F, 0xAA72, 0xCA43, 0x19B2 };
-    XORBuf(module, sizeof(module), key, sizeof(key));
+    XORBuffer(module, sizeof(module), key, sizeof(key));
     return stricmp_w(module, (uint16*)lpLibFileName) == 0;
 }
 
@@ -868,7 +868,7 @@ errno LT_Encrypt()
     byte* iv   = tracker->ModulesIV;
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv, CRYPTO_IV_SIZE);
-    EncryptBuf(list->Data, List_Size(list), key, iv);
+    EncryptBuffer(list->Data, List_Size(list), key, iv);
     return NO_ERROR;
 }
 
@@ -880,7 +880,7 @@ errno LT_Decrypt()
     List* list = &tracker->Modules;
     byte* key  = tracker->ModulesKey;
     byte* iv   = tracker->ModulesIV;
-    DecryptBuf(list->Data, List_Size(list), key, iv);
+    DecryptBuffer(list->Data, List_Size(list), key, iv);
 
     dbg_log("[library]", "modules:    %zu", list->Len);
     dbg_log("[library]", "procedures: %zu", tracker->NumProcedures);

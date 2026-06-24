@@ -2865,7 +2865,7 @@ errno RT_Encrypt()
     byte* iv   = tracker->HandlesIV;
     RandBuffer(key, CRYPTO_KEY_SIZE);
     RandBuffer(iv, CRYPTO_IV_SIZE);
-    EncryptBuf(list->Data, List_Size(list), key, iv);
+    EncryptBuffer(list->Data, List_Size(list), key, iv);
     return NO_ERROR;
 }
 
@@ -2877,7 +2877,7 @@ errno RT_Decrypt()
     List* list = &tracker->Handles;
     byte* key  = tracker->HandlesKey;
     byte* iv   = tracker->HandlesIV;
-    DecryptBuf(list->Data, List_Size(list), key, iv);
+    DecryptBuffer(list->Data, List_Size(list), key, iv);
 
     dbg_log("[resource]", "handles: %zu", list->Len);
     return NO_ERROR;
