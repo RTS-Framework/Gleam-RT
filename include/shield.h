@@ -17,11 +17,16 @@
 #define SHIELD_STUB_SIZE  (8 * 1024)
 #define SHIELD_KEY_SIZE   32
 
+#define SHIELD_SRC_PRE_INJECTED 1
+#define SHIELD_SRC_SHIELD_STUB  2
+#define SHIELD_SRC_EXTERNAL     3
+
+#define SHIELD_MAIN_MODULE 0x0001
+
 typedef struct {
     void* EntryPoint;
     void* BaseAddress;
-    BOOL  IsPreInjected;
-    BOOL  IsAllocated;
+    int64 Source;
 } SD_Status;
 
 typedef BOOL (*SDGetStatus_t)(SD_Status* status);
