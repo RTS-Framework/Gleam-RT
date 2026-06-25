@@ -35,15 +35,15 @@ typedef struct {
     // runtime options
     void*  BootAddress;
     uint64 ShieldModuleHash;
-    uint32 ShieldEntryPoint;
-
-    bool EnableSecurityMode;
-    bool DisableDetector;
-    bool DisableWatchdog;
-    bool DisableSysmon;
-    bool NotEraseInstruction;
-    bool NotAdjustProtect;
-    bool TrackCurrentThread;
+    uint64 ShieldEntryPoint;
+    uint64 ShieldAddress;
+    bool   EnableSecurityMode;
+    bool   DisableDetector;
+    bool   DisableWatchdog;
+    bool   DisableSysmon;
+    bool   NotEraseInstruction;
+    bool   NotAdjustProtect;
+    bool   TrackCurrentThread;
 
     // process environment
     void*  PEB;
