@@ -262,3 +262,12 @@ func TestSleep(t *testing.T) {
 	d := time.Since(now)
 	require.Greater(t, d, time.Second)
 }
+
+func TestSleepSim(t *testing.T) {
+	now := time.Now()
+
+	SleepSim(time.Second)
+
+	d := time.Since(now)
+	require.Greater(t, d, time.Second)
+}
