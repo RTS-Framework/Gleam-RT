@@ -12,7 +12,8 @@ EXPORTS
 	RT_GetIMOML               = RT_GetIMOML
 	RT_GetInfo                = RT_GetInfo
 	RT_GetMetrics             = RT_GetMetrics
-	RT_Sleep                  = RT_SleepHR
+	RT_SleepHR                = RT_SleepHR
+    RT_Sleep                  = RT_Sleep
 	RT_ExitProcess            = RT_ExitProcess
 
     AS_GetValue   = AS_GetValue
