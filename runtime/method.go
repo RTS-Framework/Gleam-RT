@@ -34,6 +34,7 @@ var (
 
 	procGetInfo    = modGleamRT.NewProc("RT_GetInfo")
 	procGetMetrics = modGleamRT.NewProc("RT_GetMetrics")
+	procSleepHR    = modGleamRT.NewProc("RT_SleepHR")
 	procSleep      = modGleamRT.NewProc("RT_Sleep")
 
 	procExitProcess = modGleamRT.NewProc("RT_ExitProcess")
@@ -155,11 +156,17 @@ func GetMetrics() (*Metrics, error) {
 
 // Sleep is used to hide and sleep, it is the core method.
 func Sleep(d time.Duration) error {
-	ret, _, _ := procSleep.Call(uintptr(d.Milliseconds())) // #nosec G115
+	ret, _, _ := procSleepHR.Call(uintptr(d.Milliseconds())) // #nosec G115
 	if ret != windows.NO_ERROR {
 		return fmt.Errorf("failed to call Sleep: 0x%08X", ret)
 	}
 	return nil
+}
+
+// SleepSim is used to simulate kernel32.Sleep in Thread Tracker.
+// But in Go, use time.Sleep is enough, this function is test only.
+func SleepSim(d time.Duration) {
+	_, _, _ = procSleep.Call(uintptr(d.Milliseconds())) // #nosec G115
 }
 
 // ExitProcess is used to call original ExitProcess.
