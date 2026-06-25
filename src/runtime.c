@@ -2099,7 +2099,8 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0xA7D7243625100C78, 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetIMOML)               },
         { 0x22B11BE6C537097F, 0xA83FF55FECA4B2D5, 0xC9C001C805631D08, GetFuncAddr(&RT_GetInfo)                },
         { 0x1942779A04B5511E, 0x3F0F1951378BA2D7, 0x3990B978D311CE13, GetFuncAddr(&RT_GetMetrics)             },
-        { 0x7A14CE974C2FBB45, 0xB98129CF9127D736, 0x440466012518F4D3, GetFuncAddr(&RT_SleepHR)                },
+        { 0xB7C5D0499CEA535C, 0xF1B02539240FCCBE, 0x7CDDB06DD3B3380B, GetFuncAddr(&RT_SleepHR)                },
+        { 0xCD73DF293627702D, 0xC202636AB59E272A, 0x83FABCD3C9ED5B2E, GetFuncAddr(&RT_Sleep)                  },
         { 0x5CF5E9987810AD63, 0x7D7CFE6E023217B8, 0x51D583187BB49302, GetFuncAddr(&RT_ExitProcess)            },
         { 0xD1068F18078E5118, 0x479C7B50DBFADEE7, 0x649073A187F0F0A9, AS->GetValue   }, // AS_GetValue
         { 0x8613407F11759864, 0x41D042835BA4C499, 0xD74A73D3EE16AE15, AS->GetPointer }, // AS_GetPointer
@@ -2133,7 +2134,8 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0xE12D98E8, 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetIMOML)               },
         { 0x45460AF7, 0x41205F31, 0x2E96AC51, GetFuncAddr(&RT_GetInfo)                },
         { 0xAE398258, 0xD731BCE7, 0x1E7A2A1A, GetFuncAddr(&RT_GetMetrics)             },
-        { 0x0D56A3D5, 0x293D175E, 0xE6C8C8D5, GetFuncAddr(&RT_SleepHR)                },
+        { 0x419E2D70, 0xC38FBBF5, 0xDEED529C, GetFuncAddr(&RT_SleepHR)                },
+        { 0xEC7C9D40, 0x707547CF, 0x66DCFA17, GetFuncAddr(&RT_Sleep)                  },
         { 0x29542BFC, 0xC661D6AC, 0x844DD401, GetFuncAddr(&RT_ExitProcess)            },
         { 0xA70DF734, 0x6DD5CD24, 0xF0B9A21D, AS->GetValue   }, // AS_GetValue
         { 0xADA5F2C9, 0xB8A08D9B, 0x7DB3ECC2, AS->GetPointer }, // AS_GetPointer
