@@ -221,6 +221,10 @@ static errno loadArguments(ArgumentStore* store, Context* context)
         return ERR_ARGUMENT_INVALID_NUM;
     }
     // allocate memory page for store them
+    if (size > 0x04000000) // 64 MB max to prevent uint32 overflow in memSize calculation
+    {
+        return ERR_ARGUMENT_INVALID_SIZE;
+    }
     uint32 pageSize = context->MPS;
     uint32 memSize  = (((size + num) / pageSize) + 1) * pageSize;
     memSize += (uint32)(1 + RandUintN(0, 16)) * pageSize;
