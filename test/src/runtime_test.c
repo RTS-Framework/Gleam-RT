@@ -16,10 +16,10 @@ static void* calcEpilogue();
 bool TestInitRuntime()
 {
     Runtime_Opts opts = {
-        .BootAddress         = NULL,
         .ImagePinningHash    = 0,
         .ShieldModuleHash    = 0,
         .ShieldEntryPoint    = 0,
+        .ShieldMemAddress    = 0,
         .EnableSecurityMode  = false,
         .DisableDetector     = false,
         .DisableSysmon       = false,
@@ -29,9 +29,9 @@ bool TestInitRuntime()
         .TrackCurrentThread  = false,
     };
 #ifdef PIC_MODE
-    typedef Runtime_M* (*InitRuntime_t)(Runtime_Opts* opts);
+    typedef Runtime_M* (*InitRuntime_t)(void* boot, Runtime_Opts* opts);
     InitRuntime_t initRuntime = loadInstance();
-    runtime = initRuntime(&opts);
+    runtime = initRuntime(NULL, &opts);
 #else
     runtime = InitRuntime(&opts);
 #endif // PIC_MODE
@@ -64,10 +64,10 @@ bool TestRuntime_Exit()
 bool TestRuntime_Options()
 {
     Runtime_Opts opts = {
-        .BootAddress         = NULL,
         .ImagePinningHash    = 0,
         .ShieldModuleHash    = 0,
         .ShieldEntryPoint    = 0,
+        .ShieldMemAddress    = 0,
         .EnableSecurityMode  = false,
         .DisableDetector     = true,
         .DisableSysmon       = true,
@@ -77,9 +77,9 @@ bool TestRuntime_Options()
         .TrackCurrentThread  = false,
     };
 #ifdef PIC_MODE
-    typedef Runtime_M* (*InitRuntime_t)(Runtime_Opts* opts);
+    typedef Runtime_M* (*InitRuntime_t)(void* boot, Runtime_Opts* opts);
     InitRuntime_t initRuntime = loadInstance();
-    runtime = initRuntime(&opts);
+    runtime = initRuntime(NULL, &opts);
 #else
     runtime = InitRuntime(&opts);
 #endif // PIC_MODE
