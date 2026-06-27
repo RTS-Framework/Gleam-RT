@@ -67,10 +67,10 @@ int EntryPoint()
 bool testTemplate(bool erase)
 {
     Runtime_Opts opts = {
-        .BootAddress         = NULL,
         .ImagePinningHash    = 0,
         .ShieldModuleHash    = 0,
         .ShieldEntryPoint    = 0,
+        .ShieldMemAddress    = 0,
         .EnableSecurityMode  = false,
         .DisableDetector     = false,
         .DisableWatchdog     = false,
@@ -79,7 +79,7 @@ bool testTemplate(bool erase)
         .NotAdjustProtect    = false,
         .TrackCurrentThread  = false,
     };
-    Runtime_M* RuntimeM = InitRuntime(&opts);
+    Runtime_M* RuntimeM = InitRuntime(NULL, &opts);
     if (RuntimeM == NULL)
     {
         printf_s("failed to initialize runtime: 0x%X\n", GetLastErrno());
