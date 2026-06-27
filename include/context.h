@@ -33,10 +33,9 @@ typedef errno (*RT_Stop_t)(bool exitThread, uint32 code);
 
 typedef struct {
     // runtime options
-    void*  BootAddress;
     uint64 ShieldModuleHash;
     uint64 ShieldEntryPoint;
-    uint64 ShieldAddress;
+    uint64 ShieldMemAddress;
     bool   EnableSecurityMode;
     bool   DisableDetector;
     bool   DisableWatchdog;
