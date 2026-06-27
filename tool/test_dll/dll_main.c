@@ -22,7 +22,7 @@ BOOL Initialize(Runtime_Opts* opts)
     {
         return true;
     }
-    RuntimeM = InitRuntime(opts);
+    RuntimeM = InitRuntime(NULL, opts);
     if (RuntimeM == NULL)
     {
         return false;
