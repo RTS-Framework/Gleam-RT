@@ -8,7 +8,7 @@
 #include "hash_api.h"
 #include "errno.h"
 
-// 0x000901 means v0.9.1
+// 0x010A02 means v1.10.2
 #define RUNTIME_VERSION 0x000901
 
 // about runtime options at the template tail.
@@ -27,13 +27,14 @@
 #define OPT_OFFSET_IMAGE_PINNING_HASH    (OPT_OFFSET_BASE + 0)
 #define OPT_OFFSET_SHIELD_MODULE_HASH    (OPT_OFFSET_BASE + 8)
 #define OPT_OFFSET_SHIELD_ENTRY_POINT    (OPT_OFFSET_BASE + 16)
-#define OPT_OFFSET_ENABLE_SECURITY_MODE  (OPT_OFFSET_BASE + 24)
-#define OPT_OFFSET_DISABLE_DETECTOR      (OPT_OFFSET_BASE + 25)
-#define OPT_OFFSET_DISABLE_WATCHDOG      (OPT_OFFSET_BASE + 26)
-#define OPT_OFFSET_DISABLE_SYSMON        (OPT_OFFSET_BASE + 27)
-#define OPT_OFFSET_NOT_ERASE_INSTRUCTION (OPT_OFFSET_BASE + 28)
-#define OPT_OFFSET_NOT_ADJUST_PROTECT    (OPT_OFFSET_BASE + 29)
-#define OPT_OFFSET_TRACK_CURRENT_THREAD  (OPT_OFFSET_BASE + 30)
+#define OPT_OFFSET_SHIELD_MEM_ADDRESS    (OPT_OFFSET_BASE + 24)
+#define OPT_OFFSET_ENABLE_SECURITY_MODE  (OPT_OFFSET_BASE + 32)
+#define OPT_OFFSET_DISABLE_DETECTOR      (OPT_OFFSET_BASE + 33)
+#define OPT_OFFSET_DISABLE_WATCHDOG      (OPT_OFFSET_BASE + 34)
+#define OPT_OFFSET_DISABLE_SYSMON        (OPT_OFFSET_BASE + 35)
+#define OPT_OFFSET_NOT_ERASE_INSTRUCTION (OPT_OFFSET_BASE + 36)
+#define OPT_OFFSET_NOT_ADJUST_PROTECT    (OPT_OFFSET_BASE + 37)
+#define OPT_OFFSET_TRACK_CURRENT_THREAD  (OPT_OFFSET_BASE + 38)
 
 // for generic module development.
 
@@ -424,11 +425,16 @@ typedef errno (*SMContinue_t)();
 
 // =============================== shield ===============================
 #ifndef SHIELD_H
+#define SHIELD_SRC_PRE_INJECTED 1
+#define SHIELD_SRC_SHIELD_STUB  2
+#define SHIELD_SRC_EXTERNAL     3
+
+#define SHIELD_MAIN_MODULE 0x0001
+
 typedef struct {
     void* EntryPoint;
     void* BaseAddress;
-    BOOL  IsPreInjected;
-    BOOL  IsAllocated;
+    int64 Source;
 } SD_Status;
 #endif // SHIELD_H
 
@@ -458,7 +464,7 @@ typedef void* (*GetIMOML_t)(); // get stored InMemoryOrderModuleList address
 // caller need erase the other memory data about instance.
 // 
 // Stop is same as Exit, but it will exit current thread after exit,
-// it can erase the instruction from BootAddress to runtime epilogue.
+// it can erase the instruction from boot address to runtime epilogue.
 
 typedef struct {
     uint64 Version;
@@ -724,13 +730,6 @@ typedef struct {
 } Runtime_M;
 
 typedef struct {
-    // protect instructions like Boot before Runtime,
-    // if it is NULL, Runtime will only protect self.
-    void* BootAddress;
-
-    // for memory alignment about other languages.
-    void* Reserved;
-
 	// runtime will not initialize when the exe name is not expected.
     // if zero, runtime will skip this detection.
     uint64 ImagePinningHash;
@@ -742,7 +741,11 @@ typedef struct {
     uint64 ShieldModuleHash;
 
 	// the RVA of the pre-injected shield in the module.
-    uint32 ShieldEntryPoint;
+    // if ShieldModuleHash is not zero, it must be set.
+    uint64 ShieldEntryPoint;
+
+    // the shield memory address that external program provide.
+    uint64 ShieldMemAddress;
 
     // detect environment when initialize runtime, if not safe, 
     // stop initialization and exit runtime at once.
@@ -771,6 +774,15 @@ typedef struct {
 
 // InitRuntime is used to initialize runtime and return module methods.
 // If failed to initialize, use GetLastError to get error code.
-Runtime_M* InitRuntime(Runtime_Opts* opts);
+// boot is used to protect instructions like Boot before Runtime,
+// if it is NULL, Runtime will only protect self.
+// if opts is NULL, runtime will load options from stub.
+Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts);
+
+// reserve stub for store runtime options.
+#pragma warning(push)
+#pragma warning(disable: 4276)
+extern void Option_Stub();
+#pragma warning(pop)
 
 #endif // RUNTIME_H
