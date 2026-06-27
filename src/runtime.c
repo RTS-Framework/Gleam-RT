@@ -199,6 +199,8 @@ static bool  isValidArgumentStub();
 static void* getPEBAddress();
 static void* getIMOMLAddress(uintptr peb);
 static void* allocRuntimeMemPage(void* IMOML);
+static bool  loadOptionFromStub(Runtime_Opts* opts);
+static bool  checkOptionConflict(Runtime_Opts* opts);
 static void  buildRuntimeInfo(Runtime* runtime);
 static void* calculateEpilogue();
 static bool  initRuntimeAPI(Runtime* runtime);
@@ -242,17 +244,33 @@ static errno recover(Runtime* runtime);
 static void eraseMemory(uintptr address, uintptr size);
 static void rt_epilogue();
 
-Runtime_M* InitRuntime(Runtime_Opts* opts)
+Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
 {
     if (!InitDebugger())
     {
         SetLastErrno(ERR_RUNTIME_INIT_DEBUGGER);
         return NULL;
     }
+    // load runtime options
+    if (opts == NULL)
+    {
+        Runtime_Opts opt;
+        if (!loadOptionFromStub(&opt))
+        {
+            SetLastErrno(ERR_RUNTIME_INVALID_OPTION_STUB);
+            return NULL;
+        }
+        opts = &opt;
+    }
+    if (!checkOptionConflict(opts))
+    {
+        SetLastErrno(ERR_RUNTIME_OPTION_CONFLICT);
+        return NULL;
+    }
     // check argument stub for calculate Epilogue
     if (!isValidArgumentStub())
     {
-        SetLastErrno(ERR_RUNTIME_INVALID_ARGS_STUB);
+        SetLastErrno(ERR_RUNTIME_INVALID_ARG_STUB);
         return NULL;
     }
     // get process environment
@@ -272,24 +290,7 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     // initialize structure
     Runtime* runtime = (Runtime*)runtimeAddr;
     mem_init(runtime, sizeof(Runtime));
-    // store runtime options
-    if (opts == NULL)
-    {
-        Runtime_Opts opt = {
-            .BootAddress         = NULL,
-            .ImagePinningHash    = 0,
-            .ShieldModuleHash    = 0,
-            .ShieldEntryPoint    = 0,
-            .EnableSecurityMode  = false,
-            .DisableDetector     = false,
-            .DisableWatchdog     = false,
-            .DisableSysmon       = false,
-            .NotEraseInstruction = false,
-            .NotAdjustProtect    = false,
-            .TrackCurrentThread  = false,
-        };
-        opts = &opt;
-    }
+    // copy runtime option
     runtime->Options = *opts;
     // build runtime information
     buildRuntimeInfo(runtime);
@@ -297,18 +298,18 @@ Runtime_M* InitRuntime(Runtime_Opts* opts)
     runtime->PEB   = PEB;
     runtime->IMOML = IMOML;
     // calculate the instance entry point
-    uintptr init = (uintptr)(GetFuncAddr(&InitRuntime));
-    uintptr boot = (uintptr)(runtime->Options.BootAddress);
-    if (boot == 0 || boot > init)
+    uintptr bootAddr = (uintptr)(boot);
+    uintptr initAddr = (uintptr)(GetFuncAddr(&InitRuntime));
+    if (bootAddr == 0 || bootAddr > initAddr)
     {
-        boot = init;
+        bootAddr = initAddr;
     }
     // set runtime data
     runtime->MainMemPage = memPage;
-    runtime->Prologue = (void*)boot;
+    runtime->Prologue = (void*)bootAddr;
     runtime->Epilogue = calculateEpilogue();
-    runtime->InstSize = (uint32)((uintptr)(runtime->Epilogue) - boot);
-    // set init value
+    runtime->InstSize = (uint32)((uintptr)(runtime->Epilogue) - bootAddr);
+    // initialize value
     runtime->ErrorMode = (UINT)(-1);
     // initialize runtime
     DWORD oldProtect = 0;
@@ -669,6 +670,57 @@ static void* allocRuntimeMemPage(void* IMOML)
     return addr;
 }
 
+static bool loadOptionFromStub(Runtime_Opts* opts)
+{
+    uintptr stub = (uintptr)(GetFuncAddr(&Option_Stub));
+    // check runtime option stub is valid
+    if (*(byte*)stub != OPTION_STUB_MAGIC)
+    {
+        return false;
+    }
+    // copy runtime options from stub
+    byte data[OPTION_STUB_SIZE];
+    mem_copy(data, (byte*)stub, sizeof(data));
+    // decrypt option data
+    byte* dst = (byte*)((uintptr)data + 1 + OPTION_KEY_SIZE);
+    uint  len = OPTION_STUB_SIZE - (1 + OPTION_KEY_SIZE);
+    byte* key = (byte*)(stub + 1);
+    XORBuffer(dst, len, key, OPTION_KEY_SIZE);
+    // set the option data
+    opts->ImagePinningHash  = *(uint64*)(data + OPT_OFFSET_IMAGE_PINNING_HASH);
+    opts->ShieldModuleHash  = *(uint64*)(data + OPT_OFFSET_SHIELD_MODULE_HASH);
+    opts->ShieldEntryPoint  = *(uint64*)(data + OPT_OFFSET_SHIELD_ENTRY_POINT);
+    opts->ShieldMemAddress  = *(uint64*)(data + OPT_OFFSET_SHIELD_MEM_ADDRESS);
+    opts->EnableSecurityMode  = *(byte*)(data + OPT_OFFSET_ENABLE_SECURITY_MODE) == 0;
+    opts->DisableDetector     = *(byte*)(data + OPT_OFFSET_DISABLE_DETECTOR) == 0;
+    opts->DisableWatchdog     = *(byte*)(data + OPT_OFFSET_DISABLE_WATCHDOG) == 0;
+    opts->DisableSysmon       = *(byte*)(data + OPT_OFFSET_DISABLE_SYSMON) == 0;
+    opts->NotEraseInstruction = *(byte*)(data + OPT_OFFSET_NOT_ERASE_INSTRUCTION) == 0;
+    opts->NotAdjustProtect    = *(byte*)(data + OPT_OFFSET_NOT_ADJUST_PROTECT) == 0;
+    opts->TrackCurrentThread  = *(byte*)(data + OPT_OFFSET_TRACK_CURRENT_THREAD) == 0;
+    return true;
+}
+
+static bool checkOptionConflict(Runtime_Opts* opts)
+{
+    if (opts->ShieldModuleHash != 0)
+    {
+        if (opts->ShieldEntryPoint == 0)
+        {
+            return false;
+        }
+        if (opts->ShieldMemAddress != 0)
+        {
+            return false;
+        }
+    }
+    if (opts->ShieldModuleHash == 0 && opts->ShieldEntryPoint != 0)
+    {
+        return false;
+    }
+    return true;
+}
+
 static void buildRuntimeInfo(Runtime* runtime)
 {
     Runtime_Info* info = &runtime->Info;
@@ -875,10 +927,9 @@ static errno initSubmodules(Runtime* runtime)
 {
     // create context data for initialize other modules
     Context context = {
-        .BootAddress         = runtime->Options.BootAddress,
         .ShieldModuleHash    = runtime->Options.ShieldModuleHash,
         .ShieldEntryPoint    = runtime->Options.ShieldEntryPoint,
-
+        .ShieldMemAddress    = runtime->Options.ShieldMemAddress,
         .EnableSecurityMode  = runtime->Options.EnableSecurityMode,
         .DisableDetector     = runtime->Options.DisableDetector,
         .DisableWatchdog     = runtime->Options.DisableWatchdog,
