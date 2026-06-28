@@ -31,11 +31,10 @@ func (e *errno) Error() string {
 
 // Options contains options about initialize runtime.
 type Options struct {
-	BootAddress         uintptr
-	Reserved            uintptr
 	ImagePinningHash    uint64
 	ShieldModuleHash    uint64
-	ShieldEntryPoint    uint32
+	ShieldEntryPoint    uint64
+	ShieldMemAddress    uint64
 	EnableSecurityMode  metric.BOOL
 	DisableDetector     metric.BOOL
 	DisableWatchdog     metric.BOOL
@@ -289,7 +288,7 @@ func NewRuntime(ptr uintptr) *RuntimeM {
 // InitRuntime is used to initialize runtime from instance.
 // Each runtime instance can only initialize once.
 func InitRuntime(inst uintptr, opts *Options) (*RuntimeM, error) {
-	ptr, _, err := syscall.SyscallN(inst, uintptr(unsafe.Pointer(opts))) // #nosec
+	ptr, _, err := syscall.SyscallN(inst, 0, uintptr(unsafe.Pointer(opts))) // #nosec
 	if ptr == null {
 		return nil, fmt.Errorf("failed to initialize runtime: 0x%08X", uint(err))
 	}

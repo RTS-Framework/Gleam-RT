@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/RTS-Framework/GRT-Develop/metric"
+	"github.com/RTS-Framework/GRT-Develop/shield"
 )
 
 var (
@@ -20,10 +21,9 @@ var (
 
 // Status contains shield status.
 type Status struct {
-	EntryPoint    uintptr `json:"entry_point"`
-	BaseAddress   uintptr `json:"base_address"`
-	IsPreInjected bool    `json:"is_pre_injected"`
-	IsAllocated   bool    `json:"is_allocated"`
+	EntryPoint  uintptr `json:"entry_point"`
+	BaseAddress uintptr `json:"base_address"`
+	Source      string  `json:"source"`
 }
 
 // GetStatus is used to get shield status.
@@ -35,10 +35,9 @@ func GetStatus() (*Status, error) {
 		return nil, fmt.Errorf("failed to call shield.Status: 0x%08X", en)
 	}
 	s := Status{
-		EntryPoint:    status.EntryPoint,
-		BaseAddress:   status.BaseAddress,
-		IsPreInjected: status.IsPreInjected.ToBool(),
-		IsAllocated:   status.IsAllocated.ToBool(),
+		EntryPoint:  status.EntryPoint,
+		BaseAddress: status.BaseAddress,
+		Source:      shield.ConvertSource(status.Source),
 	}
 	return &s, nil
 }
