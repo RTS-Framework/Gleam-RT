@@ -118,6 +118,8 @@ hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressOriginal
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetPEB
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetTEB
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetIMOML
+hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetOptions
+hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetRuntimeM
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetInfo
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetMetrics
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_SleepHR
@@ -451,6 +453,8 @@ hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressOriginal
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetPEB
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetTEB
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetIMOML
+hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetOptions
+hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetRuntimeM
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetInfo
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetMetrics
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_SleepHR
