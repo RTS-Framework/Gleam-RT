@@ -44,6 +44,5 @@ func TestConvertRawInfo(t *testing.T) {
 
 	i := ConvertRawInfo(&inf)
 	spew.Dump(i)
-
 	require.Equal(t, testVersion, i.Version)
 }
