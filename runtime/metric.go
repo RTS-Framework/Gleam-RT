@@ -2,6 +2,7 @@ package gleamrt
 
 import (
 	"github.com/RTS-Framework/GRT-Develop/metric"
+	"github.com/RTS-Framework/GRT-Develop/shield"
 )
 
 // Metrics contains status about runtime submodules.
@@ -82,10 +83,9 @@ type SMStatus struct {
 
 // SDStatus contains status about shield.
 type SDStatus struct {
-	EntryPoint    uintptr `json:"entry_point"`
-	BaseAddress   uintptr `json:"base_address"`
-	IsPreInjected bool    `json:"is_pre_injected"`
-	IsAllocated   bool    `json:"is_allocated"`
+	EntryPoint  uintptr `json:"entry_point"`
+	BaseAddress uintptr `json:"base_address"`
+	Source      string  `json:"source"`
 }
 
 // ConvertRawMetrics is used to convert raw runtime metrics to go type.
@@ -142,10 +142,9 @@ func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 			NumPanic:   metrics.Sysmon.NumPanic,
 		},
 		Shield: SDStatus{
-			EntryPoint:    metrics.Shield.EntryPoint,
-			BaseAddress:   metrics.Shield.BaseAddress,
-			IsPreInjected: metrics.Shield.IsPreInjected.ToBool(),
-			IsAllocated:   metrics.Shield.IsAllocated.ToBool(),
+			EntryPoint:  metrics.Shield.EntryPoint,
+			BaseAddress: metrics.Shield.BaseAddress,
+			Source:      shield.ConvertSource(metrics.Shield.Source),
 		},
 	}
 }
