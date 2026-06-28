@@ -7,14 +7,20 @@ EXPORTS
     RT_GetProcAddressByHash   = RT_GetProcAddressByHash
     RT_GetProcAddressByHashML = RT_GetProcAddressByHashML
     RT_GetProcAddressOriginal = RT_GetProcAddressOriginal
-    RT_GetPEB                 = RT_GetPEB
-	RT_GetTEB                 = RT_GetTEB
-	RT_GetIMOML               = RT_GetIMOML
-	RT_GetInfo                = RT_GetInfo
-	RT_GetMetrics             = RT_GetMetrics
-	RT_SleepHR                = RT_SleepHR
-    RT_Sleep                  = RT_Sleep
-	RT_ExitProcess            = RT_ExitProcess
+
+    RT_GetPEB   = RT_GetPEB
+	RT_GetTEB   = RT_GetTEB
+	RT_GetIMOML = RT_GetIMOML
+
+	RT_GetOptions  = RT_GetOptions
+    RT_GetRuntimeM = RT_GetRuntimeM
+	RT_GetInfo     = RT_GetInfo
+	RT_GetMetrics  = RT_GetMetrics
+
+	RT_SleepHR = RT_SleepHR
+
+    RT_Sleep       = RT_Sleep
+	RT_ExitProcess = RT_ExitProcess
 
     AS_GetValue   = AS_GetValue
     AS_GetPointer = AS_GetPointer
@@ -39,4 +45,5 @@ EXPORTS
     WD_Status     = WD_GetStatus
 
     SM_Status = SM_GetStatus
+
     SD_Status = SD_GetStatus
