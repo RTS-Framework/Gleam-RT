@@ -12,6 +12,8 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
+
+	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
 func init() {
@@ -33,7 +35,10 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	err := Initialize(nil)
+	opts := Options{
+		NotEraseInstruction: metric.TRUE,
+	}
+	err := Initialize(&opts)
 	if err != nil {
 		panic(err)
 	}
