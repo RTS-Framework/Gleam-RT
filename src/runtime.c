@@ -125,6 +125,9 @@ typedef struct {
 
     // suffix modules
     Shield_M* Shield;
+
+    // RuntimeM (module/method)
+    Runtime_M* RuntimeM;
 } Runtime;
 
 // export methods about Runtime
@@ -153,6 +156,8 @@ void  RT_ExitProcess(UINT uExitCode);
 errno RT_SleepHR(DWORD dwMilliseconds);
 errno RT_Hide();
 errno RT_Recover();
+errno RT_GetOptions(Runtime_Opts* opts);
+errno RT_GetRuntimeM(Runtime_M* rtm);
 errno RT_GetInfo(Runtime_Info* info);
 errno RT_GetMetrics(Runtime_Metrics* metrics);
 errno RT_Cleanup();
@@ -558,6 +563,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Core.Sleep   = GetFuncAddr(&RT_SleepHR);
     module->Core.Hide    = GetFuncAddr(&RT_Hide);
     module->Core.Recover = GetFuncAddr(&RT_Recover);
+    module->Core.Options = GetFuncAddr(&RT_GetOptions);
     module->Core.Info    = GetFuncAddr(&RT_GetInfo);
     module->Core.Metrics = GetFuncAddr(&RT_GetMetrics);
     module->Core.Cleanup = GetFuncAddr(&RT_Cleanup);
@@ -565,6 +571,8 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Core.Stop    = GetFuncAddr(&RT_Stop);
     // runtime core data
     module->Data.Mutex = runtime->hMutex;
+    // copy M pointer to runtime
+    runtime->RuntimeM = module;
     return module;
 }
 
@@ -2148,6 +2156,8 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0x6D4433798536C490, 0x5C453B47673B57CC, 0x93836F9B160A8469, GetFuncAddr(&RT_GetPEB)                 },
         { 0xF25FE9947684FF1C, 0x286F34B40136641A, 0xDA4C40DA3D7DAE2C, GetFuncAddr(&RT_GetTEB)                 },
         { 0xA7D7243625100C78, 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetIMOML)               },
+        { 0xA28D29AAEFEF0821, 0xB1FA77826E174621, 0xE8CE6F7431D20C90, GetFuncAddr(&RT_GetOptions)             },
+        { 0x4F32B816DF8B4247, 0x618F963CAA5EE348, 0x20EE2A5363818605, GetFuncAddr(&RT_GetRuntimeM)            },
         { 0x22B11BE6C537097F, 0xA83FF55FECA4B2D5, 0xC9C001C805631D08, GetFuncAddr(&RT_GetInfo)                },
         { 0x1942779A04B5511E, 0x3F0F1951378BA2D7, 0x3990B978D311CE13, GetFuncAddr(&RT_GetMetrics)             },
         { 0xB7C5D0499CEA535C, 0xF1B02539240FCCBE, 0x7CDDB06DD3B3380B, GetFuncAddr(&RT_SleepHR)                },
@@ -2183,6 +2193,8 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0x1655EE6F, 0xC04FB496, 0x7EE9DDE8, GetFuncAddr(&RT_GetPEB)                 },
         { 0x4B62B8F1, 0x87C8028B, 0xD697CA60, GetFuncAddr(&RT_GetTEB)                 },
         { 0xE12D98E8, 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetIMOML)               },
+        { 0x08BF96C4, 0xD4D119FF, 0x8CD7C9D0, GetFuncAddr(&RT_GetOptions)             },
+        { 0xD8065FD0, 0x2414448A, 0x2E37B5DF, GetFuncAddr(&RT_GetRuntimeM)            },
         { 0x45460AF7, 0x41205F31, 0x2E96AC51, GetFuncAddr(&RT_GetInfo)                },
         { 0xAE398258, 0xD731BCE7, 0x1E7A2A1A, GetFuncAddr(&RT_GetMetrics)             },
         { 0x419E2D70, 0xC38FBBF5, 0xDEED529C, GetFuncAddr(&RT_SleepHR)                },
@@ -2673,6 +2685,44 @@ errno RT_Recover()
         return ERR_RUNTIME_UNLOCK;
     }
     return err;
+}
+
+__declspec(noinline)
+errno RT_GetOptions(Runtime_Opts* opts)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    if (!rt_lock())
+    {
+        return ERR_RUNTIME_LOCK;
+    }
+
+    *opts = runtime->Options;
+
+    if (!rt_unlock())
+    {
+        return ERR_RUNTIME_UNLOCK;
+    }
+    return NO_ERROR;
+}
+
+__declspec(noinline)
+errno RT_GetRuntimeM(Runtime_M* rtm)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    if (!rt_lock())
+    {
+        return ERR_RUNTIME_LOCK;
+    }
+
+    *rtm = *runtime->RuntimeM;
+
+    if (!rt_unlock())
+    {
+        return ERR_RUNTIME_UNLOCK;
+    }
+    return NO_ERROR;
 }
 
 __declspec(noinline)
