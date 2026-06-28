@@ -467,6 +467,49 @@ typedef void* (*GetIMOML_t)(); // get stored InMemoryOrderModuleList address
 // it can erase the instruction from boot address to runtime epilogue.
 
 typedef struct {
+	// runtime will not initialize when the exe name is not expected.
+    // if zero, runtime will skip this detection.
+    uint64 ImagePinningHash;
+
+	// the module hash of the pre-injected shield in,
+    // if 0x0000, runtime will deploy a shield from the built-in shield stub.
+    // if 0x0001, the module is the main exe.
+    // if others, the module is the target dll.
+    uint64 ShieldModuleHash;
+
+	// the RVA of the pre-injected shield in the module.
+    // if ShieldModuleHash is not zero, it must be set.
+    uint64 ShieldEntryPoint;
+
+    // the shield memory address that external program provide.
+    uint64 ShieldMemAddress;
+
+    // detect environment when initialize runtime, if not safe, 
+    // stop initialization and exit runtime at once.
+    BOOL EnableSecurityMode;
+
+    // disable detector for test or debug.
+    BOOL DisableDetector;
+
+    // disable watchdog for implement single thread model.
+    // it will overwrite the control from upper module.
+    BOOL DisableWatchdog;
+
+    // disable sysmon for implement single thread model.
+    BOOL DisableSysmon;
+
+    // not erase runtime instructions after call Runtime_M.Exit.
+    BOOL NotEraseInstruction;
+
+    // not adjust current memory page protect for initialize runtime.
+    BOOL NotAdjustProtect;
+
+    // track current thread for test or debug mode.
+    // it maybe improved the single thread model.
+    BOOL TrackCurrentThread;
+} Runtime_Opts;
+
+typedef struct {
     uint64 Version;
     byte   Hash[32];
     uint32 Size;
@@ -487,6 +530,7 @@ typedef struct {
 typedef errno (*RTSleepHR_t)(uint32 milliseconds);
 typedef errno (*RTHide_t)();
 typedef errno (*RTRecover_t)();
+typedef errno (*RTOptions_t)(Runtime_Opts* opts);
 typedef errno (*RTInfo_t)(Runtime_Info* info);
 typedef errno (*RTMetrics_t)(Runtime_Metrics* metrics);
 typedef errno (*RTCleanup_t)();
@@ -717,6 +761,7 @@ typedef struct {
         RTSleepHR_t Sleep;
         RTHide_t    Hide;
         RTRecover_t Recover;
+        RTOptions_t Options;
         RTInfo_t    Info;
         RTMetrics_t Metrics;
         RTCleanup_t Cleanup;
@@ -728,49 +773,6 @@ typedef struct {
         HANDLE Mutex;
     } Data;
 } Runtime_M;
-
-typedef struct {
-	// runtime will not initialize when the exe name is not expected.
-    // if zero, runtime will skip this detection.
-    uint64 ImagePinningHash;
-
-	// the module hash of the pre-injected shield in,
-    // if 0x0000, runtime will deploy a shield from the built-in shield stub.
-    // if 0x0001, the module is the main exe.
-    // if others, the module is the target dll.
-    uint64 ShieldModuleHash;
-
-	// the RVA of the pre-injected shield in the module.
-    // if ShieldModuleHash is not zero, it must be set.
-    uint64 ShieldEntryPoint;
-
-    // the shield memory address that external program provide.
-    uint64 ShieldMemAddress;
-
-    // detect environment when initialize runtime, if not safe, 
-    // stop initialization and exit runtime at once.
-    BOOL EnableSecurityMode;
-
-    // disable detector for test or debug.
-    BOOL DisableDetector;
-
-    // disable watchdog for implement single thread model.
-    // it will overwrite the control from upper module.
-    BOOL DisableWatchdog;
-
-    // disable sysmon for implement single thread model.
-    BOOL DisableSysmon;
-
-    // not erase runtime instructions after call Runtime_M.Exit.
-    BOOL NotEraseInstruction;
-
-    // not adjust current memory page protect for initialize runtime.
-    BOOL NotAdjustProtect;
-
-    // track current thread for test or debug mode.
-    // it maybe improved the single thread model.
-    BOOL TrackCurrentThread;
-} Runtime_Opts;
 
 // InitRuntime is used to initialize runtime and return module methods.
 // If failed to initialize, use GetLastError to get error code.
