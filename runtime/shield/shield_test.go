@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 
+	"github.com/RTS-Framework/GRT-Develop/metric"
+	"github.com/RTS-Framework/GRT-Develop/shield"
 	"github.com/RTS-Framework/Gleam-RT/runtime"
 )
 
@@ -33,7 +35,10 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	err := gleamrt.Initialize(nil)
+	opts := gleamrt.Options{
+		NotEraseInstruction: metric.TRUE,
+	}
+	err := gleamrt.Initialize(&opts)
 	if err != nil {
 		panic(err)
 	}
@@ -67,8 +72,8 @@ func TestGetStatus(t *testing.T) {
 	status, err := GetStatus()
 	require.NoError(t, err)
 
-	require.False(t, status.IsPreInjected)
-	require.True(t, status.IsAllocated)
-
+	require.NotZero(t, status.EntryPoint)
+	require.NotZero(t, status.BaseAddress)
+	require.Equal(t, shield.SourceShieldStub, status.Source)
 	spew.Dump(status)
 }
