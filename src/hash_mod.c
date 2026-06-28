@@ -1,4 +1,5 @@
 #include "c_types.h"
+#include "hash_mod.h"
 
 static uint64 ror64(uint64 value, uint64 bits);
 
