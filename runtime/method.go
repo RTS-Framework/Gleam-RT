@@ -32,11 +32,14 @@ var (
 	procGetTEB   = modGleamRT.NewProc("RT_GetTEB")
 	procGetIMOML = modGleamRT.NewProc("RT_GetIMOML")
 
-	procGetInfo    = modGleamRT.NewProc("RT_GetInfo")
-	procGetMetrics = modGleamRT.NewProc("RT_GetMetrics")
-	procSleepHR    = modGleamRT.NewProc("RT_SleepHR")
-	procSleep      = modGleamRT.NewProc("RT_Sleep")
+	procGetOptions  = modGleamRT.NewProc("RT_GetOptions")
+	procGetRuntimeM = modGleamRT.NewProc("RT_GetRuntimeM")
+	procGetInfo     = modGleamRT.NewProc("RT_GetInfo")
+	procGetMetrics  = modGleamRT.NewProc("RT_GetMetrics")
 
+	procSleepHR = modGleamRT.NewProc("RT_SleepHR")
+
+	procSleep       = modGleamRT.NewProc("RT_Sleep")
 	procExitProcess = modGleamRT.NewProc("RT_ExitProcess")
 )
 
@@ -132,6 +135,26 @@ func GetTEB() uintptr {
 func GetIMOML() uintptr {
 	ret, _, _ := procGetIMOML.Call()
 	return ret
+}
+
+// GetOptions is used to get runtime options.
+func GetOptions() (*Options, error) {
+	var opts Options
+	ret, _, _ := procGetOptions.Call(uintptr(unsafe.Pointer(&opts))) // #nosec
+	if ret != windows.NO_ERROR {
+		return nil, fmt.Errorf("failed to call GetOptions: 0x%08X", ret)
+	}
+	return &opts, nil
+}
+
+// GetRuntimeM is used to get runtime module/method.
+func GetRuntimeM() (*RuntimeM, error) {
+	var rtm RuntimeM
+	ret, _, _ := procGetRuntimeM.Call(uintptr(unsafe.Pointer(&rtm))) // #nosec
+	if ret != windows.NO_ERROR {
+		return nil, fmt.Errorf("failed to call GetRuntimeM: 0x%08X", ret)
+	}
+	return &rtm, nil
 }
 
 // GetInfo is used to get runtime information.
