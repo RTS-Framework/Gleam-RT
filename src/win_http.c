@@ -1,3 +1,4 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
@@ -287,12 +288,12 @@ static bool initWinHTTPEnv()
         }
         // decrypt to "winhttp.dll\0"
         byte dllName[] = {
-            'w'^0xAC, 'i'^0x1F, 'n'^0x49, 'h'^0xC6, 
-            't'^0xAC, 't'^0x1F, 'p'^0x49, '.'^0xC6, 
+            'w'^0xAC, 'i'^0x1F, 'n'^0x49, 'h'^0xC6,
+            't'^0xAC, 't'^0x1F, 'p'^0x49, '.'^0xC6,
             'd'^0xAC, 'l'^0x1F, 'l'^0x49, 000^0xC6,
         };
         byte key[] = { 0xAC, 0x1F, 0x49, 0xC6 };
-        XORBuf(dllName, sizeof(dllName), key, sizeof(key));
+        XORBuffer(dllName, sizeof(dllName), key, sizeof(key));
         // load winhttp.dll
         HMODULE hModule = module->LoadLibraryA(dllName);
         if (hModule == NULL)
@@ -322,7 +323,7 @@ static bool findWinHTTPAPI()
 {
     WinHTTP* module = getModulePointer();
 
-    typedef struct { 
+    typedef struct {
         uint mHash; uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
@@ -480,10 +481,10 @@ errno WH_Get(HTTP_Request* req, HTTP_Response* resp)
 {
     // build "GET" string
     uint16 method[] = {
-        L'G'^0x12AC, L'E'^0xDA1F, L'T'^0x4C7D, 0000^0x9A1E, 
+        L'G'^0x12AC, L'E'^0xDA1F, L'T'^0x4C7D, 0000^0x9A1E,
     };
     uint16 key[] = { 0x12AC, 0xDA1F, 0x4C7D, 0x9A1E};
-    XORBuf(method, sizeof(method), key, sizeof(key));
+    XORBuffer(method, sizeof(method), key, sizeof(key));
     return WH_Do(method, req, resp);
 }
 
@@ -492,11 +493,11 @@ errno WH_Post(HTTP_Request* req, HTTP_Response* resp)
 {
     // build "POST" string
     uint16 method[] = {
-        L'P'^0x49C7, L'O'^0xC48D, L'S'^0xAB12, L'T'^0x49C2, 
-        0000^0x49C7, 
+        L'P'^0x49C7, L'O'^0xC48D, L'S'^0xAB12, L'T'^0x49C2,
+        0000^0x49C7,
     };
     uint16 key[] = { 0x49C7, 0xC48D, 0xAB12, 0x49C2 };
-    XORBuf(method, sizeof(method), key, sizeof(key));
+    XORBuffer(method, sizeof(method), key, sizeof(key));
     return WH_Do(method, req, resp);
 }
 
@@ -618,8 +619,8 @@ errno WH_Do(UTF16 method, HTTP_Request* req, HTTP_Response* resp)
             break;
         }
         // build request path  
-        strcpy_w(reqPath, path);
-        strcpy_w(reqPath + url_com.dwUrlPathLength, extra);
+        strncpy_w(reqPath, path, 4096);
+        strncpy_w(reqPath + url_com.dwUrlPathLength, extra, 4096);
         // build flag
         DWORD flags = 0;
         if (url_com.nScheme == INTERNET_SCHEME_HTTPS)
