@@ -55,10 +55,10 @@ func TestRuntime(t *testing.T) {
 	addr := loadInstance(t, instance)
 	fmt.Printf("Runtime: 0x%X\n", addr)
 
-	opts := Options{
+	opts := &Options{
 		NotAdjustProtect: metric.TRUE,
 	}
-	Runtime, err := InitRuntime(addr, &opts)
+	Runtime, err := InitRuntime(addr, opts)
 	require.NoError(t, err)
 
 	t.Run("Sleep", func(t *testing.T) {
@@ -68,6 +68,12 @@ func TestRuntime(t *testing.T) {
 		require.NoError(t, err)
 
 		require.GreaterOrEqual(t, time.Since(now).Milliseconds(), int64(1000))
+	})
+
+	t.Run("Options", func(t *testing.T) {
+		opt, err := Runtime.Options()
+		require.NoError(t, err)
+		require.Equal(t, opts, opt)
 	})
 
 	t.Run("Information", func(t *testing.T) {
