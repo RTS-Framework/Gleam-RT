@@ -47,18 +47,22 @@ static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
     // initialize random seeds
     for (int i = 0; i < 8; i++)
     {
-        seeds[i] *= (uint32)(key[i * 4 + 0]) << 0;
-        seeds[i] *= (uint32)(key[i * 4 + 1]) << 8;
-        seeds[i] *= (uint32)(key[i * 4 + 2]) << 16;
-        seeds[i] *= (uint32)(key[i * 4 + 3]) << 24;
+        uint32 seed = seeds[i];
 
-        seeds[i] ^= (uint32)(key[i * 4 + 0]) << 0;
-        seeds[i] ^= (uint32)(key[i * 4 + 1]) << 8;
-        seeds[i] ^= (uint32)(key[i * 4 + 2]) << 16;
-        seeds[i] ^= (uint32)(key[i * 4 + 3]) << 24;
+        seed *= (uint32)(key[i * 4 + 0]) << 0;
+        seed *= (uint32)(key[i * 4 + 1]) << 8;
+        seed *= (uint32)(key[i * 4 + 2]) << 16;
+        seed *= (uint32)(key[i * 4 + 3]) << 24;
 
-        seeds[i] ^= (uint32)(iv[i * 2 + 0]) << 8;
-        seeds[i] ^= (uint32)(iv[i * 2 + 1]) << 24;
+        seed ^= (uint32)(key[i * 4 + 0]) << 0;
+        seed ^= (uint32)(key[i * 4 + 1]) << 8;
+        seed ^= (uint32)(key[i * 4 + 2]) << 16;
+        seed ^= (uint32)(key[i * 4 + 3]) << 24;
+
+        seed ^= (uint32)(iv[i * 2 + 0]) << 8;
+        seed ^= (uint32)(iv[i * 2 + 1]) << 24;
+
+        seeds[i] = seed;
     }
 
     // load random seeds
@@ -285,18 +289,22 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
     // initialize random seeds
     for (int i = 0; i < 8; i++)
     {
-        seeds[i] *= (uint32)(key[i * 4 + 0]) << 0;
-        seeds[i] *= (uint32)(key[i * 4 + 1]) << 8;
-        seeds[i] *= (uint32)(key[i * 4 + 2]) << 16;
-        seeds[i] *= (uint32)(key[i * 4 + 3]) << 24;
+        uint32 seed = seeds[i];
 
-        seeds[i] ^= (uint32)(key[i * 4 + 0]) << 0;
-        seeds[i] ^= (uint32)(key[i * 4 + 1]) << 8;
-        seeds[i] ^= (uint32)(key[i * 4 + 2]) << 16;
-        seeds[i] ^= (uint32)(key[i * 4 + 3]) << 24;
+        seed *= (uint32)(key[i * 4 + 0]) << 0;
+        seed *= (uint32)(key[i * 4 + 1]) << 8;
+        seed *= (uint32)(key[i * 4 + 2]) << 16;
+        seed *= (uint32)(key[i * 4 + 3]) << 24;
 
-        seeds[i] ^= (uint32)(iv[i * 2 + 0]) << 8;
-        seeds[i] ^= (uint32)(iv[i * 2 + 1]) << 24;
+        seed ^= (uint32)(key[i * 4 + 0]) << 0;
+        seed ^= (uint32)(key[i * 4 + 1]) << 8;
+        seed ^= (uint32)(key[i * 4 + 2]) << 16;
+        seed ^= (uint32)(key[i * 4 + 3]) << 24;
+
+        seed ^= (uint32)(iv[i * 2 + 0]) << 8;
+        seed ^= (uint32)(iv[i * 2 + 1]) << 24;
+
+        seeds[i] = seed;
     }
 
     // load random seeds
