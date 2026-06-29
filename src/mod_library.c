@@ -21,9 +21,11 @@
 
 typedef struct {
     HMODULE hModule;
-    uint    counter;
+    int64   counter;
     bool    locked;
 } module;
+
+
 
 typedef struct {
     // store options
@@ -170,7 +172,7 @@ LibraryTracker_M* InitLibraryTracker(Context* context)
 __declspec(noinline)
 static bool initTrackerAPI(LibraryTracker* tracker, Context* context)
 {
-    typedef struct { 
+    typedef struct {
         uint mHash; uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
@@ -626,8 +628,8 @@ static bool isGleamRT_A(LPCSTR lpLibFileName)
 {
     // build "GleamRT.dll" string
     byte module[] = {
-        'G'^0x5D, 'l'^0x2A, 'e'^0x17, 'a'^0xCF, 
-        'm'^0x5D, 'R'^0x2A, 'T'^0x17, '.'^0xCF, 
+        'G'^0x5D, 'l'^0x2A, 'e'^0x17, 'a'^0xCF,
+        'm'^0x5D, 'R'^0x2A, 'T'^0x17, '.'^0xCF,
         'd'^0x5D, 'l'^0x2A, 'l'^0x17, 000^0xCF,
     };
     byte key[] = { 0x5D, 0x2A, 0x17, 0xCF };
@@ -640,8 +642,8 @@ static bool isGleamRT_W(LPCWSTR lpLibFileName)
 {
     // build "GleamRT.dll" string
     uint16 module[] = {
-        L'G'^0x147F, L'l'^0xAA72, L'e'^0xCA43, L'a'^0x19B2, 
-        L'm'^0x147F, L'R'^0xAA72, L'T'^0xCA43, L'.'^0x19B2, 
+        L'G'^0x147F, L'l'^0xAA72, L'e'^0xCA43, L'a'^0x19B2,
+        L'm'^0x147F, L'R'^0xAA72, L'T'^0xCA43, L'.'^0x19B2,
         L'd'^0x147F, L'l'^0xAA72, L'l'^0xCA43, 0000^0x19B2,
     };
     uint16 key[] = { 0x147F, 0xAA72, 0xCA43, 0x19B2 };
@@ -916,7 +918,7 @@ errno LT_FreeAll()
             if (!cleanModule(tracker, module))
             {
                 errno = ERR_LIBRARY_CLEAN_MODULE;
-            }            
+            }
         }
         if (!List_Delete(modules, idx))
         {
@@ -937,7 +939,7 @@ errno LT_Clean()
 
     List* modules = &tracker->Modules;
     errno errno   = NO_ERROR;
-    
+
     // free the loaded DLL in reverse order
     uint len = modules->Len;
     uint idx = modules->Last;
@@ -987,8 +989,8 @@ errno LT_Clean()
 
 static bool cleanModule(LibraryTracker* tracker, module* module)
 {
-    uint num = module->counter;
-    for (uint i = 0; i < num; i++)
+    int64 num = module->counter;
+    for (int64 i = 0; i < num; i++)
     {
         if (!tracker->FreeLibrary(module->hModule))
         {
