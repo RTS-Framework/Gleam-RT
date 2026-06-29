@@ -1,3 +1,4 @@
+#include "build.h"
 #include "c_types.h"
 #include "lib_memory.h"
 #include "random.h"
