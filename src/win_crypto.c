@@ -294,7 +294,7 @@ static bool initWinCryptoEnv()
             000^0xC4,
         };
         byte key[] = { 0xC4, 0x79, 0xF2, 0x2A };
-        XORBuf(dllName, sizeof(dllName), key, sizeof(key));
+        XORBuffer(dllName, sizeof(dllName), key, sizeof(key));
         // load advapi32.dll
         HMODULE hModule = module->LoadLibraryA(dllName);
         if (hModule == NULL)
@@ -1380,14 +1380,14 @@ errno WC_FreeDLL()
 {
     if (!wc_lock())
     {
-        return false;
+        return GetLastErrno();
     }
 
     bool success = tryToFreeLibrary();
 
     if (!wc_unlock())
     {
-        return false;
+        return GetLastErrno();
     }
 
     if (!success)
