@@ -265,6 +265,7 @@ type RuntimeM struct {
 		Sleep   uintptr
 		Hide    uintptr
 		Recover uintptr
+		Options uintptr
 		Info    uintptr
 		Metrics uintptr
 		Cleanup uintptr
@@ -324,11 +325,23 @@ func (rt *RuntimeM) Sleep(d time.Duration) error {
 	return nil
 }
 
+// Options is used to get runtime options.
+func (rt *RuntimeM) Options() (*Options, error) {
+	rt.lock()
+	defer rt.unlock()
+	var opts Options
+	ret, _, _ := syscall.SyscallN(rt.Core.Options, uintptr(unsafe.Pointer(&opts))) // #nosec
+	if ret != noError {
+		return nil, &errno{method: "Core.Options", errno: ret}
+	}
+	return &opts, nil
+}
+
 // Information is used to get runtime information.
 func (rt *RuntimeM) Information() (*Info, error) {
 	rt.lock()
 	defer rt.unlock()
-	inf := info.Info{}
+	var inf info.Info
 	ret, _, _ := syscall.SyscallN(rt.Core.Info, uintptr(unsafe.Pointer(&inf))) // #nosec
 	if ret != noError {
 		return nil, &errno{method: "Core.Info", errno: ret}
@@ -340,7 +353,7 @@ func (rt *RuntimeM) Information() (*Info, error) {
 func (rt *RuntimeM) Metrics() (*Metrics, error) {
 	rt.lock()
 	defer rt.unlock()
-	metrics := metric.Metrics{}
+	var metrics metric.Metrics
 	ret, _, _ := syscall.SyscallN(rt.Core.Metrics, uintptr(unsafe.Pointer(&metrics))) // #nosec
 	if ret != noError {
 		return nil, &errno{method: "Core.Metrics", errno: ret}
@@ -362,7 +375,7 @@ func (rt *RuntimeM) Cleanup() error {
 // Exit is used to exit runtime.
 func (rt *RuntimeM) Exit() error {
 	rt.lock()
-	// defer rt.unlock() runtime will close the mutex
+	// defer rt.unlock() runtime will close the mutex handle.
 	ret, _, _ := syscall.SyscallN(rt.Core.Exit) // #nosec
 	if ret != noError {
 		return &errno{method: "Core.Exit", errno: ret}
