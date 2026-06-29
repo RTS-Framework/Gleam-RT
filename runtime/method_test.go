@@ -246,6 +246,24 @@ func TestGetIMOML(t *testing.T) {
 	})
 }
 
+func TestGetOptions(t *testing.T) {
+	opts, err := GetOptions()
+	require.NoError(t, err)
+
+	expected := &Options{
+		NotEraseInstruction: metric.TRUE,
+	}
+	require.Equal(t, expected, opts)
+}
+
+func TestGetRuntimeM(t *testing.T) {
+	rtm, err := GetRuntimeM()
+	require.NoError(t, err)
+	require.NotZero(t, rtm)
+
+	spew.Dump(rtm)
+}
+
 func TestGetInfo(t *testing.T) {
 	info, err := GetInfo()
 	require.NoError(t, err)
