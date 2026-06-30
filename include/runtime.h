@@ -12,7 +12,7 @@
 #define RUNTIME_VERSION 0x000901
 
 // about runtime options at the template tail.
-// 
+//
 // +------------+---------+---------+---------+---------+
 // | magic mark | xor key | option1 | option2 | optionN |
 // +------------+---------+---------+---------+---------+
@@ -198,7 +198,7 @@ typedef errno (*HTTPFreeDLL_t)();
 // ================================WinCrypto================================
 
 // The allocated databuf must call Runtime_M.Memory.Free().
-// 
+//
 // +---------+-------------+
 // |   IV    | cipher data |
 // +---------+-------------+
@@ -210,7 +210,7 @@ typedef errno (*HTTPFreeDLL_t)();
 //
 // The HMAC/AES Key only contain the key data, not contain header.
 // The RSA Private/Public Key contain the header RSAPUBKEYHEADER.
-// 
+//
 // The valid AES key length are 16, 24, 32 bytes.
 
 #ifndef WIN_CRYPTO_H
@@ -271,15 +271,15 @@ typedef void (*XORBuffer_t)(void* buf, uint bufSize, void* key, uint keySize);
 typedef void (*EraseBuffer_t)(void* buf, uint size);
 
 // about compress module
-// 
+//
 // Compress is used to compress data with LZSS.
 // If return value is -1, window size is invalid.
 // If dst is NULL, calculate the compressed length.
-// 
+//
 // Decompress is used to decompress data with LZSS.
 // If dst is NULL, calculate the raw data length.
-// 
-// Since the algorithm is relatively simple to implement, 
+//
+// Since the algorithm is relatively simple to implement,
 // it is NOT recommended to compress data exceeding 8MB.
 
 typedef uint (*Compress_t)(void* dst, void* src, uint len, uint window);
@@ -297,7 +297,7 @@ typedef uint (*Decompress_t)(void* dst, void* src, uint len);
 // item data structure
 // 0······· value or pointer
 // ·0000000 data length
-// 
+//
 // Serialize is used to serialize structure to a buffer.
 // If success, return the serialized data length. If failed, return 0.
 // If serialized is NULL, it will calculate the serialized data length.
@@ -323,18 +323,18 @@ typedef uint32 (*Serialize_t)(uint32* descriptor, void* data, void* serialized);
 typedef BOOL   (*Unserialize_t)(void* serialized, void* data);
 
 // about memory scanner module
-// 
+//
 // MemScan is used to scans data in the memory of the current process.
 // The return value is the number of results scanned, if failed to
 // scan, it will return -1, use the GetLastErrno for get error code.
-// 
+//
 // BinToPattern is used to convert binary data to pattern for MemScan.
 // The pattern buffer size must greater the [data size * 3 + 1].
-// 
+//
 // [WARNING]
 // You need to manually exclude certain scan results, such as the "value"
 // stored in the stack as a argument for MemScanByValue.
-// 
+//
 // example:
 //   MemScan_Cfg config = {
 //      .Pattern = "F1 ?2 ?? A?",
@@ -358,11 +358,11 @@ typedef void (*BinToPattern_t)(void* data, uint size, byte* pattern);
 
 // GetProcByName and GetProcByHash are use HashAPI module for
 // implement original GetProcAddress.
-// 
+//
 // GetProcAddress is not recommend, because GetProcAddressByName
 // will try to use HashAPI first, then use original GetProcAddress,
 // recommend use GetProcByName with redirect FALSE instead it.
-// 
+//
 // These methods are used for API Redirector or common module.
 typedef void* (*GetProcByName_t)(HMODULE hModule, LPCSTR lpProcName, BOOL redirect);
 typedef void* (*GetProcByHash_t)(uint mHash, uint pHash, uint hKey, BOOL redirect);
@@ -458,11 +458,11 @@ typedef void* (*GetIMOML_t)(); // get stored InMemoryOrderModuleList address
 //
 // SleepHR is used to call Hide, Sleep and Recover.
 // Cleanup is used to clean all tracked object except locked.
-// 
+//
 // Exit is used to clean all tracked object and clean runtime self,
-// it can only erase the instruction about the runtime self, 
+// it can only erase the instruction about the runtime self,
 // caller need erase the other memory data about instance.
-// 
+//
 // Stop is same as Exit, but it will exit current thread after exit,
 // it can erase the instruction from boot address to runtime epilogue.
 
@@ -484,7 +484,7 @@ typedef struct {
     // the shield memory address that external program provide.
     uint64 ShieldMemAddress;
 
-    // detect environment when initialize runtime, if not safe, 
+    // detect environment when initialize runtime, if not safe,
     // stop initialization and exit runtime at once.
     BOOL EnableSecurityMode;
 
@@ -541,7 +541,7 @@ typedef void  (*RTStop_t)();
 typedef struct {
     struct {
         FindAPI_t    FindAPI;
-        FindAPI_ML_t FindAPI_ML;   
+        FindAPI_ML_t FindAPI_ML;
         FindAPI_A_t  FindAPI_A;
         FindAPI_W_t  FindAPI_W;
     } HashAPI;
@@ -629,7 +629,7 @@ typedef struct {
         WriteFileA_t WriteFileA;
         WriteFileW_t WriteFileW;
     } WinFile;
-    
+
     struct {
         HTTPInit_t Init;
         HTTPGet_t  Get;
