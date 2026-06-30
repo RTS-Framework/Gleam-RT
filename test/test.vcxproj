@@ -15,6 +15,7 @@
     <ClInclude Include="test.h" />
     <ClInclude Include="..\include\c_types.h" />
     <ClInclude Include="..\include\win_types.h" />
+    <ClInclude Include="..\include\win_struct.h" />
     <ClInclude Include="..\include\dll_kernel32.h" />
     <ClInclude Include="..\include\dll_ntdll.h" />
     <ClInclude Include="..\include\dll_msvcrt.h" />

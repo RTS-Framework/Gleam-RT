@@ -346,6 +346,9 @@
     <ClInclude Include="..\include\lib_encode.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\win_struct.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="..\asm\args_stub.asm">
