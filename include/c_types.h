@@ -69,6 +69,11 @@ typedef struct {
 #define UINT32_MAX 0xFFFFFFFFui32
 #define UINT64_MAX 0xFFFFFFFFFFFFFFFFui64
 
+// process memory page or data size alignment
+// argument a must be a power of two
+#define align_up(x, a)   (((x) + ((a)-1)) & ~((a)-1))
+#define align_down(x, a) (((x) + (00000)) & ~((a)-1))
+
 // calculate the array length
 #ifndef arrlen
 #define arrlen(array) (sizeof(array) / sizeof(array[0]))
