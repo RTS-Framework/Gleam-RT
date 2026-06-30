@@ -90,7 +90,7 @@ typedef struct {
     uint32 PageSize;    // for memory management
     HANDLE hMutex;      // global method mutex
 
-    // environment data 
+    // environment data
     SYSTEM_INFO SysInfo;   // system information
     DWORD       InitTick;  // store initialize tick count
     UINT        ErrorMode; // record old error mode.
@@ -759,7 +759,7 @@ static void* calculateEpilogue()
 
 static bool initRuntimeAPI(Runtime* runtime)
 {
-    typedef struct { 
+    typedef struct {
         uint mHash; uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
@@ -1023,7 +1023,7 @@ static errno initSubmodules(Runtime* runtime)
 
     // initialize runtime submodules
     typedef errno (*module_t)(Runtime* runtime, Context* context);
-    module_t submodules[] = 
+    module_t submodules[] =
     {
         GetFuncAddr(&initLibraryTracker),
         GetFuncAddr(&initMemoryTracker),
@@ -1050,7 +1050,7 @@ static errno initSubmodules(Runtime* runtime)
     context.mt_mcap    = runtime->MemoryTracker->Cap;
 
     // initialize high-level modules
-    module_t hl_modules[] = 
+    module_t hl_modules[] =
     {
         GetFuncAddr(&initWinBase),
         GetFuncAddr(&initWinFile),
@@ -1548,10 +1548,10 @@ static errno closeHandles(Runtime* runtime)
     {
         return NO_ERROR;
     }
-    typedef struct { 
+    typedef struct {
         HANDLE handle; errno errno;
     } handle;
-    handle list[] = 
+    handle list[] =
     {
         { runtime->hMutex, ERR_RUNTIME_CLEAN_H_MUTEX },
     };
@@ -1808,11 +1808,11 @@ errno RT_lock_mods()
     Runtime* runtime = getRuntimePointer();
 
     typedef bool (*lock_t)();
-    typedef struct { 
+    typedef struct {
         lock_t lock; errno errno;
     } submodule_t;
 
-    submodule_t list[] = 
+    submodule_t list[] =
     {
         { runtime->Sysmon->Lock,          ERR_RUNTIME_LOCK_SYSMON   },
         { runtime->Watchdog->Lock,        ERR_RUNTIME_LOCK_WATCHDOG },
@@ -1844,11 +1844,11 @@ errno RT_unlock_mods()
     Runtime* runtime = getRuntimePointer();
 
     typedef bool (*unlock_t)();
-    typedef struct { 
+    typedef struct {
         unlock_t unlock; errno errno;
     } submodule_t;
 
-    submodule_t list[] = 
+    submodule_t list[] =
     {
         { runtime->ThreadTracker->Unlock,   ERR_RUNTIME_UNLOCK_THREAD   },
         { runtime->Detector->Unlock,        ERR_RUNTIME_UNLOCK_DETECTOR },
@@ -1985,7 +1985,7 @@ void* RT_FindAPI_ML(void* list, uint module, uint procedure, uint key)
 
 __declspec(noinline)
 void* RT_FindAPI_A(byte* module, byte* procedure)
-{                  
+{
 #ifdef _WIN64
     uint key = 0xA6C1B1E79D26D1E7;
 #elif _WIN32
@@ -2038,8 +2038,8 @@ void* RT_GetProcAddressByName(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
     if (hModule == HMODULE_GLEAM_RT)
     {
         uint16 mod[] = {
-            L'G'^0xA3EB, L'l'^0xCD20, L'e'^0x67F4, L'a'^0x19B2, 
-            L'm'^0xA3EB, L'R'^0xCD20, L'T'^0x67F4, L'.'^0x19B2, 
+            L'G'^0xA3EB, L'l'^0xCD20, L'e'^0x67F4, L'a'^0x19B2,
+            L'm'^0xA3EB, L'R'^0xCD20, L'T'^0x67F4, L'.'^0x19B2,
             L'd'^0xA3EB, L'l'^0xCD20, L'l'^0x67F4, 0000^0x19B2,
         };
         uint16 key[] = { 0xA3EB, 0xCD20, 0x67F4, 0x19B2 };
@@ -2129,7 +2129,7 @@ void* RT_GetProcAddressOriginal(HMODULE hModule, LPCSTR lpProcName)
 
 // getRuntimeMethods is used to obtain runtime internal methods,
 // such as GetProcAddress, ExitProcess and submodule methods.
-// 
+//
 // HMODULE hGleamRT = LoadLibraryA("GleamRT.dll");
 // ArgGetValue_t AS_GetValue = GetProcAddress(hGleamRT, "AS_GetValue");
 static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
@@ -2330,7 +2330,7 @@ static void* getLazyAPIRedirector(Runtime* runtime, void* proc)
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
-        rdr item = list[i]; 
+        rdr item = list[i];
         if (FindAPI_SC(item.mHash, item.pHash, item.hKey) != proc)
         {
             continue;
@@ -2379,7 +2379,8 @@ BOOL RT_SetCurrentDirectoryA(LPSTR lpPathName)
     {
         return runtime->SetCurrentDirectoryA(lpPathName);
     }
-
+    // prevent the upper module change the
+    // current directory in the host process
     if (*lpPathName != '*')
     {
         return true;
@@ -2399,7 +2400,8 @@ BOOL RT_SetCurrentDirectoryW(LPWSTR lpPathName)
     {
         return runtime->SetCurrentDirectoryW(lpPathName);
     }
-
+    // prevent the upper module change the
+    // current directory in the host process
     if (*lpPathName != L'*')
     {
         return true;
@@ -2578,7 +2580,7 @@ static errno hide(Runtime* runtime)
     for (int i = 0; i < arrlen(submodules); i++)
     {
         errno enmod = submodules[i]();
-        if (enmod != NO_ERROR && err == NO_ERROR)
+        if (enmod != NO_ERROR && !CAN_IGNORE_ERR(enmod) && err == NO_ERROR)
         {
             err = enmod;
         }
@@ -2606,7 +2608,7 @@ static errno recover(Runtime* runtime)
     for (int i = 0; i < arrlen(submodules); i++)
     {
         errno enmod = submodules[i]();
-        if (enmod != NO_ERROR && err == NO_ERROR)
+        if (enmod != NO_ERROR && !CAN_IGNORE_ERR(enmod) && err == NO_ERROR)
         {
             err = enmod;
         }
@@ -2815,7 +2817,7 @@ errno RT_Cleanup()
     // free all library.
     errno err = NO_ERROR;
     typedef errno (*submodule_t)();
-    submodule_t submodules[] = 
+    submodule_t submodules[] =
     {
         // first kill all threads
         runtime->ThreadTracker->KillAll,
@@ -2896,7 +2898,7 @@ errno RT_stop(bool exitThread, uint32 code)
     // memory page or heap, so free memory after
     // free all library.
     typedef errno (*submodule_t)();
-    submodule_t submodules[] = 
+    submodule_t submodules[] =
     {
         // reliability modules
         runtime->Sysmon->Stop,
@@ -3006,7 +3008,7 @@ errno RT_stop(bool exitThread, uint32 code)
     // copy function address before erase memory
     ExitThread_t ExitThread = runtime->ExitThread;
 
-    // clean stack about cloned structure data 
+    // clean stack about cloned structure data
     eraseMemory((uintptr)(runtime), sizeof(Runtime));
 
     if (exitThread)
