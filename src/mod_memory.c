@@ -225,9 +225,10 @@ static bool isEmptyPage(MemoryTracker* tracker, memPage* page);
 static bool encryptRWXRegion(MemoryTracker* tracker, memRegion* region);
 static bool decryptRWXRegion(MemoryTracker* tracker, memRegion* region);
 static void deriveKey(MemoryTracker* tracker, memPage* page, byte* key);
-static bool encryptHeapBlocks(HANDLE hHeap);
-static bool decryptHeapBlocks(HANDLE hHeap);
-static bool eraseHeapBlocks(HANDLE hHeap);
+static bool encryptHeapBlocks();
+static bool decryptHeapBlocks();
+static bool eraseHeapBlocks();
+static bool walkProcessHeaps(int operation);
 static bool walkHeapBlocks(HANDLE hHeap, int operation);
 static bool cleanPage(MemoryTracker* tracker, memPage* page);
 
@@ -2638,37 +2639,9 @@ errno MT_Encrypt()
 
     // encrypt heap blocks
     errno errno = NO_ERROR;
-    if (tracker->NumBlocks != 0)
+    if (tracker->NumBlocks != 0 && !encryptHeapBlocks())
     {
-        // get the number of heaps
-        DWORD numHeaps = tracker->GetProcessHeaps(0, NULL);
-        // try to get heap handles
-        for (;;)
-        {
-            HANDLE* hHeaps  = tracker->RT_calloc(numHeaps, sizeof(HANDLE));
-            DWORD   current = tracker->GetProcessHeaps(numHeaps, hHeaps);
-            if (current == 0)
-            {
-                tracker->RT_free(hHeaps);
-                break;
-            }
-            if (current > numHeaps)
-            {
-                numHeaps = current;
-                tracker->RT_free(hHeaps);
-                continue;
-            }
-            // walk and encrypt heap blocks
-            for (uint32 i = 0; i < current; i++)
-            {
-                if (!encryptHeapBlocks(hHeaps[i]))
-                {
-                    errno = ERR_MEMORY_ENCRYPT_BLOCK;
-                }
-            }
-            tracker->RT_free(hHeaps);
-            break;
-        }
+        errno = ERR_MEMORY_ENCRYPT_BLOCK;
     }
 
     // encrypt lists
@@ -2762,37 +2735,9 @@ errno MT_Decrypt()
 
     // decrypt heap blocks
     errno errno = NO_ERROR;
-    if (tracker->NumBlocks != 0)
+    if (tracker->NumBlocks != 0 && !decryptHeapBlocks())
     {
-        // get the number of heaps
-        DWORD numHeaps = tracker->GetProcessHeaps(0, NULL);
-        // try to get heap handles
-        for (;;)
-        {
-            HANDLE* hHeaps  = tracker->RT_calloc(numHeaps, sizeof(HANDLE));
-            DWORD   current = tracker->GetProcessHeaps(numHeaps, hHeaps);
-            if (current == 0)
-            {
-                tracker->RT_free(hHeaps);
-                break;
-            }
-            if (current > numHeaps)
-            {
-                numHeaps = current;
-                tracker->RT_free(hHeaps);
-                continue;
-            }
-            // walk and decrypt heap blocks
-            for (uint32 i = 0; i < current; i++)
-            {
-                if (!decryptHeapBlocks(hHeaps[i]))
-                {
-                    errno = ERR_MEMORY_DECRYPT_BLOCK;
-                }
-            }
-            tracker->RT_free(hHeaps);
-            break;
-        }
+        errno = ERR_MEMORY_DECRYPT_BLOCK;
     }
 
     dbg_log("[memory]", "regions: %zu", tracker->Regions.Len);
@@ -2881,19 +2826,62 @@ static void deriveKey(MemoryTracker* tracker, memPage* page, byte* key)
     mem_copy(key + 4, &addr, sizeof(addr));
 }
 
-static bool encryptHeapBlocks(HANDLE hHeap)
+static bool encryptHeapBlocks()
 {
-    return walkHeapBlocks(hHeap, OP_WALK_HEAP_ENCRYPT);
+    return walkProcessHeaps(OP_WALK_HEAP_ENCRYPT);
 }
 
-static bool decryptHeapBlocks(HANDLE hHeap)
+static bool decryptHeapBlocks()
 {
-    return walkHeapBlocks(hHeap, OP_WALK_HEAP_DECRYPT);
+    return walkProcessHeaps(OP_WALK_HEAP_DECRYPT);
 }
 
-static bool eraseHeapBlocks(HANDLE hHeap)
+static bool eraseHeapBlocks()
 {
-    return walkHeapBlocks(hHeap, OP_WALK_HEAP_ERASE);
+    return walkProcessHeaps(OP_WALK_HEAP_ERASE);
+}
+
+static bool walkProcessHeaps(int operation)
+{
+    MemoryTracker* tracker = getTrackerPointer();
+
+    bool success = true;
+
+    // get the number of heaps
+    DWORD numHeaps = tracker->GetProcessHeaps(0, NULL);
+    if (numHeaps == 0)
+    {
+        return false;
+    }
+    // try to get heap handles
+    for (;;)
+    {
+        HANDLE* hHeaps  = tracker->RT_calloc(numHeaps, sizeof(HANDLE));
+        DWORD   current = tracker->GetProcessHeaps(numHeaps, hHeaps);
+        if (current == 0)
+        {
+            tracker->RT_free(hHeaps);
+            success = false;
+            break;
+        }
+        if (current > numHeaps)
+        {
+            numHeaps = current + 4;
+            tracker->RT_free(hHeaps);
+            continue;
+        }
+        // walk and erase heap blocks
+        for (uint32 i = 0; i < current; i++)
+        {
+            if (!walkHeapBlocks(hHeaps[i], operation))
+            {
+                success = false;
+            }
+        }
+        tracker->RT_free(hHeaps);
+        break;
+    }
+    return success;
 }
 
 static bool walkHeapBlocks(HANDLE hHeap, int operation)
@@ -3153,37 +3141,9 @@ errno MT_FreeAll()
     }
 
     // erase heap blocks
-    if (tracker->NumBlocks != 0)
+    if (tracker->NumBlocks != 0 && !eraseHeapBlocks())
     {
-        // get the number of heaps
-        DWORD numHeaps = tracker->GetProcessHeaps(0, NULL);
-        // try to get heap handles
-        for (;;)
-        {
-            HANDLE* hHeaps  = tracker->RT_calloc(numHeaps, sizeof(HANDLE));
-            DWORD   current = tracker->GetProcessHeaps(numHeaps, hHeaps);
-            if (current == 0)
-            {
-                tracker->RT_free(hHeaps);
-                break;
-            }
-            if (current > numHeaps)
-            {
-                numHeaps = current;
-                tracker->RT_free(hHeaps);
-                continue;
-            }
-            // walk and erase heap blocks
-            for (uint32 i = 0; i < current; i++)
-            {
-                if (!eraseHeapBlocks(hHeaps[i]) && errno == NO_ERROR)
-                {
-                    errno = ERR_MEMORY_ERASE_BLOCK;
-                }
-            }
-            tracker->RT_free(hHeaps);
-            break;
-        }
+        errno = ERR_MEMORY_ERASE_BLOCK;
     }
 
     // release private heaps
@@ -3310,36 +3270,11 @@ errno MT_Clean()
     }
 
     // erase heap blocks
-    if (tracker->NumBlocks != 0)
+    if (tracker->NumBlocks != 0 && !eraseHeapBlocks())
     {
-        // get the number of heaps
-        DWORD numHeaps = tracker->GetProcessHeaps(0, NULL);
-        // try to get heap handles
-        for (;;)
+        if (errno == NO_ERROR)
         {
-            HANDLE* hHeaps  = tracker->RT_calloc(numHeaps, sizeof(HANDLE));
-            DWORD   current = tracker->GetProcessHeaps(numHeaps, hHeaps);
-            if (current == 0)
-            {
-                tracker->RT_free(hHeaps);
-                break;
-            }
-            if (current > numHeaps)
-            {
-                numHeaps = current;
-                tracker->RT_free(hHeaps);
-                continue;
-            }
-            // walk and erase heap blocks
-            for (uint32 i = 0; i < current; i++)
-            {
-                if (!eraseHeapBlocks(hHeaps[i]) && errno == NO_ERROR)
-                {
-                    errno = ERR_MEMORY_ERASE_BLOCK;
-                }
-            }
-            tracker->RT_free(hHeaps);
-            break;
+            errno = ERR_MEMORY_ERASE_BLOCK;
         }
     }
 
@@ -3353,12 +3288,9 @@ errno MT_Clean()
         {
             continue;
         }
-        if (!tracker->HeapDestroy(heap->hHeap))
+        if (!tracker->HeapDestroy(heap->hHeap) && errno == NO_ERROR)
         {
-            if (errno == NO_ERROR)
-            {
-                errno = ERR_MEMORY_CLEAN_HEAP;
-            }
+            errno = ERR_MEMORY_CLEAN_HEAP;
         }
         num++;
     }
