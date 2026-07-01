@@ -42,39 +42,70 @@ typedef struct {
     BOOLEAN InheritedAddressSpace;
     BOOLEAN ReadImageFileExecOptions;
     BOOLEAN BeingDebugged;
-    BOOLEAN BitField;
+
+    UCHAR ImageUsedLargePages          : 1;
+    UCHAR IsProtectedProcess           : 1;
+    UCHAR IsImageDynamicallyRelocated  : 1;
+    UCHAR SkipPatchingUser32Forwarders : 1;
+    UCHAR IsPackagedProcess            : 1;
+    UCHAR IsAppContainer               : 1;
+    UCHAR IsProtectedProcessLight      : 1;
+    UCHAR IsLongPathAwareProcess       : 1;
 
     HANDLE Mutant;
     PVOID  ImageBaseAddress;
-    PEB_LDR_DATA* Ldr;
+
+    PEB_LDR_DATA* LDR;
+
     PVOID  ProcessParameters;
     PVOID  SubSystemData;
-    PVOID  ProcessHeap;
-    PVOID  FastPebLock;
+    HANDLE ProcessHeap;
+    PVOID  FastPEBLock;
     PVOID  AtlThunkSListPtr;
     PVOID  IFEOKey;
-    ULONG  CrossProcessFlags;
-    ULONG  NumberOfProcessors;
-    ULONG  NtGlobalFlag;
+
+    ULONG ProcessInJob               : 1;
+    ULONG ProcessInitializing        : 1;
+    ULONG ProcessUsingVEH            : 1;
+    ULONG ProcessUsingVCH            : 1;
+    ULONG ProcessUsingFTH            : 1;
+    ULONG ProcessPreviouslyThrottled : 1;
+    ULONG ProcessCurrentlyThrottled  : 1;
+    ULONG ProcessImagesHotPatched    : 1;
+    ULONG ReservedBits0              : 24;
+
+    PVOID KernelCallbackTable;
+    ULONG Reserved;
+    ULONG AtlThunkSListPtr32;
+    PVOID ApiSetMap;
 } PEB;
 
 typedef struct {
-    PVOID NtTib;
-    PVOID EnvironmentPointer;
     PVOID ExceptionList;
-    PVOID StackBase;
-    PVOID StackLimit;
-    PVOID SubSystemTib;
+	PVOID StackBase;
+	PVOID StackLimit;
+	PVOID SubSystemTIB;
     PVOID FiberData;
-    PVOID ArbitraryUserPointer;
-    struct TEB* Self;
-    PVOID EnvironmentBlock;
-    ULONG LastErrorValue;
-    ULONG CountOfOwnedCriticalSections;
-    PVOID CsrClientThread;
-    PVOID Win32ThreadInfo;
-    PVOID ProcessEnvironmentBlock;
+	PVOID ArbitraryUserPointer;
+    struct NT_TIB* Self;
+} NT_TIB;
+
+typedef struct {
+    HANDLE UniqueProcess;
+    HANDLE UniqueThread;
+} CLIENT_ID;
+
+typedef struct {
+    NT_TIB    TIB;
+    PVOID     EnvironmentPointer;
+    CLIENT_ID ClientID;
+    PVOID     ActiveRpcHandle;
+    PVOID     ThreadLocalStoragePointer;
+    PEB*      ProcessEnvironmentBlock;
+    ULONG     LastErrorValue;
+    ULONG     CountOfOwnedCriticalSections;
+    PVOID     CsrClientThread;
+    PVOID     Win32ThreadInfo;
 } TEB;
 
 #endif // WIN_STRUCT_H
-
