@@ -2,6 +2,34 @@
 #define HASH_API_H
 
 #include "c_types.h"
+#include "win_types.h"
+#include "win_structs.h"
+
+// Process Module List (PML).
+//
+// Runtime abstraction of a process module entry.
+//
+// Can be populated from any module source, including:
+//   - InLoadOrderLinks
+//   - InMemoryOrderLinks
+//   - InInitializationOrderLinks
+//   - Runtime-generated module snapshots
+//   - Custom PE loaders
+//   - Other module enumeration methods
+//
+// The Links field represents the active list linkage for the selected
+// module source and is not tied to a specific Windows loader list.
+typedef struct {                
+    LIST_ENTRY Links;           
+
+    PVOID DllBase;
+    PVOID EntryPoint;
+    ULONG SizeOfImage;
+    ULONG Reserved;
+
+    UNICODE_STRING FullDllName;
+    UNICODE_STRING BaseDllName;
+} PML;
 
 // FindAPI will not call GetProcAddress, if this module is
 // not loaded, it cannot find the target procedure address.
@@ -44,7 +72,9 @@ uint   CalcProcHash  (byte* procedure, uint key);
 uint32 CalcProcHash32(byte* procedure, uint32 key);
 uint64 CalcProcHash64(byte* procedure, uint64 key);
 
-// GetInMemoryOrderModuleList is used to get InMemoryOrderModuleList address.
+// methods about get process module list.
+void* GetInLoadOrderModuleList();
 void* GetInMemoryOrderModuleList();
+void* GetInInitializationOrderModuleList();
 
 #endif // HASH_API_H
