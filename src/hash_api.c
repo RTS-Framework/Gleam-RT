@@ -1,4 +1,6 @@
 #include "c_types.h"
+#include "win_types.h"
+#include "win_structs.h"
 #include "lib_memory.h"
 #include "hash_api.h"
 
@@ -38,7 +40,7 @@ void* FindAPI_ML(void* list, uint module, uint procedure, uint key)
         uintptr modName = *(uintptr*)(mod + 80);
     #elif _WIN32
         uintptr modName = *(uintptr*)(mod + 40);
-    #endif    
+    #endif
         if (modName == 0x00)
         {
             break;
@@ -113,7 +115,7 @@ void* FindAPI_ML(void* list, uint module, uint procedure, uint key)
             }
             // calculate the finally hash and compare it
             procHash += seedHash + keyHash;
-            if (procHash != procedure) 
+            if (procHash != procedure)
             {
                 continue;
             }
@@ -264,20 +266,39 @@ uint CalcProcHash(byte* procedure, uint key)
 }
 
 __declspec(noinline)
+void* GetInLoadOrderModuleList()
+{
+#ifdef _WIN64
+    TEB* teb = __readgsqword(0x30);
+#elif _WIN32
+    TEB* teb = __readfsdword(0x18);
+#endif
+    PEB_LDR_DATA* ldr = teb->ProcessEnvironmentBlock->LDR;
+    return ldr->InLoadOrderModuleList.Flink;
+}
+
+__declspec(noinline)
 void* GetInMemoryOrderModuleList()
 {
 #ifdef _WIN64
-    uintptr teb = __readgsqword(0x30);
-    uintptr peb = *(uintptr*)(teb + 0x60);
-    uintptr ldr = *(uintptr*)(peb + 0x18);
-    uintptr mod = *(uintptr*)(ldr + 0x20);
+    TEB* teb = __readgsqword(0x30);
 #elif _WIN32
-    uintptr teb = __readfsdword(0x18);
-    uintptr peb = *(uintptr*)(teb + 0x30);
-    uintptr ldr = *(uintptr*)(peb + 0x0C);
-    uintptr mod = *(uintptr*)(ldr + 0x14);
+    TEB* teb = __readfsdword(0x18);
 #endif
-    return (void*)mod;
+    PEB_LDR_DATA* ldr = teb->ProcessEnvironmentBlock->LDR;
+    return ldr->InMemoryOrderModuleList.Flink;
+}
+
+__declspec(noinline)
+void* GetInInitializationOrderModuleList()
+{
+#ifdef _WIN64
+    TEB* teb = __readgsqword(0x30);
+#elif _WIN32
+    TEB* teb = __readfsdword(0x18);
+#endif
+    PEB_LDR_DATA* ldr = teb->ProcessEnvironmentBlock->LDR;
+    return ldr->InInitializationOrderModuleList.Flink;
 }
 
 #define KEY_SIZE_32 4
