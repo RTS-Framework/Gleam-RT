@@ -167,7 +167,7 @@ static bool initShieldAPI(Shield* shield, Context* context)
     }
 
     // get original API address
-    typedef struct { 
+    typedef struct {
         uint mHash; uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
@@ -232,7 +232,7 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
 
     // deploy shield
     int target;
-    if (context->ShieldAddress != 0) 
+    if (context->ShieldMemAddress != 0)
     {
         target = SHIELD_TARGET_MEM_ADDRESS;
     } else if (context->ShieldModuleHash == 0) {
@@ -245,7 +245,7 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
     switch (target)
     {
     case SHIELD_TARGET_MEM_ADDRESS:
-        shield->status.EntryPoint  = (void*)(context->ShieldAddress);
+        shield->status.EntryPoint  = (void*)((uintptr)(context->ShieldMemAddress));
         shield->status.BaseAddress = 0;
         shield->status.Source      = SHIELD_SRC_EXTERNAL;
         break;
@@ -260,7 +260,7 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
         }
         shield->ShieldPage = addr;
         // copy shield to memory page
-        void* entryPoint = (void*)((uintptr)addr + 256 + RandUintN(0, 1024));
+        void* entryPoint = (void*)((uintptr)addr + (8 + RandUintN(0, 96)) * 16);
         XORBuffer(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
         mem_copy(entryPoint, shieldInst, shieldSize);
         shield->EntryPoint = entryPoint;
@@ -277,8 +277,13 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
         shield->status.Source      = SHIELD_SRC_SHIELD_STUB;
         break;
     case SHIELD_TARGET_EXE_MODULE:
-        // TODO find the target module and calculate
+        // find the target module and calculate
         // the pre-injected shield entry point
+
+
+
+
+
 
 
         // set status
@@ -288,6 +293,10 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
         break;
     case SHIELD_TARGET_DLL_MODULE:
 
+        // set status
+        shield->status.EntryPoint  = NULL;
+        shield->status.BaseAddress = NULL;
+        shield->status.Source      = SHIELD_SRC_PRE_INJECTED;
         break;
     }
 
@@ -325,9 +334,7 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
         shield->VirtualProtect = NULL;
     }
     // align instance size to 4 or 8
-    uint instSize = context->InstSize;
-    instSize = ((instSize + sizeof(uint) - 1) / instSize) * instSize;
-    shield->InstSize = instSize;
+    shield->InstSize = align_up(context->InstSize, sizeof(uint));
 
     // copy runtime data
     shield->MainMemPage = (void*)(context->MainMemPage);
@@ -395,15 +402,15 @@ errno SD_Sleep(uint32 milliseconds)
     // build sleep arguments
     Sleep_Args args = {
         .Method = METHOD_SLEEP,
-    
+
         .VirtualProtect      = shield->VirtualProtect,
         .WaitForSingleObject = shield->WaitForSingleObject,
-    
+
         .CriticalAddr = shield->InstAddr,
         .CriticalSize = shield->InstSize,
         .DecoyAddr    = shield->DecoyAddr,
         .DecoySize    = shield->DecoySize,
-    
+
         .Shelter = shield->Shelter,
         .Timer   = shield->Timer,
     };
@@ -439,11 +446,11 @@ void SD_Stop()
     // build stop arguments
     Stop_Args args = {
         .Method = METHOD_STOP,
-        
+
         .VirtualProtect = shield->VirtualProtect,
         .VirtualFree    = shield->VirtualFree,
         .ExitThread     = shield->ExitThread,
-        
+
         .CriticalAddr = shield->InstAddr,
         .CriticalSize = shield->InstSize,
         .DecoyAddr    = shield->DecoyAddr,
