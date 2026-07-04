@@ -20,8 +20,11 @@ typedef uint16 USHORT;
 typedef uint32 ULONG;
 typedef uint64 ULONGLONG;
 
-typedef uint UINT;
+typedef int          INT;
+typedef unsigned int UINT;
+
 typedef uint SIZE_T;
+typedef uint UINT_PTR;
 typedef uint ULONG_PTR;
 
 typedef void* POINTER;
