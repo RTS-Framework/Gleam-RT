@@ -4,9 +4,9 @@
 #include "c_types.h"
 #include "win_types.h"
 
-typedef struct {
-    struct LIST_ENTRY* Flink;
-    struct LIST_ENTRY* Blink;
+typedef struct _LIST_ENTRY {
+    struct _LIST_ENTRY* Flink;
+    struct _LIST_ENTRY* Blink;
 } LIST_ENTRY;
 
 typedef struct {
@@ -43,14 +43,14 @@ typedef struct {
     BOOLEAN ReadImageFileExecOptions;
     BOOLEAN BeingDebugged;
 
-    UCHAR ImageUsedLargePages          : 1;
-    UCHAR IsProtectedProcess           : 1;
-    UCHAR IsImageDynamicallyRelocated  : 1;
-    UCHAR SkipPatchingUser32Forwarders : 1;
-    UCHAR IsPackagedProcess            : 1;
-    UCHAR IsAppContainer               : 1;
-    UCHAR IsProtectedProcessLight      : 1;
-    UCHAR IsLongPathAwareProcess       : 1;
+    UCHAR ImageUsedLargePages          :1;
+    UCHAR IsProtectedProcess           :1;
+    UCHAR IsImageDynamicallyRelocated  :1;
+    UCHAR SkipPatchingUser32Forwarders :1;
+    UCHAR IsPackagedProcess            :1;
+    UCHAR IsAppContainer               :1;
+    UCHAR IsProtectedProcessLight      :1;
+    UCHAR IsLongPathAwareProcess       :1;
 
     HANDLE Mutant;
     PVOID  ImageBaseAddress;
@@ -64,15 +64,15 @@ typedef struct {
     PVOID  AtlThunkSListPtr;
     PVOID  IFEOKey;
 
-    ULONG ProcessInJob               : 1;
-    ULONG ProcessInitializing        : 1;
-    ULONG ProcessUsingVEH            : 1;
-    ULONG ProcessUsingVCH            : 1;
-    ULONG ProcessUsingFTH            : 1;
-    ULONG ProcessPreviouslyThrottled : 1;
-    ULONG ProcessCurrentlyThrottled  : 1;
-    ULONG ProcessImagesHotPatched    : 1;
-    ULONG ReservedBits0              : 24;
+    ULONG ProcessInJob               :1;
+    ULONG ProcessInitializing        :1;
+    ULONG ProcessUsingVEH            :1;
+    ULONG ProcessUsingVCH            :1;
+    ULONG ProcessUsingFTH            :1;
+    ULONG ProcessPreviouslyThrottled :1;
+    ULONG ProcessCurrentlyThrottled  :1;
+    ULONG ProcessImagesHotPatched    :1;
+    ULONG ReservedBits0              :24;
 
     PVOID KernelCallbackTable;
     ULONG Reserved;
@@ -80,14 +80,14 @@ typedef struct {
     PVOID ApiSetMap;
 } PEB;
 
-typedef struct {
+typedef struct _NT_TIB {
     PVOID ExceptionList;
 	PVOID StackBase;
 	PVOID StackLimit;
 	PVOID SubSystemTIB;
     PVOID FiberData;
 	PVOID ArbitraryUserPointer;
-    struct NT_TIB* Self;
+    struct _NT_TIB* Self;
 } NT_TIB;
 
 typedef struct {
