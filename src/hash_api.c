@@ -50,11 +50,13 @@ void* FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
     LIST_ENTRY* head = &pml->Links;
     for (LIST_ENTRY* link = head->Flink; link != head; link = link->Flink)
     {
-        PML* cur = (PML*)((uintptr)(link) - offsetof(PML, Links));
-        // check the module information
-        PWSTR  nameBuf = cur->BaseDllName.Buffer;
-        USHORT nameLen = cur->BaseDllName.Length;
-        if (nameBuf == NULL || nameLen == 0)
+        PML* entry = (PML*)((uintptr)(link) - offsetof(PML, Links));
+        // check the module information for prevent
+        // the malicious entry in the module list
+        PVOID  dllBase = entry->DllBase;
+        PWSTR  nameBuf = entry->BaseDllName.Buffer;
+        USHORT nameLen = entry->BaseDllName.Length;
+        if (dllBase == NULL || nameBuf == NULL || nameLen == 0)
         {
             continue;
         }
@@ -75,7 +77,7 @@ void* FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
         {
             continue;
         }
-        return FindAPI_MAL(pml, cur->DllBase, procedure, key);
+        return FindAPI_MAL(pml, dllBase, procedure, key);
     }
     return NULL;
 }
