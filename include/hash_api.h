@@ -49,8 +49,8 @@ typedef void* (*FindAPI_MH_t)(uint  module, uint procedure, uint key);
 typedef void* (*FindAPI_MA_t)(void* module, uint procedure, uint key);
 
 // M*L means operate on a caller-provided PML provider.
-typedef void* (*FindAPI_MHL_t)(PML* list, uint  module, uint procedure, uint key);
-typedef void* (*FindAPI_MAL_t)(PML* list, void* module, uint procedure, uint key);
+typedef void* (*FindAPI_MHL_t)(PML* pml, uint  module, uint procedure, uint key);
+typedef void* (*FindAPI_MAL_t)(PML* pml, void* module, uint procedure, uint key);
 
 // shortcut for debug, test and toolchain.
 typedef void* (*FindAPI_A_t)(byte* module, byte* procedure);
@@ -61,8 +61,8 @@ void* FindAPI_MH(uint  module, uint procedure, uint key);
 void* FindAPI_MA(void* module, uint procedure, uint key);
 
 // find procedure address with custom PML.
-void* FindAPI_MHL(PML* list, uint  module, uint procedure, uint key);
-void* FindAPI_MAL(PML* list, void* module, uint procedure, uint key);
+void* FindAPI_MHL(PML* pml, uint  module, uint procedure, uint key);
+void* FindAPI_MAL(PML* pml, void* module, uint procedure, uint key);
 
 // FindAPI_A/W is used to find Windows API address by module name and
 // procedure name with ANSI/UTF-16, it is a wrapper about FindAPI_Mx.
