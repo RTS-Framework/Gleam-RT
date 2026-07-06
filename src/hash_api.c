@@ -23,10 +23,10 @@ static uint calcKeyHash(uint seed, uint key);
 static uint ror(uint value, uint bits);
 
 __declspec(noinline)
-void* FindAPI_MH(uint module, uint procedure, uint key)
+void* FindMod_MH(uint module, uint key)
 {
     PML* pml = GetDefaultPML();
-    return FindAPI_MHL(pml, module, procedure, key);
+    return FindMod_MHL(pml, module, key);
 }
 
 __declspec(noinline)
@@ -37,7 +37,14 @@ void* FindAPI_MA(void* module, uint procedure, uint key)
 }
 
 __declspec(noinline)
-void* FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
+void* FindAPI_MH(uint module, uint procedure, uint key)
+{
+    PML* pml = GetDefaultPML();
+    return FindAPI_MHL(pml, module, procedure, key);
+}
+
+__declspec(noinline)
+void* FindMod_MHL(PML* pml, uint module, uint key)
 {
     if (pml == NULL)
     {
@@ -53,10 +60,10 @@ void* FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
         PML* entry = (PML*)((uintptr)(link) - offsetof(PML, Links));
         // check the module information for prevent
         // the malicious entry in the module list
-        PVOID  dllBase = entry->DllBase;
-        PWSTR  nameBuf = entry->BaseDllName.Buffer;
-        USHORT nameLen = entry->BaseDllName.Length;
-        if (dllBase == NULL || nameBuf == NULL || nameLen == 0)
+        PVOID  imgBase = entry->ImageBase;
+        PWSTR  nameBuf = entry->BaseName.Buffer;
+        USHORT nameLen = entry->BaseName.Length;
+        if (imgBase == NULL || nameBuf == NULL || nameLen == 0)
         {
             continue;
         }
@@ -77,7 +84,7 @@ void* FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
         {
             continue;
         }
-        return FindAPI_MAL(pml, dllBase, procedure, key);
+        return imgBase;
     }
     return NULL;
 }
@@ -190,49 +197,49 @@ void* FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
     return NULL;
 }
 
-static uint calcSeedHash(uint key)
+__declspec(noinline)
+void* FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
 {
-    uint  hash = key;
-    byte* ptr  = (byte*)(&key);
-    for (int i = 0; i < KEY_SIZE; i++)
+    void* mod = FindMod_MHL(pml, module, key);
+    if (mod == NULL)
     {
-        hash = ror(hash, ROR_SEED);
-        hash += *ptr;
-        ptr++;
+        return mod;
     }
-    return hash;
+    return FindAPI_MAL(pml, mod, procedure, key);
 }
 
-static uint calcKeyHash(uint seed, uint key)
+__declspec(noinline)
+void* FindMod_A(byte* module, uint key)
 {
-    uint  hash = seed;
-    byte* ptr  = (byte*)(&key);
-    for (int i = 0; i < KEY_SIZE; i++)
-    {
-        hash = ror(hash, ROR_KEY);
-        hash += *ptr;
-        ptr++;
-    }
-    return hash;
+    PML* pml = GetDefaultPML();
+    return FindMod_AL(pml, module, key);
 }
 
-static uint ror(uint value, uint bits)
+__declspec(noinline)
+void* FindMod_W(uint16* module, uint key)
 {
-#ifdef _WIN64
-    return value >> bits | value << (64 - bits);
-#elif _WIN32
-    return value >> bits | value << (32 - bits);
-#endif
+    PML* pml = GetDefaultPML();
+    return FindMod_WL(pml, module, key);
+}
+
+__declspec(noinline)
+void* FindMod_AL(PML* pml, byte* module, uint key)
+{
+    uint mod = CalcModHash_A(module, key);
+    return FindMod_MHL(pml, mod, key);
+}
+
+__declspec(noinline)
+void* FindMod_WL(PML* pml, uint16* module, uint key)
+{
+    uint mod = CalcModHash_W(module, key);
+    return FindMod_MHL(pml, mod, key);
 }
 
 __declspec(noinline)
 void* FindAPI_A(byte* module, byte* procedure)
 {
-#ifdef _WIN64
-    uint key = 0xA6C1B1E79D26D1E7;
-#elif _WIN32
-    uint key = 0x94645D8B;
-#endif
+    uint key  = (uint)(((uintptr)module) * ((uintptr)procedure));
     uint mod  = CalcModHash_A(module, key);
     uint proc = CalcProcHash(procedure, key);
     return FindAPI_MH(mod, proc, key);
@@ -241,11 +248,7 @@ void* FindAPI_A(byte* module, byte* procedure)
 __declspec(noinline)
 void* FindAPI_W(uint16* module, byte* procedure)
 {
-#ifdef _WIN64
-    uint key = 0xA6C1B1E79D26D1E7;
-#elif _WIN32
-    uint key = 0x94645D8B;
-#endif
+    uint key  = (uint)(((uintptr)module) * ((uintptr)procedure));
     uint mod  = CalcModHash_W(module, key);
     uint proc = CalcProcHash(procedure, key);
     return FindAPI_MH(mod, proc, key);
@@ -292,6 +295,41 @@ PML* GetDefaultPML()
     PEB_LDR_DATA* ldr = teb->ProcessEnvironmentBlock->LDR;
     LIST_ENTRY* entry = ldr->InMemoryOrderModuleList.Flink;
     return (PML*)((uintptr)entry - offsetof(PML, Links));
+}
+
+static uint calcSeedHash(uint key)
+{
+    uint  hash = key;
+    byte* ptr  = (byte*)(&key);
+    for (int i = 0; i < KEY_SIZE; i++)
+    {
+        hash = ror(hash, ROR_SEED);
+        hash += *ptr;
+        ptr++;
+    }
+    return hash;
+}
+
+static uint calcKeyHash(uint seed, uint key)
+{
+    uint  hash = seed;
+    byte* ptr  = (byte*)(&key);
+    for (int i = 0; i < KEY_SIZE; i++)
+    {
+        hash = ror(hash, ROR_KEY);
+        hash += *ptr;
+        ptr++;
+    }
+    return hash;
+}
+
+static uint ror(uint value, uint bits)
+{
+#ifdef _WIN64
+    return value >> bits | value << (64 - bits);
+#elif _WIN32
+    return value >> bits | value << (32 - bits);
+#endif
 }
 
 #define KEY_SIZE_32 4
