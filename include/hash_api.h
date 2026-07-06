@@ -30,12 +30,12 @@ typedef struct {
     LIST_ENTRY Links;
     LIST_ENTRY Padding1;
 
-    PVOID DllBase;
-    PVOID EntryPoint;
-    ULONG SizeOfImage;
+    PVOID ImageBase;
+    PVOID Padding2;
+    ULONG Padding3;
 
-    UNICODE_STRING FullDllName;
-    UNICODE_STRING BaseDllName;
+    UNICODE_STRING Padding4;
+    UNICODE_STRING BaseName;
 } PML;
 
 // FindAPI will not call GetProcAddress, if this module is not loaded,
@@ -43,30 +43,49 @@ typedef struct {
 //
 // FindAPI is support forwarded exports.
 // FindAPI is NOT support DLL about API Sets.
+//
+// FindMod like GetModuleHandle, but provide module name and key.
 
 // MH means with module hash. MA means with module address(HMODULE).
-typedef void* (*FindAPI_MH_t)(uint  module, uint procedure, uint key);
+typedef void* (*FindMod_MH_t)(uint  module, uint key);
 typedef void* (*FindAPI_MA_t)(void* module, uint procedure, uint key);
+typedef void* (*FindAPI_MH_t)(uint  module, uint procedure, uint key);
 
 // M*L means operate on a caller-provided PML provider.
-typedef void* (*FindAPI_MHL_t)(PML* pml, uint  module, uint procedure, uint key);
+typedef void* (*FindMod_MHL_t)(PML* pml, uint  module, uint key);
 typedef void* (*FindAPI_MAL_t)(PML* pml, void* module, uint procedure, uint key);
+typedef void* (*FindAPI_MHL_t)(PML* pml, uint  module, uint procedure, uint key);
+
+// shortcut and simple tool for upper modules.
+typedef void* (*FindMod_A_t)(byte*   module, uint key);
+typedef void* (*FindMod_W_t)(uint16* module, uint key);
+typedef void* (*FindMod_AL_t)(PML* pml, byte*   module, uint key);
+typedef void* (*FindMod_WL_t)(PML* pml, uint16* module, uint key);
 
 // shortcut for debug, test and toolchain.
-typedef void* (*FindAPI_A_t)(byte* module, byte* procedure);
+typedef void* (*FindAPI_A_t)(byte*   module, byte* procedure);
 typedef void* (*FindAPI_W_t)(uint16* module, byte* procedure);
 
-// find procedure address with hash and key.
-void* FindAPI_MH(uint  module, uint procedure, uint key);
+// find module/procedure address with hash and key.
+void* FindMod_MH(uint  module, uint key);
 void* FindAPI_MA(void* module, uint procedure, uint key);
+void* FindAPI_MH(uint  module, uint procedure, uint key);
 
-// find procedure address with custom PML.
-void* FindAPI_MHL(PML* pml, uint  module, uint procedure, uint key);
+// find module/procedure address with custom PML.
+void* FindMod_MHL(PML* pml, uint  module, uint key);
 void* FindAPI_MAL(PML* pml, void* module, uint procedure, uint key);
+void* FindAPI_MHL(PML* pml, uint  module, uint procedure, uint key);
+
+// FindMod_A/W is used to find module address(HMODULE) by module name
+// with ANSI/UTF-16, it is a wrapper about FindMod_MH and FindMod_MHL.
+void* FindMod_A(byte*   module, uint key);
+void* FindMod_W(uint16* module, uint key);
+void* FindMod_AL(PML* pml, byte*   module, uint key);
+void* FindMod_WL(PML* pml, uint16* module, uint key);
 
 // FindAPI_A/W is used to find Windows API address by module name and
 // procedure name with ANSI/UTF-16, it is a wrapper about FindAPI_Mx.
-void* FindAPI_A(byte* module, byte* procedure);
+void* FindAPI_A(byte*   module, byte* procedure);
 void* FindAPI_W(uint16* module, byte* procedure);
 
 // CalcModHash_A is used to calculate module ANSI name hash with key.
