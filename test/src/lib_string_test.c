@@ -50,7 +50,7 @@ bool TestLibString()
     return true;
 }
 
-bool TestStrlen_a()
+static bool TestStrlen_a()
 {
     ANSI str = "ansi";
 
@@ -71,7 +71,7 @@ bool TestStrlen_a()
     return true;
 }
 
-bool TestStrlen_w()
+static bool TestStrlen_w()
 {
     UTF16 str = L"utf16";
 
@@ -92,7 +92,7 @@ bool TestStrlen_w()
     return true;
 }
 
-bool TestStrcmp_a()
+static bool TestStrcmp_a()
 {
     ANSI s0 = "abc";
     ANSI s1 = "abc";
@@ -123,7 +123,7 @@ bool TestStrcmp_a()
     return true;
 }
 
-bool TestStrcmp_w()
+static bool TestStrcmp_w()
 {
     UTF16 s0 = L"abc";
     UTF16 s1 = L"abc";
@@ -216,7 +216,7 @@ static bool TestStrncmp_w()
     return true;
 }
 
-bool TestStricmp_a()
+static bool TestStricmp_a()
 {
     ANSI s0 = "aBc";
     ANSI s1 = "AbC";
@@ -247,7 +247,7 @@ bool TestStricmp_a()
     return true;
 }
 
-bool TestStricmp_w()
+static bool TestStricmp_w()
 {
     UTF16 s0 = L"aBc";
     UTF16 s1 = L"AbC";
