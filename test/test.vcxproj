@@ -15,7 +15,7 @@
     <ClInclude Include="test.h" />
     <ClInclude Include="..\include\c_types.h" />
     <ClInclude Include="..\include\win_types.h" />
-    <ClInclude Include="..\include\win_struct.h" />
+    <ClInclude Include="..\include\win_structs.h" />
     <ClInclude Include="..\include\dll_kernel32.h" />
     <ClInclude Include="..\include\dll_ntdll.h" />
     <ClInclude Include="..\include\dll_msvcrt.h" />
@@ -69,6 +69,8 @@
     <ClCompile Include="src\lib_match_test.c" />
     <ClCompile Include="src\lib_encode_test.c" />
     <ClCompile Include="src\lib_hash_test.c" />
+    <ClCompile Include="src\hash_api_test.c" />
+    <ClCompile Include="src\hash_mod_test.c" />
     <ClCompile Include="src\random_test.c" />
     <ClCompile Include="src\crypto_test.c" />
     <ClCompile Include="src\compress_test.c" />

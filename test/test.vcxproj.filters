@@ -197,6 +197,12 @@
     <ClCompile Include="src\lib_encode_test.c">
       <Filter>Test</Filter>
     </ClCompile>
+    <ClCompile Include="src\hash_mod_test.c">
+      <Filter>Test</Filter>
+    </ClCompile>
+    <ClCompile Include="src\hash_api_test.c">
+      <Filter>Test</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\crypto.h">
@@ -346,7 +352,7 @@
     <ClInclude Include="..\include\lib_encode.h">
       <Filter>Header</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\win_struct.h">
+    <ClInclude Include="..\include\win_structs.h">
       <Filter>Header</Filter>
     </ClInclude>
   </ItemGroup>
