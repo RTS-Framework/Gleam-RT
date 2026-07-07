@@ -8,19 +8,18 @@
 Runtime_M* runtime;
 
 // define unit tests
-#pragma warning(push)
-#pragma warning(disable: 4276)
 bool TestLibMemory();
 bool TestLibString();
 bool TestLibMatch();
 bool TestLibEncode();
 bool TestLibHash();
+bool TestHashAPI();
+bool TestHashMod();
 bool TestRandom();
 bool TestCrypto();
 bool TestCompress();
 bool TestSerialize();
 bool TestMemScanner();
-
 bool TestInitRuntime();
 bool TestRuntime_Detector();
 bool TestRuntime_Memory();
@@ -34,7 +33,6 @@ bool TestRuntime_Watchdog();
 bool TestRuntime_Sysmon();
 bool TestRuntime_Exit();
 bool TestRuntime_Options();
-#pragma warning(pop)
 
 typedef bool (*test_t)();
 typedef struct { byte* Name; test_t Test; } unit;
@@ -48,6 +46,8 @@ static unit tests[] =
     { "Lib_Match",   TestLibMatch   },
     { "Lib_Encode",  TestLibEncode  },
     { "Lib_Hash",    TestLibHash    },
+    { "HashAPI",     TestHashAPI    },
+    { "HashMod",     TestHashMod    },
     { "Random",      TestRandom     },
     { "Crypto",      TestCrypto     },
     { "Compress",    TestCompress   },
