@@ -8,10 +8,10 @@ typedef uint32 errno;
 void  SetLastErrno(errno errno);
 errno GetLastErrno();
 
-// 00······ module id
-// ··00···· error flags
-// ····00·· major error id
-// ······00 minor error id
+// 0x00······ module id
+// 0x··00···· error flags
+// 0x····00·· major error id
+// 0x······00 minor error id
 
 #define NO_ERROR (0x00000000)
 
@@ -23,14 +23,16 @@ errno GetLastErrno();
 #define ERR_RUNTIME_INVALID_OPTION_STUB (0xFF000002)
 #define ERR_RUNTIME_OPTION_CONFLICT     (0xFF000003)
 #define ERR_RUNTIME_INVALID_ARG_STUB    (0xFF000004)
-#define ERR_RUNTIME_ALLOC_MEMORY        (0xFF000005)
-#define ERR_RUNTIME_INIT_API            (0xFF000006)
-#define ERR_RUNTIME_ADJUST_PROTECT      (0xFF000007)
-#define ERR_RUNTIME_RECOVER_PROTECT     (0xFF000008)
-#define ERR_RUNTIME_UPDATE_PTR          (0xFF000009)
-#define ERR_RUNTIME_INIT_API_REDIRECTOR (0xFF00000A)
-#define ERR_RUNTIME_FLUSH_INST          (0xFF00000B)
-#define ERR_RUNTIME_INIT_TIMEOUT        (0xFF00000C)
+#define ERR_RUNTIME_NO_KERNEL32_ADDR    (0xFF000005)
+#define ERR_RUNTIME_NO_NTDLL_ADDR		(0xFF000006)
+#define ERR_RUNTIME_ALLOC_MAIN_MEM_PAGE (0xFF000007)
+#define ERR_RUNTIME_INIT_API            (0xFF000008)
+#define ERR_RUNTIME_ADJUST_PROTECT      (0xFF000009)
+#define ERR_RUNTIME_RECOVER_PROTECT     (0xFF00000A)
+#define ERR_RUNTIME_UPDATE_PTR          (0xFF00000B)
+#define ERR_RUNTIME_INIT_API_REDIRECTOR (0xFF00000C)
+#define ERR_RUNTIME_FLUSH_INST          (0xFF00000D)
+#define ERR_RUNTIME_INIT_TIMEOUT        (0xFF00000E)
 
 #define ERR_RUNTIME_CREATE_GLOBAL_MUTEX (0xFF000101)
 #define ERR_RUNTIME_DETECT_UNSAFE_ENV   (0xFF000102)
