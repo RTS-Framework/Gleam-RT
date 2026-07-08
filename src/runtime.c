@@ -1,13 +1,15 @@
 #include "build.h"
 #include "c_types.h"
 #include "win_types.h"
+#include "win_structs.h"
 #include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "lib_string.h"
 #include "lib_encode.h"
 #include "lib_hash.h"
-#include "rel_addr.h"
 #include "hash_api.h"
+#include "hash_mod.h"
+#include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
 #include "compress.h"
@@ -48,8 +50,8 @@ typedef struct {
     Runtime_Info Info;
 
     // process environment
-    void* PEB;   // process environment block
-    void* IMOML; // In-Memory order module list
+    PEB* PEB; // process environment block
+    PML* PML; // process module list
 
     // API addresses
     GetSystemInfo_t          GetSystemInfo;
@@ -142,9 +144,9 @@ void* RT_GetProcAddressByHash(uint mHash, uint pHash, uint hKey, BOOL redirect);
 void* RT_GetProcAddressByHashML(void* list, uint mHash, uint pHash, uint hKey, BOOL redirect);
 void* RT_GetProcAddressOriginal(HMODULE hModule, LPCSTR lpProcName);
 
-void* RT_GetPEB();
-void* RT_GetTEB();
-void* RT_GetIMOML();
+TEB* RT_GetTEB();
+PEB* RT_GetPEB();
+PML* RT_GetPML();
 
 BOOL  RT_SetCurrentDirectoryA(LPSTR lpPathName);
 BOOL  RT_SetCurrentDirectoryW(LPWSTR lpPathName);
@@ -200,13 +202,13 @@ static Runtime* getRuntimePointer();
 static bool rt_lock();
 static bool rt_unlock();
 
-static bool  isValidArgumentStub();
-static void* getPEBAddress();
-static void* getIMOMLAddress(uintptr peb);
-static void* allocRuntimeMemPage(void* IMOML);
 static bool  loadOptionFromStub(Runtime_Opts* opts);
 static bool  checkOptionConflict(Runtime_Opts* opts);
-static void  buildRuntimeInfo(Runtime* runtime);
+static bool  isValidArgumentStub();
+static PEB*  getPEBPointer();
+static PML*  buildProcessModuleList(PEB* peb);
+static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32);
+static void  buildRuntimeInformation(Runtime* runtime);
 static void* calculateEpilogue();
 static bool  initRuntimeAPI(Runtime* runtime);
 static bool  adjustPageProtect(Runtime* runtime, DWORD* old);
@@ -278,14 +280,41 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         SetLastErrno(ERR_RUNTIME_INVALID_ARG_STUB);
         return NULL;
     }
-    // get process environment
-    void* PEB   = getPEBAddress();
-    void* IMOML = getIMOMLAddress((uintptr)PEB);
+    // prepare runtime basic environment
+    PEB* PEB = getPEBPointer();
+    PML* PML = buildProcessModuleList(PEB);
+    // get kernel32.dll and ntdll.dll address
+#ifdef _WIN64
+    uint mHash = 0x81281D579CF95014;
+    uint hKey  = 0x17525CC1E154BA98;
+#elif _WIN32
+    uint mHash = 0x48CAA960;
+    uint hKey  = 0x54FE3C56;
+#endif
+    HMODULE hKernel32 = FindMod_MHL(PML, mHash, hKey);
+    if (hKernel32 == NULL)
+    {
+        SetLastErrno(ERR_RUNTIME_NO_KERNEL32_ADDR);
+        return NULL;
+    }
+#ifdef _WIN64
+    mHash = 0x3CCA726C479AD6EE;
+    hKey  = 0xD2E8220B9E91AB06;
+#elif _WIN32
+    mHash = 0x49F19F51;
+    hKey  = 0x5B0571BF;
+#endif
+    HMODULE hNtdll = FindMod_MHL(PML, mHash, hKey);
+    if (hNtdll == NULL)
+    {
+        SetLastErrno(ERR_RUNTIME_NO_NTDLL_ADDR);
+        return NULL;
+    }
     // alloc memory for store runtime structure
-    void* memPage = allocRuntimeMemPage(IMOML);
+    void* memPage = allocateMainMemoryPage(PML, hKernel32);
     if (memPage == NULL)
     {
-        SetLastErrno(ERR_RUNTIME_ALLOC_MEMORY);
+        SetLastErrno(ERR_RUNTIME_ALLOC_MAIN_MEM_PAGE);
         return NULL;
     }
     // set structure address
@@ -298,10 +327,10 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     // copy runtime option
     runtime->Options = *opts;
     // build runtime information
-    buildRuntimeInfo(runtime);
+    buildRuntimeInformation(runtime);
     // store process environment
-    runtime->PEB   = PEB;
-    runtime->IMOML = IMOML;
+    runtime->PEB = PEB;
+    runtime->PML = PML;
     // calculate the instance entry point
     uintptr bootAddr = (uintptr)(boot);
     uintptr initAddr = (uintptr)(GetFuncAddr(&InitRuntime));
@@ -391,7 +420,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     {
         byte hash[32];
         mem_copy(hash, runtime->Info.Hash, sizeof(hash));
-        buildRuntimeInfo(runtime);
+        buildRuntimeInformation(runtime);
         if (!mem_equal(hash, runtime->Info.Hash, sizeof(hash)))
         {
             // TODO panic(PANIC_UNREACHABLE_CODE);
@@ -553,9 +582,9 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Shield._Sleep = runtime->Shield->Sleep;
     module->Shield._Stop  = runtime->Shield->Stop;
     // about process environment
-    module->Env.GetPEB   = GetFuncAddr(&RT_GetPEB);
-    module->Env.GetTEB   = GetFuncAddr(&RT_GetTEB);
-    module->Env.GetIMOML = GetFuncAddr(&RT_GetIMOML);
+    module->Env.GetTEB = GetFuncAddr(&RT_GetTEB);
+    module->Env.GetPEB = GetFuncAddr(&RT_GetPEB);
+    module->Env.GetPML = GetFuncAddr(&RT_GetPML);
     // {THE TRUTH OF THE WORLD} && [THE END OF THE WORLD] :(
     module->Raw.GetProcAddress = GetFuncAddr(&RT_GetProcAddressOriginal);
     module->Raw.ExitProcess    = GetFuncAddr(&RT_ExitProcess);
@@ -574,108 +603,6 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     // copy M pointer to runtime
     runtime->RuntimeM = module;
     return module;
-}
-
-static bool isValidArgumentStub()
-{
-    uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
-    // decrypt argument header
-    byte header[ARG_HEADER_SIZE];
-    mem_init(header, sizeof(header));
-    mem_copy(header, (byte*)stub, sizeof(header));
-    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
-    uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
-    // check the number of argument
-    uint16 numArgs  = *(uint16*)(header + ARG_OFFSET_NUM_ARGS);
-    uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
-    uint32 checksum = *(uint32*)(header + ARG_OFFSET_CHECKSUM);
-    if (numArgs > ARG_MAX_NUM_ARGUMENTS)
-    {
-        return false;
-    }
-    // check argument checksum
-    byte*  arg = (byte*)(stub + ARG_OFFSET_FIRST_ARG);
-    uint32 crc = 0xFFFFFFFF;
-    for (uint32 i = 0; i < argsSize; i++)
-    {
-        crc ^= (uint32)(arg[i]);
-        for (int j = 0; j < 8; j++)
-        {
-            if ((crc & 1) != 0)
-            {
-                crc = (crc >> 1) ^ 0xEDB88320;
-			} else {
-                crc >>= 1;
-			}
-		}
-	}
-    crc ^= 0xFFFFFFFF;
-    return crc == checksum;
-}
-
-static uint32 calcArgumentStubSize()
-{
-    uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
-    byte header[ARG_HEADER_SIZE];
-    mem_init(header, sizeof(header));
-    mem_copy(header, (byte*)stub, sizeof(header));
-    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
-    uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
-    uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
-    return ARG_HEADER_SIZE + argsSize;
-}
-
-static void* getPEBAddress()
-{
-#ifdef _WIN64
-    uintptr teb = __readgsqword(0x30);
-    uintptr peb = *(uintptr*)(teb + 0x60);
-#elif _WIN32
-    uintptr teb = __readfsdword(0x18);
-    uintptr peb = *(uintptr*)(teb + 0x30);
-#endif
-    return (void*)peb;
-}
-
-static void* getIMOMLAddress(uintptr peb)
-{
-#ifdef _WIN64
-    uintptr ldr = *(uintptr*)(peb + 0x18);
-    uintptr mod = *(uintptr*)(ldr + 0x20);
-#elif _WIN32
-    uintptr ldr = *(uintptr*)(peb + 0x0C);
-    uintptr mod = *(uintptr*)(ldr + 0x14);
-#endif
-    return (void*)mod;
-}
-
-static void* allocRuntimeMemPage(void* IMOML)
-{
-#ifdef _WIN64
-    uint mHash = 0x7CCA6C542E19FE5E;
-    uint pHash = 0xAA8D188A1F0862DC;
-    uint hKey  = 0x6EDC8B580ACA6913;
-#elif _WIN32
-    uint mHash = 0x67F47A59;
-    uint pHash = 0xA7CFDD6F;
-    uint hKey  = 0x0F2BB61F;
-#endif
-    VirtualAlloc_t virtualAlloc = FindAPI_ML(IMOML, mHash, pHash, hKey);
-    if (virtualAlloc == NULL)
-    {
-        return NULL;
-    }
-    SIZE_T size = MAIN_MEM_PAGE_SIZE + (1 + RandUintN(0, 32)) * 1024;
-    LPVOID addr = virtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
-    if (addr == NULL)
-    {
-        return NULL;
-    }
-    RandBuffer(addr, (int64)size);
-    dbg_log("[runtime]", "Main Memory Page: 0x%zX", addr);
-    return addr;
 }
 
 static bool loadOptionFromStub(Runtime_Opts* opts)
@@ -729,7 +656,100 @@ static bool checkOptionConflict(Runtime_Opts* opts)
     return true;
 }
 
-static void buildRuntimeInfo(Runtime* runtime)
+static bool isValidArgumentStub()
+{
+    uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
+    // decrypt argument header
+    byte header[ARG_HEADER_SIZE];
+    mem_init(header, sizeof(header));
+    mem_copy(header, (byte*)stub, sizeof(header));
+    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    uint  fsz = sizeof(uint16) + sizeof(uint32);
+    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    // check the number of argument
+    uint16 numArgs  = *(uint16*)(header + ARG_OFFSET_NUM_ARGS);
+    uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
+    uint32 checksum = *(uint32*)(header + ARG_OFFSET_CHECKSUM);
+    if (numArgs > ARG_MAX_NUM_ARGUMENTS)
+    {
+        return false;
+    }
+    // check argument checksum
+    byte*  arg = (byte*)(stub + ARG_OFFSET_FIRST_ARG);
+    uint32 crc = 0xFFFFFFFF;
+    for (uint32 i = 0; i < argsSize; i++)
+    {
+        crc ^= (uint32)(arg[i]);
+        for (int j = 0; j < 8; j++)
+        {
+            if ((crc & 1) != 0)
+            {
+                crc = (crc >> 1) ^ 0xEDB88320;
+			} else {
+                crc >>= 1;
+			}
+		}
+	}
+    crc ^= 0xFFFFFFFF;
+    return crc == checksum;
+}
+
+static uint32 calcArgumentStubSize()
+{
+    uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
+    byte header[ARG_HEADER_SIZE];
+    mem_init(header, sizeof(header));
+    mem_copy(header, (byte*)stub, sizeof(header));
+    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    uint  fsz = sizeof(uint16) + sizeof(uint32);
+    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
+    return ARG_HEADER_SIZE + argsSize;
+}
+
+static PEB* getPEBPointer()
+{
+#ifdef _WIN64
+    TEB* teb = __readgsqword(0x30);
+#elif _WIN32
+    TEB* teb = __readfsdword(0x18);
+#endif
+    return teb->ProcessEnvironmentBlock;
+}
+
+static PML* buildProcessModuleList(PEB* peb)
+{
+    PEB_LDR_DATA* ldr = peb->LDR;
+    LIST_ENTRY* entry = ldr->InMemoryOrderModuleList.Flink;
+    return (PML*)((uintptr)entry - offsetof(PML, Links));
+}
+
+static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32)
+{
+#ifdef _WIN64
+    uint pHash = 0xAA8D188A1F0862DC;
+    uint hKey  = 0x6EDC8B580ACA6913;
+#elif _WIN32
+    uint pHash = 0xA7CFDD6F;
+    uint hKey  = 0x0F2BB61F;
+#endif
+    VirtualAlloc_t virtualAlloc = FindAPI_MAL(pml, kernel32, pHash, hKey);
+    if (virtualAlloc == NULL)
+    {
+        return NULL;
+    }
+    SIZE_T size = MAIN_MEM_PAGE_SIZE + (1 + RandUintN(0, 32)) * 1024;
+    LPVOID addr = virtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    if (addr == NULL)
+    {
+        return NULL;
+    }
+    RandBuffer(addr, (int64)size);
+    dbg_log("[runtime]", "Main Memory Page: 0x%zX", addr);
+    return addr;
+}
+
+static void buildRuntimeInformation(Runtime* runtime)
 {
     Runtime_Info* info = &runtime->Info;
 
@@ -946,9 +966,9 @@ static errno initSubmodules(Runtime* runtime)
         .NotAdjustProtect    = runtime->Options.NotAdjustProtect,
         .TrackCurrentThread  = runtime->Options.TrackCurrentThread,
 
-        .PEB   = runtime->PEB,
-        .IMOML = runtime->IMOML,
-        .MPS   = runtime->PageSize,
+        .PEB = runtime->PEB,
+        .PML = runtime->PML,
+        .MPS = runtime->PageSize,
 
         .GetTickCount           = runtime->GetTickCount,
         .LoadLibraryA           = runtime->LoadLibraryA,
@@ -1461,7 +1481,7 @@ static void eraseRuntimeMethods(Runtime* runtime)
     {
         return;
     }
-    uintptr begin = (uintptr)(GetFuncAddr(&allocRuntimeMemPage));
+    uintptr begin = (uintptr)(GetFuncAddr(&allocateMainMemoryPage));
     uintptr end   = (uintptr)(GetFuncAddr(&eraseRuntimeMethods));
     uintptr size  = end - begin;
     RandBuffer((byte*)begin, (int64)size);
@@ -2034,7 +2054,7 @@ void* RT_GetProcAddressByName(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
     // optimize and generate incorrect template
     uint16 module[MAX_PATH];
     mem_init(module, sizeof(module));
-    // get module file name
+    // get module file name // TODO remove it
     if (hModule == HMODULE_GLEAM_RT)
     {
         uint16 mod[] = {
@@ -2046,7 +2066,7 @@ void* RT_GetProcAddressByName(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
         XORBuffer(mod, sizeof(mod), key, sizeof(key));
         mem_copy(module, mod, sizeof(mod));
     } else {
-        if (GetModuleFileName(runtime->IMOML, hModule, module, sizeof(module)) == 0)
+        if (GetModuleFileName(runtime->PML, hModule, module, sizeof(module)) == 0)
         {
             SetLastErrno(ERR_RUNTIME_MODULE_NOT_FOUND);
             return NULL;
@@ -2086,7 +2106,7 @@ void* RT_GetProcAddressByHash(uint mHash, uint pHash, uint hKey, BOOL redirect)
 {
     Runtime* runtime = getRuntimePointer();
 
-    return RT_GetProcAddressByHashML(runtime->IMOML, mHash, pHash, hKey, redirect);
+    return RT_GetProcAddressByHashML(runtime->PML, mHash, pHash, hKey, redirect);
 }
 
 __declspec(noinline)
@@ -2153,9 +2173,9 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0x78CEC2DB4F037F52, 0x4BBCE1822B520801, 0xA55992702A7F7347, GetFuncAddr(&RT_GetProcAddressByHash)   },
         { 0xC908C623B4ABC7AD, 0xB6541A994E1BD9C9, 0x9674D54BD95FD0C4, GetFuncAddr(&RT_GetProcAddressByHashML) },
         { 0x5C1AC22BE7C8F1D0, 0x733B11BFF5D380BD, 0xF9EEB584A92B88B3, GetFuncAddr(&RT_GetProcAddressOriginal) },
-        { 0x6D4433798536C490, 0x5C453B47673B57CC, 0x93836F9B160A8469, GetFuncAddr(&RT_GetPEB)                 },
         { 0xF25FE9947684FF1C, 0x286F34B40136641A, 0xDA4C40DA3D7DAE2C, GetFuncAddr(&RT_GetTEB)                 },
-        { 0xA7D7243625100C78, 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetIMOML)               },
+        { 0x6D4433798536C490, 0x5C453B47673B57CC, 0x93836F9B160A8469, GetFuncAddr(&RT_GetPEB)                 },
+        { 0xA7D7243625100C78, 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetPML)                 },
         { 0xA28D29AAEFEF0821, 0xB1FA77826E174621, 0xE8CE6F7431D20C90, GetFuncAddr(&RT_GetOptions)             },
         { 0x4F32B816DF8B4247, 0x618F963CAA5EE348, 0x20EE2A5363818605, GetFuncAddr(&RT_GetRuntimeM)            },
         { 0x22B11BE6C537097F, 0xA83FF55FECA4B2D5, 0xC9C001C805631D08, GetFuncAddr(&RT_GetInfo)                },
@@ -2190,9 +2210,9 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
         { 0x539A3936, 0x7D694658, 0xC93F4122, GetFuncAddr(&RT_GetProcAddressByHash)   },
         { 0x3D7C4EDA, 0xECD00780, 0x7B64F177, GetFuncAddr(&RT_GetProcAddressByHashML) },
         { 0xB35705B6, 0xB033EAFB, 0xA5A5546E, GetFuncAddr(&RT_GetProcAddressOriginal) },
-        { 0x1655EE6F, 0xC04FB496, 0x7EE9DDE8, GetFuncAddr(&RT_GetPEB)                 },
         { 0x4B62B8F1, 0x87C8028B, 0xD697CA60, GetFuncAddr(&RT_GetTEB)                 },
-        { 0xE12D98E8, 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetIMOML)               },
+        { 0x1655EE6F, 0xC04FB496, 0x7EE9DDE8, GetFuncAddr(&RT_GetPEB)                 },
+        { 0xE12D98E8, 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetPML)                 },
         { 0x08BF96C4, 0xD4D119FF, 0x8CD7C9D0, GetFuncAddr(&RT_GetOptions)             },
         { 0xD8065FD0, 0x2414448A, 0x2E37B5DF, GetFuncAddr(&RT_GetRuntimeM)            },
         { 0x45460AF7, 0x41205F31, 0x2E96AC51, GetFuncAddr(&RT_GetInfo)                },
@@ -2341,7 +2361,18 @@ static void* getLazyAPIRedirector(Runtime* runtime, void* proc)
 }
 
 __declspec(noinline)
-void* RT_GetPEB()
+TEB* RT_GetTEB()
+{
+#ifdef _WIN64
+    TEB* teb = __readgsqword(0x30);
+#elif _WIN32
+    TEB* teb = __readfsdword(0x18);
+#endif
+    return teb;
+}
+
+__declspec(noinline)
+PEB* RT_GetPEB()
 {
     Runtime* runtime = getRuntimePointer();
 
@@ -2349,22 +2380,11 @@ void* RT_GetPEB()
 }
 
 __declspec(noinline)
-void* RT_GetTEB()
-{
-#ifdef _WIN64
-    uintptr teb = __readgsqword(0x30);
-#elif _WIN32
-    uintptr teb = __readfsdword(0x18);
-#endif
-    return (void*)teb;
-}
-
-__declspec(noinline)
-void* RT_GetIMOML()
+PML* RT_GetPML()
 {
     Runtime* runtime = getRuntimePointer();
 
-    return runtime->IMOML;
+    return runtime->PML;
 }
 
 __declspec(noinline)
