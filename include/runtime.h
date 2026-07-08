@@ -3,6 +3,7 @@
 
 #include "c_types.h"
 #include "win_types.h"
+#include "win_structs.h"
 #include "dll_kernel32.h"
 #include "lib_string.h"
 #include "hash_api.h"
@@ -295,8 +296,8 @@ typedef uint (*Decompress_t)(void* dst, void* src, uint len);
 // +---------+----------+----------+----------+------------+
 //
 // item data structure
-// 0······· value or pointer
-// ·0000000 data length
+// 0x0······· value or pointer
+// 0x·0000000 data length
 //
 // Serialize is used to serialize structure to a buffer.
 // If success, return the serialized data length. If failed, return 0.
@@ -445,10 +446,10 @@ typedef void  (*SDStop_t)();
 // about process environment
 //
 // These methods are used to ensure that __readgsqword or __readfsdword
-// is used only once, of course except GetTEB.
-typedef void* (*GetPEB_t)();   // get stored PEB address
-typedef void* (*GetTEB_t)();   // only a shortcut
-typedef void* (*GetIMOML_t)(); // get stored InMemoryOrderModuleList address
+// are used execute once, of course except GetTEB.
+typedef TEB* (*GetTEB_t)(); // only a shortcut of read gs or fs
+typedef PEB* (*GetPEB_t)(); // get stored PEB address
+typedef PML* (*GetPML_t)(); // get stored process module list
 
 // about runtime core methods
 //
@@ -540,10 +541,18 @@ typedef void  (*RTStop_t)();
 // Runtime_M contains exported runtime methods.
 typedef struct {
     struct {
-        FindAPI_t    FindAPI;
-        FindAPI_ML_t FindAPI_ML;
-        FindAPI_A_t  FindAPI_A;
-        FindAPI_W_t  FindAPI_W;
+        FindMod_MH_t  FindMod_MH;
+        FindAPI_MA_t  FindAPI_MA;
+        FindAPI_MH_t  FindAPI_MH;
+        FindMod_MHL_t FindMod_MHL;
+        FindAPI_MAL_t FindAPI_MAL;
+        FindAPI_MHL_t FindAPI_MHL;
+        FindMod_A_t   FindMod_A;
+        FindMod_W_t   FindMod_W;
+        FindMod_AL_t  FindMod_AL;
+        FindMod_WL_t  FindMod_WL;
+        FindAPI_A_t   FindAPI_A;
+        FindAPI_W_t   FindAPI_W;
     } HashAPI;
 
     struct {
@@ -747,9 +756,9 @@ typedef struct {
     } Shield;
 
     struct {
-        GetPEB_t   GetPEB;
-        GetTEB_t   GetTEB;
-        GetIMOML_t GetIMOML;
+        GetTEB_t GetTEB;
+        GetPEB_t GetPEB;
+        GetPML_t GetPML;
     } Env;
 
     struct {
