@@ -53,6 +53,10 @@ typedef struct {
     PEB* PEB; // process environment block
     PML* PML; // process module list
 
+    // core dll address
+    HMODULE hKernel32;
+    HMODULE hNtdll;
+
     // API addresses
     GetSystemInfo_t          GetSystemInfo;
     GetTickCount_t           GetTickCount;
@@ -133,15 +137,24 @@ typedef struct {
 } Runtime;
 
 // export methods about Runtime
-void* RT_FindAPI(uint module, uint procedure, uint key);
-void* RT_FindAPI_ML(void* list, uint module, uint procedure, uint key);
-void* RT_FindAPI_A(byte* module, byte* procedure);
+void* RT_FindMod_MH(uint  module, uint key);
+void* RT_FindAPI_MA(void* module, uint procedure, uint key);
+void* RT_FindAPI_MH(uint  module, uint procedure, uint key);
+void* RT_FindMod_MHL(PML* pml, uint  module, uint key);
+void* RT_FindAPI_MAL(PML* pml, void* module, uint procedure, uint key);
+void* RT_FindAPI_MHL(PML* pml, uint  module, uint procedure, uint key);
+void* RT_FindMod_A(byte*   module, uint key);
+void* RT_FindMod_W(uint16* module, uint key);
+void* RT_FindMod_AL(PML* pml, byte*   module, uint key);
+void* RT_FindMod_WL(PML* pml, uint16* module, uint key);
+void* RT_FindAPI_A(byte*   module, byte* procedure);
 void* RT_FindAPI_W(uint16* module, byte* procedure);
 
 void* RT_GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
 void* RT_GetProcAddressByName(HMODULE hModule, LPCSTR lpProcName, BOOL redirect);
 void* RT_GetProcAddressByHash(uint mHash, uint pHash, uint hKey, BOOL redirect);
-void* RT_GetProcAddressByHashML(void* list, uint mHash, uint pHash, uint hKey, BOOL redirect);
+void* RT_GetProcAddressMA(uint mHash, uint pHash, uint hKey, BOOL redirect);
+void* RT_GetProcAddressMH(uint mHash, uint pHash, uint hKey, BOOL redirect);
 void* RT_GetProcAddressOriginal(HMODULE hModule, LPCSTR lpProcName);
 
 TEB* RT_GetTEB();
@@ -179,17 +192,18 @@ errno RT_unlock_mods();
 void  RT_try_lock_mods();
 void  RT_try_unlock_mods();
 
-bool RT_flush_api_cache();
-
+bool  RT_flush_api_cache();
 errno RT_stop(bool exitThread, uint32 code);
+
+// HashAPI with spoof call (forge GetProcAddress)
+void* FindAPI_SC_MA(void* module, uint procedure, uint key);
+void* FindAPI_SC_MH(uint  module, uint procedure, uint key);
+void* FindAPI_SC_MAL(PML* pml, void* module, uint procedure, uint key);
+void* FindAPI_SC_MHL(PML* pml, uint  module, uint procedure, uint key);
 
 // method wrapper for user and Runtime submodules
 uint MW_MemScanByValue(void* value, uint size, uintptr* results, uint maxItem);
 uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem);
-
-// HashAPI with spoof call (forge GetProcAddress)
-void* FindAPI_SC(uint module, uint procedure, uint key);
-void* FindAPI_SC_ML(void* list, uint module, uint procedure, uint key);
 
 // hard encoded address in getRuntimePointer for replacement
 #ifdef _WIN64
@@ -207,6 +221,8 @@ static bool  checkOptionConflict(Runtime_Opts* opts);
 static bool  isValidArgumentStub();
 static PEB*  getPEBPointer();
 static PML*  buildProcessModuleList(PEB* peb);
+static void* getKernel32Address(PML* pml);
+static void* getNtdllAddress(PML* pml);
 static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32);
 static void  buildRuntimeInformation(Runtime* runtime);
 static void* calculateEpilogue();
@@ -284,41 +300,27 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     PEB* PEB = getPEBPointer();
     PML* PML = buildProcessModuleList(PEB);
     // get kernel32.dll and ntdll.dll address
-#ifdef _WIN64
-    uint mHash = 0x81281D579CF95014;
-    uint hKey  = 0x17525CC1E154BA98;
-#elif _WIN32
-    uint mHash = 0x48CAA960;
-    uint hKey  = 0x54FE3C56;
-#endif
-    HMODULE hKernel32 = FindMod_MHL(PML, mHash, hKey);
+    HMODULE hKernel32 = getKernel32Address(PML);
     if (hKernel32 == NULL)
     {
         SetLastErrno(ERR_RUNTIME_NO_KERNEL32_ADDR);
         return NULL;
     }
-#ifdef _WIN64
-    mHash = 0x3CCA726C479AD6EE;
-    hKey  = 0xD2E8220B9E91AB06;
-#elif _WIN32
-    mHash = 0x49F19F51;
-    hKey  = 0x5B0571BF;
-#endif
-    HMODULE hNtdll = FindMod_MHL(PML, mHash, hKey);
+    HMODULE hNtdll = getNtdllAddress(PML);
     if (hNtdll == NULL)
     {
         SetLastErrno(ERR_RUNTIME_NO_NTDLL_ADDR);
         return NULL;
     }
     // alloc memory for store runtime structure
-    void* memPage = allocateMainMemoryPage(PML, hKernel32);
-    if (memPage == NULL)
+    void* mainMemPage = allocateMainMemoryPage(PML, hKernel32);
+    if (mainMemPage == NULL)
     {
         SetLastErrno(ERR_RUNTIME_ALLOC_MAIN_MEM_PAGE);
         return NULL;
     }
     // set structure address
-    uintptr addr = (uintptr)memPage;
+    uintptr addr = (uintptr)mainMemPage;
     uintptr runtimeAddr = addr + LAYOUT_RUNTIME_STRUCT + RandUintN(addr, 128);
     uintptr moduleAddr  = addr + LAYOUT_RUNTIME_MODULE + RandUintN(addr, 128);
     // initialize structure
@@ -331,6 +333,9 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     // store process environment
     runtime->PEB = PEB;
     runtime->PML = PML;
+    // store core dll address
+    runtime->hKernel32 = hKernel32;
+    runtime->hNtdll    = hNtdll;
     // calculate the instance entry point
     uintptr bootAddr = (uintptr)(boot);
     uintptr initAddr = (uintptr)(GetFuncAddr(&InitRuntime));
@@ -339,11 +344,11 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         bootAddr = initAddr;
     }
     // set runtime data
-    runtime->MainMemPage = memPage;
+    runtime->MainMemPage = mainMemPage;
     runtime->Prologue = (void*)bootAddr;
     runtime->Epilogue = calculateEpilogue();
     runtime->InstSize = (uint32)((uintptr)(runtime->Epilogue) - bootAddr);
-    // initialize value
+    // initialize default value
     runtime->ErrorMode = (UINT)(-1);
     // initialize runtime
     DWORD oldProtect = 0;
@@ -621,7 +626,8 @@ static bool loadOptionFromStub(Runtime_Opts* opts)
     uint  len = OPTION_STUB_SIZE - (1 + OPTION_KEY_SIZE);
     byte* key = (byte*)(stub + 1);
     XORBuffer(dst, len, key, OPTION_KEY_SIZE);
-    // set the option data
+    // apply the option data
+    // code about "*(byte*)(data + OPT_OFFSET_XXX) == 0" is special case
     opts->ImagePinningHash  = *(uint64*)(data + OPT_OFFSET_IMAGE_PINNING_HASH);
     opts->ShieldModuleHash  = *(uint64*)(data + OPT_OFFSET_SHIELD_MODULE_HASH);
     opts->ShieldEntryPoint  = *(uint64*)(data + OPT_OFFSET_SHIELD_ENTRY_POINT);
@@ -724,6 +730,30 @@ static PML* buildProcessModuleList(PEB* peb)
     return (PML*)((uintptr)entry - offsetof(PML, Links));
 }
 
+static void* getKernel32Address(PML* pml)
+{
+#ifdef _WIN64
+    uint mHash = 0x81281D579CF95014;
+    uint hKey  = 0x17525CC1E154BA98;
+#elif _WIN32
+    uint mHash = 0x48CAA960;
+    uint hKey  = 0x54FE3C56;
+#endif
+    return FindMod_MHL(pml, mHash, hKey);
+}
+
+static void* getNtdllAddress(PML* pml)
+{
+#ifdef _WIN64
+    uint mHash = 0x3CCA726C479AD6EE;
+    uint hKey  = 0xD2E8220B9E91AB06;
+#elif _WIN32
+    uint mHash = 0x49F19F51;
+    uint hKey  = 0x5B0571BF;
+#endif
+    return FindMod_MHL(pml, mHash, hKey);
+}
+
 static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32)
 {
 #ifdef _WIN64
@@ -755,7 +785,7 @@ static void buildRuntimeInformation(Runtime* runtime)
 
     // calculate runtime .text size
     uintptr begin = (uintptr)(GetFuncAddr(&InitRuntime));
-    uintptr end   = (uintptr)(GetFuncAddr(&Shield_Stub));
+    uintptr end   = (uintptr)(GetFuncAddr(&Shield_Stub)); // TODO replace the epilogue of asm module
     uintptr size  = end - begin;
 
     // calculate runtime .text hash
@@ -780,78 +810,80 @@ static void* calculateEpilogue()
 static bool initRuntimeAPI(Runtime* runtime)
 {
     typedef struct {
-        uint mHash; uint pHash; uint hKey; void* proc;
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0x81281D579CF95014, 0x86A86D57C8A841B1, 0x17525CC1E154BA98 }, // GetSystemInfo
-        { 0xEF5C643FACE01A7F, 0x77F988FFD6E5F17B, 0xBCCCFEDA4ECB5CB5 }, // GetTickCount
-        { 0xE57ED03045CF8261, 0xB726BDCEE213B000, 0xBC41C33EE9102207 }, // LoadLibraryA
-        { 0x39040AAE82DF6A27, 0x715D0BA3A37704ED, 0xF5E8C64F2FD1E69A }, // FreeLibrary
-        { 0x8DEA92825258B43D, 0x1E1187BF74A001D9, 0x2457B30C5AFA694C }, // GetProcAddress
-        { 0x01D79EDD3081D078, 0x447B8E23EA19AFBF, 0xC733FDBD9B57119F }, // VirtualAlloc
-        { 0x103364F533A102DE, 0x66E51926BF5C2675, 0xE23E338B794BD214 }, // VirtualFree
-        { 0xE61F09814F6DB0F1, 0xE720DBF70F19D718, 0xFD32DE1953F12824 }, // VirtualProtect
-        { 0x782DBEA37FA26901, 0x6BFCB0DC860C2060, 0xB7AE04F1641B5A9E }, // VirtualQuery
-        { 0x2942F56B284BE6A0, 0x06172C4E43D310FB, 0xF2B7646EDF1ADF06 }, // FlushInstructionCache
-        { 0x83E845755EFA1E95, 0xFC8825DC3C55B265, 0xCCBCA1685F8E8AD6 }, // SuspendThread
-        { 0x392F3A38C3FA3EED, 0xB0CAB85785F06761, 0xF5EE69828D2BD6E1 }, // ResumeThread
-        { 0x9769C6F79A6F11AC, 0x07752F687020ED8D, 0xFEB03CCC4111D6D3 }, // GetThreadContext
-        { 0x8C967347E10E2345, 0x9AD093D6D3F3F010, 0xE78BBF9830AA8844 }, // ExitThread
-        { 0x4A7A5CA9B2E5DC14, 0x1201412A13AA4E6F, 0x7275A1F15DD85A1F }, // CreateMutexA
-        { 0x821C92139935AD25, 0x34B5B1C885933D84, 0xE2276FF8F3AD2105 }, // ReleaseMutex
-        { 0xF13C96BD3A704689, 0xEC2E1ED137A9FC13, 0x0AB8729A0AA907A5 }, // CreateEventA
-        { 0xE8FFF1BA649033AB, 0xB21BF291AD8FCA39, 0xFE54EB09C78288C7 }, // SetEvent
-        { 0x2231484832A86586, 0xE28EEE755182BA08, 0xD80628473A8AC9D2 }, // CreateWaitableTimerA
-        { 0xEFD2B93BE1E8CE28, 0x5EA44B4FC8403DDC, 0xEB2D517E67A9A193 }, // SetWaitableTimer
-        { 0x350460801951609A, 0x023C544BECCF303A, 0x70BE40CC74D98FA5 }, // WaitForSingleObject
-        { 0x1B2F1DFD8CC1DEE2, 0xAA914C97CF93C6C4, 0xEBD4EB0F98F02345 }, // WaitForMultipleObjects
-        { 0x903C6C0D3F5EA5B5, 0x8C0157728DBBDF00, 0x72A6D14AD23E4170 }, // DuplicateHandle
-        { 0x34F6DB7FD270DACD, 0xAD3CAC3CA6B3F85F, 0x3A69E267838CC49B }, // CloseHandle
-        { 0x9645F47C050C8970, 0x7958DD2E625BFB9A, 0x8D88DDA980B5423A }, // SetCurrentDirectoryA
-        { 0x2DA99CE4EAA5EBC5, 0x92705193BA8D0E4C, 0x0157A58CBD86F5CB }, // SetCurrentDirectoryW
-        { 0xB95FD82DE5AF8CA3, 0x47600C16911CFF63, 0xA1BAB93C34930F17 }, // SetErrorMode
-        { 0x45C00FCCD8608BF4, 0xFF59A6239E10D034, 0x259506B04B900790 }, // SleepEx
-        { 0xA42803533C850050, 0xAE626A54FB4B1EFE, 0xC74CD2670540D0E5 }, // ExitProcess
+        { 0x86A86D57C8A841B1, 0x17525CC1E154BA98 }, // GetSystemInfo
+        { 0x77F988FFD6E5F17B, 0xBCCCFEDA4ECB5CB5 }, // GetTickCount
+        { 0xB726BDCEE213B000, 0xBC41C33EE9102207 }, // LoadLibraryA
+        { 0x715D0BA3A37704ED, 0xF5E8C64F2FD1E69A }, // FreeLibrary
+        { 0x1E1187BF74A001D9, 0x2457B30C5AFA694C }, // GetProcAddress
+        { 0x447B8E23EA19AFBF, 0xC733FDBD9B57119F }, // VirtualAlloc
+        { 0x66E51926BF5C2675, 0xE23E338B794BD214 }, // VirtualFree
+        { 0xE720DBF70F19D718, 0xFD32DE1953F12824 }, // VirtualProtect
+        { 0x6BFCB0DC860C2060, 0xB7AE04F1641B5A9E }, // VirtualQuery
+        { 0x06172C4E43D310FB, 0xF2B7646EDF1ADF06 }, // FlushInstructionCache
+        { 0xFC8825DC3C55B265, 0xCCBCA1685F8E8AD6 }, // SuspendThread
+        { 0xB0CAB85785F06761, 0xF5EE69828D2BD6E1 }, // ResumeThread
+        { 0x07752F687020ED8D, 0xFEB03CCC4111D6D3 }, // GetThreadContext
+        { 0x9AD093D6D3F3F010, 0xE78BBF9830AA8844 }, // ExitThread
+        { 0x1201412A13AA4E6F, 0x7275A1F15DD85A1F }, // CreateMutexA
+        { 0x34B5B1C885933D84, 0xE2276FF8F3AD2105 }, // ReleaseMutex
+        { 0xEC2E1ED137A9FC13, 0x0AB8729A0AA907A5 }, // CreateEventA
+        { 0xB21BF291AD8FCA39, 0xFE54EB09C78288C7 }, // SetEvent
+        { 0xE28EEE755182BA08, 0xD80628473A8AC9D2 }, // CreateWaitableTimerA
+        { 0x5EA44B4FC8403DDC, 0xEB2D517E67A9A193 }, // SetWaitableTimer
+        { 0x023C544BECCF303A, 0x70BE40CC74D98FA5 }, // WaitForSingleObject
+        { 0xAA914C97CF93C6C4, 0xEBD4EB0F98F02345 }, // WaitForMultipleObjects
+        { 0x8C0157728DBBDF00, 0x72A6D14AD23E4170 }, // DuplicateHandle
+        { 0xAD3CAC3CA6B3F85F, 0x3A69E267838CC49B }, // CloseHandle
+        { 0x7958DD2E625BFB9A, 0x8D88DDA980B5423A }, // SetCurrentDirectoryA
+        { 0x92705193BA8D0E4C, 0x0157A58CBD86F5CB }, // SetCurrentDirectoryW
+        { 0x47600C16911CFF63, 0xA1BAB93C34930F17 }, // SetErrorMode
+        { 0xFF59A6239E10D034, 0x259506B04B900790 }, // SleepEx
+        { 0xAE626A54FB4B1EFE, 0xC74CD2670540D0E5 }, // ExitProcess
     };
 #elif _WIN32
     {
-        { 0x48CAA960, 0x1BE725E8, 0x54FE3C56 }, // GetSystemInfo
-        { 0x8BDEE48D, 0x1330050A, 0x472D1883 }, // GetTickCount
-        { 0x4C088F20, 0x8A1A09AF, 0x639DAAE1 }, // LoadLibraryA
-        { 0x4FEEC1A5, 0x9DC3A7B5, 0x4C5DFFD2 }, // FreeLibrary
-        { 0xFFD5608B, 0x3E95C861, 0xB86AF953 }, // GetProcAddress
-        { 0xED38BE94, 0x2EC158C4, 0xB33593DB }, // VirtualAlloc
-        { 0x2E5F98A6, 0xBFAD008B, 0x086D5CBA }, // VirtualFree
-        { 0xA0D678CB, 0x684D4B46, 0xFEAE4785 }, // VirtualProtect
-        { 0x35881A35, 0x8066F5F0, 0x1587304E }, // VirtualQuery
-        { 0x1EF0D6B9, 0xF3E223E4, 0x58D1C6E8 }, // FlushInstructionCache
-        { 0xE5E1E669, 0xBFE496D9, 0x144C6CFA }, // SuspendThread
-        { 0x87529AFE, 0xA848A36A, 0xF5703D40 }, // ResumeThread
-        { 0x41F1FB31, 0x0C1FE96C, 0x2E82C6B6 }, // GetThreadContext
-        { 0x075404B1, 0x01C3A55A, 0x543BD02E }, // ExitThread
-        { 0xAEF6CD4F, 0x7613A300, 0x2BE798B4 }, // CreateMutexA
-        { 0x566023B1, 0x71D96B6C, 0x44DC831F }, // ReleaseMutex
-        { 0x914613C6, 0x05E6B16C, 0x56C2B5B2 }, // CreateEventA
-        { 0x23C3DD82, 0xB6BDC3FE, 0x5EA25057 }, // SetEvent
-        { 0x587233C2, 0xCBE31C79, 0xB527BB80 }, // CreateWaitableTimerA
-        { 0x9ABC8C02, 0x174F7821, 0xAF05BDDE }, // SetWaitableTimer
-        { 0xDDF3C456, 0x8312BDD3, 0xD3DE42B6 }, // WaitForSingleObject
-        { 0x11612FF7, 0xCC00FC68, 0xC0A6D2E7 }, // WaitForMultipleObjects
-        { 0xA0D83F42, 0xC75C037E, 0xA87DF314 }, // DuplicateHandle
-        { 0x35F0E826, 0xD4D75A32, 0x585D80CF }, // CloseHandle
-        { 0xC029EB89, 0x2361ABF9, 0xBD82334D }, // SetCurrentDirectoryA
-        { 0xB3FC81E0, 0xD69E0B74, 0x2833ECFE }, // SetCurrentDirectoryW
-        { 0xA73B7DE6, 0x2CBDCC0D, 0x2DE6253F }, // SetErrorMode
-        { 0xA7424FD3, 0x35D0E695, 0x1FAAF404 }, // SleepEx
-        { 0xE715A750, 0xE9D3E889, 0x65A48058 }, // ExitProcess
+        { 0x1BE725E8, 0x54FE3C56 }, // GetSystemInfo
+        { 0x1330050A, 0x472D1883 }, // GetTickCount
+        { 0x8A1A09AF, 0x639DAAE1 }, // LoadLibraryA
+        { 0x9DC3A7B5, 0x4C5DFFD2 }, // FreeLibrary
+        { 0x3E95C861, 0xB86AF953 }, // GetProcAddress
+        { 0x2EC158C4, 0xB33593DB }, // VirtualAlloc
+        { 0xBFAD008B, 0x086D5CBA }, // VirtualFree
+        { 0x684D4B46, 0xFEAE4785 }, // VirtualProtect
+        { 0x8066F5F0, 0x1587304E }, // VirtualQuery
+        { 0xF3E223E4, 0x58D1C6E8 }, // FlushInstructionCache
+        { 0xBFE496D9, 0x144C6CFA }, // SuspendThread
+        { 0xA848A36A, 0xF5703D40 }, // ResumeThread
+        { 0x0C1FE96C, 0x2E82C6B6 }, // GetThreadContext
+        { 0x01C3A55A, 0x543BD02E }, // ExitThread
+        { 0x7613A300, 0x2BE798B4 }, // CreateMutexA
+        { 0x71D96B6C, 0x44DC831F }, // ReleaseMutex
+        { 0x05E6B16C, 0x56C2B5B2 }, // CreateEventA
+        { 0xB6BDC3FE, 0x5EA25057 }, // SetEvent
+        { 0xCBE31C79, 0xB527BB80 }, // CreateWaitableTimerA
+        { 0x174F7821, 0xAF05BDDE }, // SetWaitableTimer
+        { 0x8312BDD3, 0xD3DE42B6 }, // WaitForSingleObject
+        { 0xCC00FC68, 0xC0A6D2E7 }, // WaitForMultipleObjects
+        { 0xC75C037E, 0xA87DF314 }, // DuplicateHandle
+        { 0xD4D75A32, 0x585D80CF }, // CloseHandle
+        { 0x2361ABF9, 0xBD82334D }, // SetCurrentDirectoryA
+        { 0xD69E0B74, 0x2833ECFE }, // SetCurrentDirectoryW
+        { 0x2CBDCC0D, 0x2DE6253F }, // SetErrorMode
+        { 0x35D0E695, 0x1FAAF404 }, // SleepEx
+        { 0xE9D3E889, 0x65A48058 }, // ExitProcess
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = FindAPI_ML(runtime->IMOML, item.mHash, item.pHash, item.hKey);
+        PML*  pml  = runtime->PML;
+        void* dll  = runtime->hKernel32;
+        void* proc = FindAPI_SC_MAL(pml, dll, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -970,6 +1002,9 @@ static errno initSubmodules(Runtime* runtime)
         .PML = runtime->PML,
         .MPS = runtime->PageSize,
 
+        .hKernel32 = runtime->hKernel32,
+        .hNtdll    = runtime->hNtdll,
+
         .GetTickCount           = runtime->GetTickCount,
         .LoadLibraryA           = runtime->LoadLibraryA,
         .FreeLibrary            = runtime->FreeLibrary,
@@ -1000,7 +1035,8 @@ static errno initSubmodules(Runtime* runtime)
         .Epilogue    = (uintptr)(runtime->Epilogue),
         .InstSize    = runtime->InstSize,
 
-        .FindAPI = GetFuncAddr(&FindAPI_SC),
+        .FindAPI_MA = GetFuncAddr(&FindAPI_SC_MA),
+        .FindAPI_MH = GetFuncAddr(&FindAPI_SC_MH),
 
         .malloc  = GetFuncAddr(&RT_malloc),
         .calloc  = GetFuncAddr(&RT_calloc),
@@ -1949,6 +1985,46 @@ bool RT_flush_api_cache()
 }
 
 __declspec(noinline)
+void* FindAPI_SC_MA(void* module, uint procedure, uint key)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    return FindAPI_SC_MAL(runtime->PML, module, procedure, key);
+}
+
+__declspec(noinline)
+void* FindAPI_SC_MH(uint module, uint procedure, uint key)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    return FindAPI_SC_MHL(runtime->PML, module, procedure, key);
+}
+
+__declspec(noinline)
+void* FindAPI_SC_MAL(PML* pml, void* module, uint procedure, uint key)
+{
+    void* proc = FindAPI_MAL(pml, module, procedure, key);
+    if (proc == NULL)
+    {
+        return NULL;
+    }
+    // TODO implement spoof call
+    return proc;
+}
+
+__declspec(noinline)
+void* FindAPI_SC_MHL(PML* pml, uint module, uint procedure, uint key)
+{
+    void* proc = FindAPI_MHL(pml, module, procedure, key);
+    if (proc == NULL)
+    {
+        return NULL;
+    }
+    // TODO implement spoof call
+    return proc;
+}
+
+__declspec(noinline)
 uint MW_MemScanByValue(void* value, uint size, uintptr* results, uint maxItem)
 {
     Runtime* runtime = getRuntimePointer();
@@ -1974,21 +2050,6 @@ uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem)
         .VirtualQuery = runtime->VirtualQuery,
     };
     return MemScanByConfig(&ctx, config, results, maxItem);
-}
-
-__declspec(noinline)
-void* FindAPI_SC(uint module, uint procedure, uint key)
-{
-    Runtime* runtime = getRuntimePointer();
-
-    return FindAPI_ML(runtime->IMOML, module, procedure, key);
-}
-
-__declspec(noinline)
-void* FindAPI_SC_ML(void* list, uint module, uint procedure, uint key)
-{
-    // TODO implement spoof call
-    return FindAPI_ML(list, module, procedure, key);
 }
 
 __declspec(noinline)
@@ -2106,15 +2167,7 @@ void* RT_GetProcAddressByHash(uint mHash, uint pHash, uint hKey, BOOL redirect)
 {
     Runtime* runtime = getRuntimePointer();
 
-    return RT_GetProcAddressByHashML(runtime->PML, mHash, pHash, hKey, redirect);
-}
-
-__declspec(noinline)
-void* RT_GetProcAddressByHashML(void* list, uint mHash, uint pHash, uint hKey, BOOL redirect)
-{
-    Runtime* runtime = getRuntimePointer();
-
-    void* proc = FindAPI_SC_ML(list, mHash, pHash, hKey);
+    void* proc = FindAPI_SC_MHL(list, mHash, pHash, hKey);
     if (proc == NULL)
     {
         SetLastErrno(ERR_RUNTIME_PROCEDURE_NOT_FOUND);
