@@ -3,70 +3,61 @@
 #include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "lib_string.h"
+#include "hash_api.h"
 #include "win_api.h"
 
-DWORD GetModuleFileName(void* list, HMODULE hModule, LPWSTR lpFilename, DWORD nSize)
+BOOL IsValidModuleHandle(PML* pml, HMODULE hModule)
 {
-    uintptr mod = (uintptr)list;
-    for (;; mod = *(uintptr*)(mod))
+    if (hModule == NULL)
     {
-    #ifdef _WIN64
-        uintptr modName = *(uintptr*)(mod + 80);
-    #elif _WIN32
-        uintptr modName = *(uintptr*)(mod + 40);
-    #endif
-        if (modName == 0x00)
+        return false;
+    }
+    LIST_ENTRY* head = &pml->Links;
+    for (LIST_ENTRY* link = head->Flink; link != head; link = link->Flink)
+    {
+        PML* entry = (PML*)((uintptr)(link)-offsetof(PML, Links));
+        if (entry->ImageBase == hModule)
         {
-            break;
+            return true;
         }
-    #ifdef _WIN64
-        uintptr modBase = *(uintptr*)(mod + 32);
-    #elif _WIN32
-        uintptr modBase = *(uintptr*)(mod + 16);
-    #endif
-        if (modBase != (uintptr)hModule)
+    }
+    return false;
+}
+
+DWORD GetModuleBaseNameW(PML* pml, HMODULE hModule, PWSTR lpBasename, DWORD nSize)
+{
+    LIST_ENTRY* head = &pml->Links;
+    for (LIST_ENTRY* link = head->Flink; link != head; link = link->Flink)
+    {
+        PML* entry = (PML*)((uintptr)(link)-offsetof(PML, Links));
+        if (entry->ImageBase != hModule)
         {
             continue;
         }
-    #ifdef _WIN64
-        uint16 nameLen = *(uint16*)(mod + 74);
-    #elif _WIN32
-        uint16 nameLen = *(uint16*)(mod + 38);
-    #endif
-        if (nameLen > nSize)
+        PWSTR  nameBuf = entry->BaseName.Buffer;
+        USHORT nameLen = entry->BaseName.Length;
+        if (nameLen > nSize*2)
         {
-            nameLen = (uint16)nSize;
+            nameLen = (USHORT)(nSize*2);
         }
-        mem_copy(lpFilename, (LPWSTR)modName, nameLen);
+        mem_copy(lpBasename, nameBuf, nameLen);
         return nameLen;
     }
     return 0;
 }
 
-HMODULE GetModuleHandle(void* list, LPWSTR lpFilename)
+HMODULE GetModuleHandleW(PML* pml, PWSTR lpBasename)
 {
-    uintptr mod = (uintptr)list;
-    for (;; mod = *(uintptr*)(mod))
+    LIST_ENTRY* head = &pml->Links;
+    for (LIST_ENTRY* link = head->Flink; link != head; link = link->Flink)
     {
-    #ifdef _WIN64
-        uintptr modName = *(uintptr*)(mod + 80);
-    #elif _WIN32
-        uintptr modName = *(uintptr*)(mod + 40);
-    #endif
-        if (modName == 0x00)
+        PML* entry = (PML*)((uintptr)(link)-offsetof(PML, Links));
+        PWSTR  nameBuf = entry->BaseName.Buffer;
+        USHORT nameLen = entry->BaseName.Length/2;
+        if (strnicmp_w(lpBasename, nameBuf, nameLen) == 0)
         {
-            break;
+            return entry->ImageBase;
         }
-        if (stricmp_w((LPWSTR)modName, lpFilename) != 0)
-        {
-            continue;
-        }
-    #ifdef _WIN64
-        uintptr modBase = *(uintptr*)(mod + 32);
-    #elif _WIN32
-        uintptr modBase = *(uintptr*)(mod + 16);
-    #endif
-        return (HMODULE)modBase;
     }
     return NULL;
 }
