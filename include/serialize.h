@@ -11,8 +11,8 @@
 // +---------+----------+----------+----------+------------+
 //
 // item data structure
-// 0······· value or pointer
-// ·0000000 data length
+// 0x0······· value or pointer
+// 0x·0000000 data length
 
 #define SERIALIZE_MAGIC        0xACFFFFEE
 #define SERIALIZE_ITEM_END     0x00000000
