@@ -357,18 +357,6 @@ typedef uint (*MemScanByValue_t)(void* value, uint size, uintptr* results, uint 
 typedef uint (*MemScanByConfig_t)(MemScan_Cfg* config, uintptr* results, uint maxItem);
 typedef void (*BinToPattern_t)(void* data, uint size, byte* pattern);
 
-// GetProcByName and GetProcByHash are use HashAPI module for
-// implement original GetProcAddress.
-//
-// GetProcAddress is not recommend, because GetProcAddressByName
-// will try to use HashAPI first, then use original GetProcAddress,
-// recommend use GetProcByName with redirect FALSE instead it.
-//
-// These methods are used for API Redirector or common module.
-typedef void* (*GetProcByName_t)(HMODULE hModule, LPCSTR lpProcName, BOOL redirect);
-typedef void* (*GetProcByHash_t)(uint mHash, uint pHash, uint hKey, BOOL redirect);
-typedef void* (*GetProcByHashML_t)(void* list, uint mHash, uint pHash, uint hKey, BOOL redirect);
-
 // about detector
 #ifndef DETECTOR_H
 typedef struct {
@@ -713,12 +701,6 @@ typedef struct {
         MemScanByConfig_t  ScanByConfig;
         BinToPattern_t     BinToPattern;
     } MemScanner;
-
-    struct {
-        GetProcByName_t   GetProcByName;
-        GetProcByHash_t   GetProcByHash;
-        GetProcByHashML_t GetProcByHashML;
-    } Procedure;
 
     struct {
         DetDetect_t    Detect;
