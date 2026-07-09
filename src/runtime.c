@@ -151,10 +151,7 @@ void* RT_FindAPI_A(byte*   module, byte* procedure);
 void* RT_FindAPI_W(uint16* module, byte* procedure);
 
 void* RT_GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
-void* RT_GetProcAddressByName(HMODULE hModule, LPCSTR lpProcName, BOOL redirect);
-void* RT_GetProcAddressByHash(uint mHash, uint pHash, uint hKey, BOOL redirect);
-void* RT_GetProcAddressMA(uint mHash, uint pHash, uint hKey, BOOL redirect);
-void* RT_GetProcAddressMH(uint mHash, uint pHash, uint hKey, BOOL redirect);
+void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect);
 void* RT_GetProcAddressOriginal(HMODULE hModule, LPCSTR lpProcName);
 
 TEB* RT_GetTEB();
@@ -256,9 +253,9 @@ static errno cleanRuntime(Runtime* runtime, bool init);
 static errno closeHandles(Runtime* runtime);
 static void  interruptInit(Runtime* runtime);
 
-static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName);
-static void* getAPIRedirector(Runtime* runtime, void* proc);
-static void* getLazyAPIRedirector(Runtime* runtime, void* proc);
+static void* getRuntimeMethods(LPCSTR lpProcName);
+static void* getAPIRedirector(void* proc);
+static void* getLazyAPIRedirector(HMODULE hModule, void* proc);
 
 static errno sleep(Runtime* runtime, uint32 milliseconds);
 static errno hide(Runtime* runtime);
@@ -561,10 +558,6 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->MemScanner.ScanByValue  = GetFuncAddr(&MW_MemScanByValue);
     module->MemScanner.ScanByConfig = GetFuncAddr(&MW_MemScanByConfig);
     module->MemScanner.BinToPattern = GetFuncAddr(&BinToPattern);
-    // get procedure address
-    module->Procedure.GetProcByName   = GetFuncAddr(&RT_GetProcAddressByName);
-    module->Procedure.GetProcByHash   = GetFuncAddr(&RT_GetProcAddressByHash);
-    module->Procedure.GetProcByHashML = GetFuncAddr(&RT_GetProcAddressByHashML);
     // about detector
     module->Detector.Detect = runtime->Detector->Detect;
     module->Detector.Status = runtime->Detector->GetStatus;
@@ -2052,17 +2045,6 @@ uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem)
     return MemScanByConfig(&ctx, config, results, maxItem);
 }
 
-__declspec(noinline)
-void* RT_FindAPI(uint module, uint procedure, uint key)
-{
-    return RT_GetProcAddressByHash(module, procedure, key, true);
-}
-
-__declspec(noinline)
-void* RT_FindAPI_ML(void* list, uint module, uint procedure, uint key)
-{
-    return RT_GetProcAddressByHashML(list, module, procedure, key, true);
-}
 
 __declspec(noinline)
 void* RT_FindAPI_A(byte* module, byte* procedure)
@@ -2093,81 +2075,41 @@ void* RT_FindAPI_W(uint16* module, byte* procedure)
 __declspec(noinline)
 void* RT_GetProcAddress(HMODULE hModule, LPCSTR lpProcName)
 {
-    return RT_GetProcAddressByName(hModule, lpProcName, true);
+    return RT_GetProcAddressEx(hModule, lpProcName, true);
 }
 
 __declspec(noinline)
-void* RT_GetProcAddressByName(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
+void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
 {
     Runtime* runtime = getRuntimePointer();
 
     // process ordinal import
-    if (lpProcName < (LPCSTR)(0xFFFF))
+    if (lpProcName <= (LPCSTR)(0xFFFF))
     {
         if (hModule == HMODULE_GLEAM_RT)
         {
             SetLastErrno(ERR_RUNTIME_INVALID_HMODULE);
             return NULL;
         }
+        // TODO replace to manually implement
         return runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
     }
-    // use "mem_init" for prevent incorrect compiler
-    // optimize and generate incorrect template
-    uint16 module[MAX_PATH];
-    mem_init(module, sizeof(module));
-    // get module file name // TODO remove it
+    // check is get runtime internal methods
     if (hModule == HMODULE_GLEAM_RT)
     {
-        uint16 mod[] = {
-            L'G'^0xA3EB, L'l'^0xCD20, L'e'^0x67F4, L'a'^0x19B2,
-            L'm'^0xA3EB, L'R'^0xCD20, L'T'^0x67F4, L'.'^0x19B2,
-            L'd'^0xA3EB, L'l'^0xCD20, L'l'^0x67F4, 0000^0x19B2,
-        };
-        uint16 key[] = { 0xA3EB, 0xCD20, 0x67F4, 0x19B2 };
-        XORBuffer(mod, sizeof(mod), key, sizeof(key));
-        mem_copy(module, mod, sizeof(mod));
-    } else {
-        if (GetModuleFileName(runtime->PML, hModule, module, sizeof(module)) == 0)
+        void* method = getRuntimeMethods(lpProcName);
+        if (method == NULL)
         {
-            SetLastErrno(ERR_RUNTIME_MODULE_NOT_FOUND);
+            SetLastErrno(ERR_RUNTIME_METHOD_NOT_FOUND);
             return NULL;
         }
-    }
-    // check is runtime internal methods
-    void* method = getRuntimeMethods(module, lpProcName);
-    if (method != NULL)
-    {
         return method;
     }
-    // generate hash for get Windows API address
-#ifdef _WIN64
-    uint key = 0xA6C1B1E79D26D1E7;
-#elif _WIN32
-    uint key = 0x94645D8B;
-#endif
-    uint mHash = CalcModHash_W((uint16*)(module), key);
-    uint pHash = CalcProcHash((byte*)lpProcName, key);
-    // try to find Windows API by hash
-    void* proc = RT_GetProcAddressByHash(mHash, pHash, key, redirect);
-    if (proc != NULL)
-    {
-        return proc;
-    }
-    // if all not found, use native GetProcAddress
-    if (hModule == HMODULE_GLEAM_RT)
-    {
-        SetLastErrno(ERR_RUNTIME_METHOD_NOT_FOUND);
-        return NULL;
-    }
-    return runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
-}
-
-__declspec(noinline)
-void* RT_GetProcAddressByHash(uint mHash, uint pHash, uint hKey, BOOL redirect)
-{
-    Runtime* runtime = getRuntimePointer();
-
-    void* proc = FindAPI_SC_MHL(list, mHash, pHash, hKey);
+    // generate hash for find Windows API address
+    uint hKey  = 0xFFFFFFFF;
+    uint pHash = CalcProcHash(lpProcName, hKey);
+    // try to find Windows API
+    void* proc = FindAPI_SC_MAL(runtime->PML, hModule, pHash, hKey);
     if (proc == NULL)
     {
         SetLastErrno(ERR_RUNTIME_PROCEDURE_NOT_FOUND);
@@ -2177,17 +2119,19 @@ void* RT_GetProcAddressByHash(uint mHash, uint pHash, uint hKey, BOOL redirect)
     {
         return proc;
     }
-    void* rdr = getAPIRedirector(runtime, proc);
+    // check api redirector is exists
+    void* rdr = getAPIRedirector(proc);
     if (rdr != NULL)
     {
         return rdr;
     }
-    rdr = getLazyAPIRedirector(runtime, proc);
+    rdr = getLazyAPIRedirector(hModule, proc);
     if (rdr != NULL)
     {
         return rdr;
     }
-    return proc;
+    // if all not found, use native GetProcAddress
+    return runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
 }
 
 // disable optimize for use call, NOT jmp to runtime->GetProcAddress.
@@ -2205,7 +2149,7 @@ void* RT_GetProcAddressOriginal(HMODULE hModule, LPCSTR lpProcName)
 //
 // HMODULE hGleamRT = LoadLibraryA("GleamRT.dll");
 // ArgGetValue_t AS_GetValue = GetProcAddress(hGleamRT, "AS_GetValue");
-static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
+static void* getRuntimeMethods(LPCSTR lpProcName)
 {
     Runtime* runtime = getRuntimePointer();
 
@@ -2217,92 +2161,87 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
     Shield_M*          SD = runtime->Shield;
 
     typedef struct {
-        uint mHash; uint pHash; uint hKey; void* method;
+        uint pHash; uint hKey; void* method;
     } method;
     method list[] =
 #ifdef _WIN64
     {
-        { 0x9B99B67DCBC4E44D, 0x2A75C66DD3725A0C, 0x287E20BE28DA7C0D, GetFuncAddr(&RT_GetProcAddressByName)   },
-        { 0x78CEC2DB4F037F52, 0x4BBCE1822B520801, 0xA55992702A7F7347, GetFuncAddr(&RT_GetProcAddressByHash)   },
-        { 0xC908C623B4ABC7AD, 0xB6541A994E1BD9C9, 0x9674D54BD95FD0C4, GetFuncAddr(&RT_GetProcAddressByHashML) },
-        { 0x5C1AC22BE7C8F1D0, 0x733B11BFF5D380BD, 0xF9EEB584A92B88B3, GetFuncAddr(&RT_GetProcAddressOriginal) },
-        { 0xF25FE9947684FF1C, 0x286F34B40136641A, 0xDA4C40DA3D7DAE2C, GetFuncAddr(&RT_GetTEB)                 },
-        { 0x6D4433798536C490, 0x5C453B47673B57CC, 0x93836F9B160A8469, GetFuncAddr(&RT_GetPEB)                 },
-        { 0xA7D7243625100C78, 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetPML)                 },
-        { 0xA28D29AAEFEF0821, 0xB1FA77826E174621, 0xE8CE6F7431D20C90, GetFuncAddr(&RT_GetOptions)             },
-        { 0x4F32B816DF8B4247, 0x618F963CAA5EE348, 0x20EE2A5363818605, GetFuncAddr(&RT_GetRuntimeM)            },
-        { 0x22B11BE6C537097F, 0xA83FF55FECA4B2D5, 0xC9C001C805631D08, GetFuncAddr(&RT_GetInfo)                },
-        { 0x1942779A04B5511E, 0x3F0F1951378BA2D7, 0x3990B978D311CE13, GetFuncAddr(&RT_GetMetrics)             },
-        { 0xB7C5D0499CEA535C, 0xF1B02539240FCCBE, 0x7CDDB06DD3B3380B, GetFuncAddr(&RT_SleepHR)                },
-        { 0xCD73DF293627702D, 0xC202636AB59E272A, 0x83FABCD3C9ED5B2E, GetFuncAddr(&RT_Sleep)                  },
-        { 0x5CF5E9987810AD63, 0x7D7CFE6E023217B8, 0x51D583187BB49302, GetFuncAddr(&RT_ExitProcess)            },
-        { 0xD1068F18078E5118, 0x479C7B50DBFADEE7, 0x649073A187F0F0A9, AS->GetValue   }, // AS_GetValue
-        { 0x8613407F11759864, 0x41D042835BA4C499, 0xD74A73D3EE16AE15, AS->GetPointer }, // AS_GetPointer
-        { 0x38C3FA484C1D82DC, 0xE84B8AF19E5545A2, 0xCE033EAF91F7C68A, AS->Erase      }, // AS_Erase
-        { 0x581642DC5938951A, 0xD0E223D64B8DCDD0, 0x1CF6D4FF24ED869B, AS->EraseAll   }, // AS_EraseAll
-        { 0x92C30EE5A4E3665B, 0xC6CB35CD39A67EAC, 0x015D074AF57976A1, IS->SetValue   }, // IS_SetValue
-        { 0x2AFDB814282422CC, 0x6337FA1ECA8843D2, 0x36206F50F948F913, IS->GetValue   }, // IS_GetValue
-        { 0xE5D3E0C3B45E4E57, 0x773674E47B0053B8, 0x0A681F5428C13912, IS->GetPointer }, // IS_GetPointer
-        { 0xA327366E9188B9AD, 0x0B5E3CDD9E8D1718, 0x96E689FB7E624071, IS->Delete     }, // IS_Delete
-        { 0x063C8C5F8892F112, 0x20EF072CE85923F8, 0x0A63186150433F11, IS->DeleteAll  }, // IS_DeleteAll
-        { 0x25B52C97B0459C77, 0x581F53A28A65268E, 0xED463BBEAA5FD89F, DT->Detect     }, // DT_Detect
-        { 0x8B8360604FA3C9B3, 0x186269BED712913B, 0x6D2CF70F8043A826, DT->GetStatus  }, // DT_Status
-        { 0x33B8FBF493F076EE, 0xD08874D760CA7D86, 0xA4719EDF574FF3BD, WD->SetHandler }, // WD_SetHandler
-        { 0xD0949D318914CAFB, 0x43F0DB91ACB312F1, 0x6188D3AFB7FF35FD, WD->SetTimeout }, // WD_SetTimeout
-        { 0x7A05CE0EFFF7AD3F, 0xC452D582688E6748, 0x306E7BA258D6F057, WD->Kick       }, // WD_Kick
-        { 0x2217D5A7D8F87B58, 0x6466D654DC42A2F5, 0xDDF182373074C274, WD->Enable     }, // WD_Enable
-        { 0x6B11F72479C7BDCC, 0x93B95D821AC7FDBB, 0x292E300258544350, WD->Disable    }, // WD_Disable
-        { 0xE24990F5D9ECC90E, 0xA203A663F5364056, 0xDE186C4522AF6A07, WD->IsEnabled  }, // WD_IsEnabled
-        { 0x0D76A695E8206CC4, 0xBBAECC7687F42C00, 0xCBEC3C2610B77733, WD->GetStatus  }, // WD_Status
-        { 0x93981B1E2C294E7D, 0x875CE09ECE01D337, 0x437686381E0B5F7B, SM->GetStatus  }, // SM_Status
-        { 0xF2B97A37A9F42F6C, 0x6B8B3965E7502E5A, 0x08F4BA5980133548, SD->GetStatus  }, // SD_Status
+        { 0x2A75C66DD3725A0C, 0x287E20BE28DA7C0D, GetFuncAddr(&RT_GetProcAddressByName)   },
+        { 0x4BBCE1822B520801, 0xA55992702A7F7347, GetFuncAddr(&RT_GetProcAddressByHash)   },
+        { 0xB6541A994E1BD9C9, 0x9674D54BD95FD0C4, GetFuncAddr(&RT_GetProcAddressByHashML) },
+        { 0x733B11BFF5D380BD, 0xF9EEB584A92B88B3, GetFuncAddr(&RT_GetProcAddressOriginal) },
+        { 0x286F34B40136641A, 0xDA4C40DA3D7DAE2C, GetFuncAddr(&RT_GetTEB)                 },
+        { 0x5C453B47673B57CC, 0x93836F9B160A8469, GetFuncAddr(&RT_GetPEB)                 },
+        { 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetPML)                 },
+        { 0xB1FA77826E174621, 0xE8CE6F7431D20C90, GetFuncAddr(&RT_GetOptions)             },
+        { 0x618F963CAA5EE348, 0x20EE2A5363818605, GetFuncAddr(&RT_GetRuntimeM)            },
+        { 0xA83FF55FECA4B2D5, 0xC9C001C805631D08, GetFuncAddr(&RT_GetInfo)                },
+        { 0x3F0F1951378BA2D7, 0x3990B978D311CE13, GetFuncAddr(&RT_GetMetrics)             },
+        { 0xF1B02539240FCCBE, 0x7CDDB06DD3B3380B, GetFuncAddr(&RT_SleepHR)                },
+        { 0xC202636AB59E272A, 0x83FABCD3C9ED5B2E, GetFuncAddr(&RT_Sleep)                  },
+        { 0x7D7CFE6E023217B8, 0x51D583187BB49302, GetFuncAddr(&RT_ExitProcess)            },
+        { 0x479C7B50DBFADEE7, 0x649073A187F0F0A9, AS->GetValue   }, // AS_GetValue
+        { 0x41D042835BA4C499, 0xD74A73D3EE16AE15, AS->GetPointer }, // AS_GetPointer
+        { 0xE84B8AF19E5545A2, 0xCE033EAF91F7C68A, AS->Erase      }, // AS_Erase
+        { 0xD0E223D64B8DCDD0, 0x1CF6D4FF24ED869B, AS->EraseAll   }, // AS_EraseAll
+        { 0xC6CB35CD39A67EAC, 0x015D074AF57976A1, IS->SetValue   }, // IS_SetValue
+        { 0x6337FA1ECA8843D2, 0x36206F50F948F913, IS->GetValue   }, // IS_GetValue
+        { 0x773674E47B0053B8, 0x0A681F5428C13912, IS->GetPointer }, // IS_GetPointer
+        { 0x0B5E3CDD9E8D1718, 0x96E689FB7E624071, IS->Delete     }, // IS_Delete
+        { 0x20EF072CE85923F8, 0x0A63186150433F11, IS->DeleteAll  }, // IS_DeleteAll
+        { 0x581F53A28A65268E, 0xED463BBEAA5FD89F, DT->Detect     }, // DT_Detect
+        { 0x186269BED712913B, 0x6D2CF70F8043A826, DT->GetStatus  }, // DT_Status
+        { 0xD08874D760CA7D86, 0xA4719EDF574FF3BD, WD->SetHandler }, // WD_SetHandler
+        { 0x43F0DB91ACB312F1, 0x6188D3AFB7FF35FD, WD->SetTimeout }, // WD_SetTimeout
+        { 0xC452D582688E6748, 0x306E7BA258D6F057, WD->Kick       }, // WD_Kick
+        { 0x6466D654DC42A2F5, 0xDDF182373074C274, WD->Enable     }, // WD_Enable
+        { 0x93B95D821AC7FDBB, 0x292E300258544350, WD->Disable    }, // WD_Disable
+        { 0xA203A663F5364056, 0xDE186C4522AF6A07, WD->IsEnabled  }, // WD_IsEnabled
+        { 0xBBAECC7687F42C00, 0xCBEC3C2610B77733, WD->GetStatus  }, // WD_Status
+        { 0x875CE09ECE01D337, 0x437686381E0B5F7B, SM->GetStatus  }, // SM_Status
+        { 0x6B8B3965E7502E5A, 0x08F4BA5980133548, SD->GetStatus  }, // SD_Status
     };
 #elif _WIN32
     {
-        { 0xCC8D1512, 0x4DC36689, 0x69994BCB, GetFuncAddr(&RT_GetProcAddressByName)   },
-        { 0x539A3936, 0x7D694658, 0xC93F4122, GetFuncAddr(&RT_GetProcAddressByHash)   },
-        { 0x3D7C4EDA, 0xECD00780, 0x7B64F177, GetFuncAddr(&RT_GetProcAddressByHashML) },
-        { 0xB35705B6, 0xB033EAFB, 0xA5A5546E, GetFuncAddr(&RT_GetProcAddressOriginal) },
-        { 0x4B62B8F1, 0x87C8028B, 0xD697CA60, GetFuncAddr(&RT_GetTEB)                 },
-        { 0x1655EE6F, 0xC04FB496, 0x7EE9DDE8, GetFuncAddr(&RT_GetPEB)                 },
-        { 0xE12D98E8, 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetPML)                 },
-        { 0x08BF96C4, 0xD4D119FF, 0x8CD7C9D0, GetFuncAddr(&RT_GetOptions)             },
-        { 0xD8065FD0, 0x2414448A, 0x2E37B5DF, GetFuncAddr(&RT_GetRuntimeM)            },
-        { 0x45460AF7, 0x41205F31, 0x2E96AC51, GetFuncAddr(&RT_GetInfo)                },
-        { 0xAE398258, 0xD731BCE7, 0x1E7A2A1A, GetFuncAddr(&RT_GetMetrics)             },
-        { 0x419E2D70, 0xC38FBBF5, 0xDEED529C, GetFuncAddr(&RT_SleepHR)                },
-        { 0xEC7C9D40, 0x707547CF, 0x66DCFA17, GetFuncAddr(&RT_Sleep)                  },
-        { 0x29542BFC, 0xC661D6AC, 0x844DD401, GetFuncAddr(&RT_ExitProcess)            },
-        { 0xA70DF734, 0x6DD5CD24, 0xF0B9A21D, AS->GetValue   }, // AS_GetValue
-        { 0xADA5F2C9, 0xB8A08D9B, 0x7DB3ECC2, AS->GetPointer }, // AS_GetPointer
-        { 0x17D258A9, 0x18EF1CF3, 0x978EAC96, AS->Erase      }, // AS_Erase
-        { 0x8865F294, 0xF3F8E721, 0xB6B8CE66, AS->EraseAll   }, // AS_EraseAll
-        { 0x0E5C591D, 0x059C9C41, 0x580504E7, IS->SetValue   }, // IS_SetValue
-        { 0xBA1811D2, 0xCC98B76B, 0x607C67D7, IS->GetValue   }, // IS_GetValue
-        { 0x8A76A2BA, 0x8D311A4E, 0xDCEBC05E, IS->GetPointer }, // IS_GetPointer
-        { 0x1AAE139D, 0xC0182D65, 0x9990E05B, IS->Delete     }, // IS_Delete
-        { 0x813577DC, 0x985542B3, 0x41D8CA6A, IS->DeleteAll  }, // IS_DeleteAll
-        { 0x0D41CF65, 0xC1D58FC0, 0xB24370DA, DT->Detect     }, // DT_Detect
-        { 0x993D60ED, 0xA07B9091, 0x52CE44B2, DT->GetStatus  }, // DT_Status
-        { 0x5CC35F98, 0x7F44D8EC, 0x5B3C26E3, WD->SetHandler }, // WD_SetHandler
-        { 0x3918A007, 0x5BEBCA2A, 0xF523475E, WD->SetTimeout }, // WD_SetTimeout
-        { 0x48AE04AA, 0x22071C46, 0x98C6F05B, WD->Kick       }, // WD_Kick
-        { 0x5933C656, 0xD43187BC, 0x6247B19C, WD->Enable     }, // WD_Enable
-        { 0x0664499A, 0x2BFE9370, 0x0E5A84B4, WD->Disable    }, // WD_Disable
-        { 0x901B44AD, 0x219D299A, 0xBFCD277B, WD->IsEnabled  }, // WD_IsEnabled
-        { 0x8F5FA00C, 0x39DED160, 0x0134B86F, WD->GetStatus  }, // WD_Status
-        { 0x18F200E3, 0x7DD1B99E, 0x7F4B2915, SM->GetStatus  }, // SM_Status
-        { 0xB2C9668C, 0xD78DECB9, 0xFF2DA0F1, SD->GetStatus  }, // SD_Status
+        { 0x4DC36689, 0x69994BCB, GetFuncAddr(&RT_GetProcAddressByName)   },
+        { 0x7D694658, 0xC93F4122, GetFuncAddr(&RT_GetProcAddressByHash)   },
+        { 0xECD00780, 0x7B64F177, GetFuncAddr(&RT_GetProcAddressByHashML) },
+        { 0xB033EAFB, 0xA5A5546E, GetFuncAddr(&RT_GetProcAddressOriginal) },
+        { 0x87C8028B, 0xD697CA60, GetFuncAddr(&RT_GetTEB)                 },
+        { 0xC04FB496, 0x7EE9DDE8, GetFuncAddr(&RT_GetPEB)                 },
+        { 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetPML)                 },
+        { 0xD4D119FF, 0x8CD7C9D0, GetFuncAddr(&RT_GetOptions)             },
+        { 0x2414448A, 0x2E37B5DF, GetFuncAddr(&RT_GetRuntimeM)            },
+        { 0x41205F31, 0x2E96AC51, GetFuncAddr(&RT_GetInfo)                },
+        { 0xD731BCE7, 0x1E7A2A1A, GetFuncAddr(&RT_GetMetrics)             },
+        { 0xC38FBBF5, 0xDEED529C, GetFuncAddr(&RT_SleepHR)                },
+        { 0x707547CF, 0x66DCFA17, GetFuncAddr(&RT_Sleep)                  },
+        { 0xC661D6AC, 0x844DD401, GetFuncAddr(&RT_ExitProcess)            },
+        { 0x6DD5CD24, 0xF0B9A21D, AS->GetValue   }, // AS_GetValue
+        { 0xB8A08D9B, 0x7DB3ECC2, AS->GetPointer }, // AS_GetPointer
+        { 0x18EF1CF3, 0x978EAC96, AS->Erase      }, // AS_Erase
+        { 0xF3F8E721, 0xB6B8CE66, AS->EraseAll   }, // AS_EraseAll
+        { 0x059C9C41, 0x580504E7, IS->SetValue   }, // IS_SetValue
+        { 0xCC98B76B, 0x607C67D7, IS->GetValue   }, // IS_GetValue
+        { 0x8D311A4E, 0xDCEBC05E, IS->GetPointer }, // IS_GetPointer
+        { 0xC0182D65, 0x9990E05B, IS->Delete     }, // IS_Delete
+        { 0x985542B3, 0x41D8CA6A, IS->DeleteAll  }, // IS_DeleteAll
+        { 0xC1D58FC0, 0xB24370DA, DT->Detect     }, // DT_Detect
+        { 0xA07B9091, 0x52CE44B2, DT->GetStatus  }, // DT_Status
+        { 0x7F44D8EC, 0x5B3C26E3, WD->SetHandler }, // WD_SetHandler
+        { 0x5BEBCA2A, 0xF523475E, WD->SetTimeout }, // WD_SetTimeout
+        { 0x22071C46, 0x98C6F05B, WD->Kick       }, // WD_Kick
+        { 0xD43187BC, 0x6247B19C, WD->Enable     }, // WD_Enable
+        { 0x2BFE9370, 0x0E5A84B4, WD->Disable    }, // WD_Disable
+        { 0x219D299A, 0xBFCD277B, WD->IsEnabled  }, // WD_IsEnabled
+        { 0x39DED160, 0x0134B86F, WD->GetStatus  }, // WD_Status
+        { 0x7DD1B99E, 0x7F4B2915, SM->GetStatus  }, // SM_Status
+        { 0xD78DECB9, 0xFF2DA0F1, SD->GetStatus  }, // SD_Status
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         method item = list[i];
-        uint mHash = CalcModHash_W((uint16*)(module), item.hKey);
-        if (mHash != item.mHash)
-        {
-            continue;
-        }
         uint pHash = CalcProcHash((byte*)lpProcName, item.hKey);
         if (pHash != item.pHash)
         {
@@ -2313,8 +2252,10 @@ static void* getRuntimeMethods(LPCWSTR module, LPCSTR lpProcName)
     return NULL;
 }
 
-static void* getAPIRedirector(Runtime* runtime, void* proc)
+static void* getAPIRedirector(void* proc)
 {
+    Runtime* runtime = getRuntimePointer();
+
     for (int i = 0; i < arrlen(runtime->Redirectors); i++)
     {
         API_RDR rdr = runtime->Redirectors[i];
@@ -2329,82 +2270,84 @@ static void* getAPIRedirector(Runtime* runtime, void* proc)
 
 // getLazyAPIRedirector is used to FindAPI after call LoadLibrary.
 // Redirectors in initAPIRedirector() are all in kernel32.dll.
-static void* getLazyAPIRedirector(Runtime* runtime, void* proc)
+static void* getLazyAPIRedirector(HMODULE hModule, void* proc)
 {
+    Runtime* runtime = getRuntimePointer();
+
     MemoryTracker_M*   MT = runtime->MemoryTracker;
     ResourceTracker_M* RT = runtime->ResourceTracker;
 
     typedef struct {
-        uint mHash; uint pHash; uint hKey; void* api;
+        uint pHash; uint hKey; void* api;
     } rdr;
     rdr list[] =
 #ifdef _WIN64
     {
-        { 0x5254CA58A04C6861, 0x13B5CA12DD915BFF, 0x90E47B3ACA936DDF, MT->msvcrt_malloc    },
-        { 0x4F5F3C8E02424715, 0x2DE690AE65E7CA95, 0xF19FC35BA1098695, MT->msvcrt_calloc    },
-        { 0xAFB8889578B00466, 0xA8B9D01521BE59A8, 0x56797427ADC736F5, MT->msvcrt_realloc   },
-        { 0xE7C6D3E8F64212DB, 0xDCE3F452DF107F71, 0xB8A2CB36A709EF6F, MT->msvcrt_free      },
-        { 0xC1E9BA292B4AE7A4, 0x0C064C9575BCF15B, 0xC4999748966A9858, MT->msvcrt_msize     },
-        { 0xAA909AD9DB1B157E, 0xA5E606AF657B5E09, 0x5546D5EF6EBD88F4, MT->ucrtbase_malloc  },
-        { 0xE45A40568AD159B2, 0xDFAFAC2C1531A19D, 0xB25BA66565A7746C, MT->ucrtbase_calloc  },
-        { 0x79F4536182B35D04, 0x6FDB742B0500FBE3, 0x23CA792DFEE7E60B, MT->ucrtbase_realloc },
-        { 0xAED68A03A785FA47, 0xD5B8EA4569EA5C32, 0xDED2EB337D9116BC, MT->ucrtbase_free    },
-        { 0x03497789B54E7CA9, 0xFF4EE05FAFBAC456, 0x567A7168C11256EE, MT->ucrtbase_msize   },
-        { 0x625DD62ED359C958, 0x3091FBE2377A1176, 0x22A27DECEAF2266F, RT->RegCreateKeyA    },
-        { 0x7B698BFB22192AA3, 0xEA50E9DC003C8EA2, 0x950CD32D7E2121B8, RT->RegCreateKeyW    },
-        { 0x41F5B7D40FB03A4B, 0xC708FE55618EAE52, 0x51D5149B4857934B, RT->RegCreateKeyExA  },
-        { 0xB4C76DDCB73696B4, 0xA7A86DB8B2DD33B9, 0x98E110EE82D21BDD, RT->RegCreateKeyExW  },
-        { 0x36051AE7E56AAECE, 0x321942AA68DD9653, 0x0F536179870DF295, RT->RegOpenKeyA      },
-        { 0x3385B5A869495B06, 0x5805A4074843E065, 0xD47A4EC8E0FF8E99, RT->RegOpenKeyW      },
-        { 0x6EA9DF91C3CDCE6B, 0xA212700247963F1E, 0xF7B9272CA7F2B111, RT->RegOpenKeyExA    },
-        { 0x7E7F92C8D608D302, 0xC3AFBAD56325AAF8, 0x2FF2F4B325AB0D60, RT->RegOpenKeyExW    },
-        { 0xD178185E7C76C08B, 0x4374BF609B14CECE, 0x847060A18FB337BC, RT->RegCloseKey      },
-        { 0x43915A5C5D2EEFAD, 0x2C190CCAB8AF60EE, 0xC5BEBEF2DB5B6ADB, RT->WSAStartup       },
-        { 0x9E03289691D1AC6D, 0x64663633D27E11B2, 0x70ACEA9F645A4CAD, RT->WSACleanup       },
-        { 0x10BE0476CCD0949A, 0x65AB8A1BB8C93451, 0x5094B7750A4EEF9D, RT->WSASocketA       },
-        { 0x991A160A43356D61, 0x4A5AD3FA8260D517, 0xE9AC8B5A6007860D, RT->WSASocketW       },
-        { 0x6D3AE16372B1A0DB, 0x0F9CD5C024047F6F, 0xAAC7634A7F85F581, RT->WSAIoctl         },
-        { 0x7736E0C240C9B448, 0xE69F48EBE315D71D, 0x71CF1A836E0A477C, RT->socket           },
-        { 0x5BAFA015C25A8294, 0xF9276424913FC0E2, 0xC2D98F6758BE8E93, RT->accept           },
-        { 0x4317E765A5C19858, 0x8AF7DA94AE27ADFB, 0xC9BE98972D22AFA7, RT->shutdown         },
-        { 0x0F5B6F87DA763249, 0x8C1307AA01358E71, 0xC24A6EE00FDC1A9E, RT->closesocket      },
+        { 0x13B5CA12DD915BFF, 0x90E47B3ACA936DDF, MT->msvcrt_malloc    },
+        { 0x2DE690AE65E7CA95, 0xF19FC35BA1098695, MT->msvcrt_calloc    },
+        { 0xA8B9D01521BE59A8, 0x56797427ADC736F5, MT->msvcrt_realloc   },
+        { 0xDCE3F452DF107F71, 0xB8A2CB36A709EF6F, MT->msvcrt_free      },
+        { 0x0C064C9575BCF15B, 0xC4999748966A9858, MT->msvcrt_msize     },
+        { 0xA5E606AF657B5E09, 0x5546D5EF6EBD88F4, MT->ucrtbase_malloc  },
+        { 0xDFAFAC2C1531A19D, 0xB25BA66565A7746C, MT->ucrtbase_calloc  },
+        { 0x6FDB742B0500FBE3, 0x23CA792DFEE7E60B, MT->ucrtbase_realloc },
+        { 0xD5B8EA4569EA5C32, 0xDED2EB337D9116BC, MT->ucrtbase_free    },
+        { 0xFF4EE05FAFBAC456, 0x567A7168C11256EE, MT->ucrtbase_msize   },
+        { 0x3091FBE2377A1176, 0x22A27DECEAF2266F, RT->RegCreateKeyA    },
+        { 0xEA50E9DC003C8EA2, 0x950CD32D7E2121B8, RT->RegCreateKeyW    },
+        { 0xC708FE55618EAE52, 0x51D5149B4857934B, RT->RegCreateKeyExA  },
+        { 0xA7A86DB8B2DD33B9, 0x98E110EE82D21BDD, RT->RegCreateKeyExW  },
+        { 0x321942AA68DD9653, 0x0F536179870DF295, RT->RegOpenKeyA      },
+        { 0x5805A4074843E065, 0xD47A4EC8E0FF8E99, RT->RegOpenKeyW      },
+        { 0xA212700247963F1E, 0xF7B9272CA7F2B111, RT->RegOpenKeyExA    },
+        { 0xC3AFBAD56325AAF8, 0x2FF2F4B325AB0D60, RT->RegOpenKeyExW    },
+        { 0x4374BF609B14CECE, 0x847060A18FB337BC, RT->RegCloseKey      },
+        { 0x2C190CCAB8AF60EE, 0xC5BEBEF2DB5B6ADB, RT->WSAStartup       },
+        { 0x64663633D27E11B2, 0x70ACEA9F645A4CAD, RT->WSACleanup       },
+        { 0x65AB8A1BB8C93451, 0x5094B7750A4EEF9D, RT->WSASocketA       },
+        { 0x4A5AD3FA8260D517, 0xE9AC8B5A6007860D, RT->WSASocketW       },
+        { 0x0F9CD5C024047F6F, 0xAAC7634A7F85F581, RT->WSAIoctl         },
+        { 0xE69F48EBE315D71D, 0x71CF1A836E0A477C, RT->socket           },
+        { 0xF9276424913FC0E2, 0xC2D98F6758BE8E93, RT->accept           },
+        { 0x8AF7DA94AE27ADFB, 0xC9BE98972D22AFA7, RT->shutdown         },
+        { 0x8C1307AA01358E71, 0xC24A6EE00FDC1A9E, RT->closesocket      },
     };
 #elif _WIN32
     {
-        { 0x779E8E68, 0xC28F9C78, 0x742FAD69, MT->msvcrt_malloc    },
-        { 0xF72036C1, 0xA187A89D, 0x0A468719, MT->msvcrt_calloc    },
-        { 0x51F6F0AF, 0xD8427F9B, 0x161B5A2A, MT->msvcrt_realloc   },
-        { 0xC0AE317A, 0xB2CBF2E1, 0x3A6F2FEF, MT->msvcrt_free      },
-        { 0x470C76A8, 0x985FAB1A, 0x6A95FAA9, MT->msvcrt_msize     },
-        { 0xBF0F01E4, 0x840E093C, 0xA7A90445, MT->ucrtbase_malloc  },
-        { 0xB00F91E3, 0xAD87A573, 0x8B4E88EB, MT->ucrtbase_calloc  },
-        { 0xCD03B519, 0xF4D21253, 0x51493B49, MT->ucrtbase_realloc },
-        { 0x493A8A6C, 0xA862B408, 0x24314545, MT->ucrtbase_free    },
-        { 0x2017A8CC, 0xD163E2C6, 0xFCB661CE, MT->ucrtbase_msize   },
-        { 0x22355E5D, 0xE1A90917, 0xADE97876, RT->RegCreateKeyA    },
-        { 0x07F34B77, 0xC766F647, 0x45557C5C, RT->RegCreateKeyW    },
-        { 0x5E5746DB, 0xCA92BD13, 0xA3360B59, RT->RegCreateKeyExA  },
-        { 0x83D55FB4, 0x98C92D4A, 0x69B59766, RT->RegCreateKeyExW  },
-        { 0x6A9426C0, 0x53C33F65, 0x13ECFAA3, RT->RegOpenKeyA      },
-        { 0x63DE6FAA, 0x1A6BBB07, 0x033261DF, RT->RegOpenKeyW      },
-        { 0xF3B62990, 0x95170248, 0x181E2275, RT->RegOpenKeyExA    },
-        { 0x84BCAAAF, 0x261D837D, 0xFA0FFFDA, RT->RegOpenKeyExW    },
-        { 0x18E3E426, 0x901A72E3, 0x24A3A166, RT->RegCloseKey      },
-        { 0x131590EA, 0x18C9638C, 0x60893AC1, RT->WSAStartup       },
-        { 0xB3174609, 0x28E27407, 0xE9139041, RT->WSACleanup       },
-        { 0x0B305DC1, 0xD03A3A72, 0x4AE762DC, RT->WSASocketA       },
-        { 0x4A6DD610, 0x13DB0032, 0xF7657ED7, RT->WSASocketW       },
-        { 0xE4A294EC, 0x86DBB084, 0x151427B4, RT->WSAIoctl         },
-        { 0xB23F6E3E, 0xAF3DA115, 0xC156AB6D, RT->socket           },
-        { 0x31ABD834, 0xDE2BAF2B, 0x19EB6D1E, RT->accept           },
-        { 0x9BAB4EBA, 0x494E2BD1, 0x101223CE, RT->shutdown         },
-        { 0x209A93DA, 0x6008F821, 0x6A713103, RT->closesocket      },
+        { 0xC28F9C78, 0x742FAD69, MT->msvcrt_malloc    },
+        { 0xA187A89D, 0x0A468719, MT->msvcrt_calloc    },
+        { 0xD8427F9B, 0x161B5A2A, MT->msvcrt_realloc   },
+        { 0xB2CBF2E1, 0x3A6F2FEF, MT->msvcrt_free      },
+        { 0x985FAB1A, 0x6A95FAA9, MT->msvcrt_msize     },
+        { 0x840E093C, 0xA7A90445, MT->ucrtbase_malloc  },
+        { 0xAD87A573, 0x8B4E88EB, MT->ucrtbase_calloc  },
+        { 0xF4D21253, 0x51493B49, MT->ucrtbase_realloc },
+        { 0xA862B408, 0x24314545, MT->ucrtbase_free    },
+        { 0xD163E2C6, 0xFCB661CE, MT->ucrtbase_msize   },
+        { 0xE1A90917, 0xADE97876, RT->RegCreateKeyA    },
+        { 0xC766F647, 0x45557C5C, RT->RegCreateKeyW    },
+        { 0xCA92BD13, 0xA3360B59, RT->RegCreateKeyExA  },
+        { 0x98C92D4A, 0x69B59766, RT->RegCreateKeyExW  },
+        { 0x53C33F65, 0x13ECFAA3, RT->RegOpenKeyA      },
+        { 0x1A6BBB07, 0x033261DF, RT->RegOpenKeyW      },
+        { 0x95170248, 0x181E2275, RT->RegOpenKeyExA    },
+        { 0x261D837D, 0xFA0FFFDA, RT->RegOpenKeyExW    },
+        { 0x901A72E3, 0x24A3A166, RT->RegCloseKey      },
+        { 0x18C9638C, 0x60893AC1, RT->WSAStartup       },
+        { 0x28E27407, 0xE9139041, RT->WSACleanup       },
+        { 0xD03A3A72, 0x4AE762DC, RT->WSASocketA       },
+        { 0x13DB0032, 0xF7657ED7, RT->WSASocketW       },
+        { 0x86DBB084, 0x151427B4, RT->WSAIoctl         },
+        { 0xAF3DA115, 0xC156AB6D, RT->socket           },
+        { 0xDE2BAF2B, 0x19EB6D1E, RT->accept           },
+        { 0x494E2BD1, 0x101223CE, RT->shutdown         },
+        { 0x6008F821, 0x6A713103, RT->closesocket      },
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         rdr item = list[i];
-        if (FindAPI_SC(item.mHash, item.pHash, item.hKey) != proc)
+        if (FindAPI_SC_MAL(runtime->PML, hModule, item.pHash, item.hKey) != proc)
         {
             continue;
         }
