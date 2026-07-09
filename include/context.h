@@ -3,6 +3,7 @@
 
 #include "c_types.h"
 #include "win_types.h"
+#include "win_structs.h"
 #include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "hash_api.h"
@@ -45,11 +46,16 @@ typedef struct {
     bool   TrackCurrentThread;
 
     // process environment
-    void*  PEB;
-    void*  IMOML;
-    uint32 MPS;
+    PEB* PEB; // process environment block
+    PML* PML; // process module list
+    uint MPS; // memory page size
+
+    // core dll address
+    HMODULE hKernel32;
+    HMODULE hNtdll;
 
     // for initialize runtime submodules
+    // these wrapped with spoof call
     GetTickCount_t           GetTickCount;
     LoadLibraryA_t           LoadLibraryA;
     FreeLibrary_t            FreeLibrary;
@@ -81,8 +87,9 @@ typedef struct {
     uintptr Epilogue;
     uintptr InstSize;
 
-    // HashAPI with spoof call
-    FindAPI_t FindAPI;
+    // HashAPI with spoof call wrapper
+    FindAPI_MA_t FindAPI_MA;
+    FindAPI_MH_t FindAPI_MH;
 
     // runtime internal methods
     malloc_t  malloc;
