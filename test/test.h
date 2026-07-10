@@ -20,6 +20,7 @@ bool TestCrypto();
 bool TestCompress();
 bool TestSerialize();
 bool TestMemScanner();
+bool TestWinAPI();
 bool TestInitRuntime();
 bool TestRuntime_Detector();
 bool TestRuntime_Memory();
@@ -53,6 +54,7 @@ static unit tests[] =
     { "Compress",    TestCompress   },
     { "Serialize",   TestSerialize  },
     { "Mem_Scanner", TestMemScanner },
+    { "Win_API",     TestWinAPI     },
 
     { "Runtime_Detector",  TestRuntime_Detector  },
     { "Runtime_Memory",    TestRuntime_Memory    },
