@@ -282,7 +282,6 @@ uint strcpy_a(ANSI dst, ANSI src)
         {
             break;
         }
-
         l++;
         dst++;
         src++;
@@ -302,7 +301,6 @@ uint strcpy_w(UTF16 dst, UTF16 src)
         {
             break;
         }
-
         l++;
         dst++;
         src++;
@@ -322,7 +320,6 @@ uint strncpy_a(ANSI dst, ANSI src, uint n)
         {
             break;
         }
-
         l++;
         dst++;
         src++;
@@ -342,7 +339,6 @@ uint strncpy_w(UTF16 dst, UTF16 src, uint n)
         {
             break;
         }
-
         l++;
         dst++;
         src++;
