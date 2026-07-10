@@ -29,10 +29,10 @@
     <ClInclude Include="..\include\lib_match.h" />
     <ClInclude Include="..\include\lib_encode.h" />
     <ClInclude Include="..\include\lib_hash.h" />
-    <ClInclude Include="..\include\rel_addr.h" />
     <ClInclude Include="..\include\hash_api.h" />
     <ClInclude Include="..\include\hash_mod.h" />
     <ClInclude Include="..\include\list_md.h" />
+    <ClInclude Include="..\include\rel_addr.h" />
     <ClInclude Include="..\include\random.h" />
     <ClInclude Include="..\include\crypto.h" />
     <ClInclude Include="..\include\compress.h" />
@@ -64,6 +64,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="test_main.c" />
+    <ClCompile Include="src\runtime_test.c" />
     <ClCompile Include="src\lib_memory_test.c" />
     <ClCompile Include="src\lib_string_test.c" />
     <ClCompile Include="src\lib_match_test.c" />
@@ -76,7 +77,7 @@
     <ClCompile Include="src\compress_test.c" />
     <ClCompile Include="src\serialize_test.c" />
     <ClCompile Include="src\mem_scanner_test.c" />
-    <ClCompile Include="src\runtime_test.c" />
+    <ClCompile Include="src\win_api_test.c" />
     <ClCompile Include="src\detector_test.c" />
     <ClCompile Include="src\mod_library_test.c" />
     <ClCompile Include="src\mod_memory_test.c" />

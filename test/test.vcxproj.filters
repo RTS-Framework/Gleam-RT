@@ -203,6 +203,9 @@
     <ClCompile Include="src\hash_api_test.c">
       <Filter>Test</Filter>
     </ClCompile>
+    <ClCompile Include="src\win_api_test.c">
+      <Filter>Test</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\crypto.h">
