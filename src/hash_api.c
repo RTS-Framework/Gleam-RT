@@ -209,37 +209,25 @@ void* FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
 }
 
 __declspec(noinline)
-void* FindMod_A(byte* module, uint key)
+void* FindMod_A(byte* module)
 {
-    PML* pml = GetDefaultPML();
-    return FindMod_AL(pml, module, key);
-}
-
-__declspec(noinline)
-void* FindMod_W(uint16* module, uint key)
-{
-    PML* pml = GetDefaultPML();
-    return FindMod_WL(pml, module, key);
-}
-
-__declspec(noinline)
-void* FindMod_AL(PML* pml, byte* module, uint key)
-{
+    uint key = 0xFFFFFFFF;
     uint mod = CalcModHash_A(module, key);
-    return FindMod_MHL(pml, mod, key);
+    return FindMod_MH(mod, key);
 }
 
 __declspec(noinline)
-void* FindMod_WL(PML* pml, uint16* module, uint key)
+void* FindMod_W(uint16* module)
 {
+    uint key = 0xFFFFFFFF;
     uint mod = CalcModHash_W(module, key);
-    return FindMod_MHL(pml, mod, key);
+    return FindMod_MH(mod, key);
 }
 
 __declspec(noinline)
 void* FindAPI_A(byte* module, byte* procedure)
 {
-    uint key  = (uint)(((uintptr)module) * ((uintptr)procedure));
+    uint key  = 0xFFFFFFFF;
     uint mod  = CalcModHash_A(module, key);
     uint proc = CalcProcHash(procedure, key);
     return FindAPI_MH(mod, proc, key);
@@ -248,7 +236,7 @@ void* FindAPI_A(byte* module, byte* procedure)
 __declspec(noinline)
 void* FindAPI_W(uint16* module, byte* procedure)
 {
-    uint key  = (uint)(((uintptr)module) * ((uintptr)procedure));
+    uint key  = 0xFFFFFFFF;
     uint mod  = CalcModHash_W(module, key);
     uint proc = CalcProcHash(procedure, key);
     return FindAPI_MH(mod, proc, key);
