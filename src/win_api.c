@@ -41,9 +41,9 @@ DWORD GetModuleBaseNameW(PML* pml, HMODULE hModule, LPWSTR lpBasename, DWORD nSi
         }
         LPWSTR nameBuf = entry->BaseName.Buffer;
         USHORT nameLen = entry->BaseName.Length/2;
-        if (nameLen > nSize)
+        if (nameLen >= nSize)
         {
-            nameLen = (USHORT)nSize;
+            nameLen = (USHORT)(nSize-1);
         }
         strncpy_w(lpBasename, nameBuf, nameLen);
         lpBasename[nameLen] = 0x0000;
@@ -58,13 +58,14 @@ HMODULE GetModuleHandleW(PML* pml, LPWSTR lpBasename)
     {
         return NULL;
     }
+    uint len = strlen_w(lpBasename);
     LIST_ENTRY* head = &pml->Links;
     for (LIST_ENTRY* link = head->Flink; link != head; link = link->Flink)
     {
         PML* entry = (PML*)((uintptr)(link)-offsetof(PML, Links));
         LPWSTR nameBuf = entry->BaseName.Buffer;
         USHORT nameLen = entry->BaseName.Length/2;
-        if (strlen_w(lpBasename) != nameLen)
+        if (nameLen != len)
         {
             continue;
         }
