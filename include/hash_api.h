@@ -78,10 +78,8 @@ void* FindAPI_MHL(PML* pml, uint  module, uint procedure, uint key);
 
 // FindMod_A/W is used to find module address(HMODULE) by module name
 // with ANSI/UTF-16, it is a wrapper about FindMod_MH and FindMod_MHL.
-void* FindMod_A(byte*   module, uint key);
-void* FindMod_W(uint16* module, uint key);
-void* FindMod_AL(PML* pml, byte*   module, uint key);
-void* FindMod_WL(PML* pml, uint16* module, uint key);
+void* FindMod_A(byte*   module);
+void* FindMod_W(uint16* module);
 
 // FindAPI_A/W is used to find Windows API address by module name and
 // procedure name with ANSI/UTF-16, it is a wrapper about FindAPI_Mx.
