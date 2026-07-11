@@ -35,6 +35,19 @@ bool TestWinAPI()
 
 static bool TestIsValidModuleHandle()
 {
+    HMODULE hKernel32 = FindMod_A("kernel32.dll");
+    if (hKernel32 == NULL)
+    {
+        printf_s("failed to get handle of kernel32.dll\n");
+        return false;
+    }
+
+    PML* pml = GetDefaultPML();
+    if (!IsValidModuleHandle(pml, hKernel32))
+    {
+        printf_s("kernel32.dll handle is invalid\n");
+        return false;
+    }
 
     printf_s("test IsValidModuleHandle passed\n");
     return true;
@@ -42,6 +55,43 @@ static bool TestIsValidModuleHandle()
 
 static bool TestGetModuleBaseNameW()
 {
+    HMODULE hKernel32 = FindMod_A("kernel32.dll");
+    if (hKernel32 == NULL)
+    {
+        printf_s("failed to get handle of kernel32.dll\n");
+        return false;
+    }
+    PML* pml = GetDefaultPML();
+    
+    // common
+    WCHAR nameBuf[MAX_PATH];
+    mem_init(nameBuf, sizeof(nameBuf));
+    DWORD nameLen = GetModuleBaseNameW(pml, hKernel32, nameBuf, MAX_PATH);
+    if (nameLen == 0)
+    {
+        printf_s("failed to get module base name\n");
+        return false;
+    }
+    if (stricmp_w(nameBuf, L"kernel32.dll") != 0)
+    {
+        printf_s("unexpected module name\n");
+        return false;
+    }
+
+    // small buffer
+    WCHAR smallBuf[5];
+    mem_init(smallBuf, sizeof(smallBuf));
+    DWORD smallLen = GetModuleBaseNameW(pml, hKernel32, smallBuf, arrlen(smallBuf));
+    if (smallLen == 0)
+    {
+        printf_s("failed to get module base name with small buffer\n");
+        return false;
+    }
+    if (smallLen > 4)
+    {
+        printf_s("buffer truncation not handled correctly\n");
+        return false;
+    }
 
     printf_s("test GetModuleBaseNameW passed\n");
     return true;
@@ -49,6 +99,55 @@ static bool TestGetModuleBaseNameW()
 
 static bool TestGetModuleHandleW()
 {
+    HMODULE hKernel32 = FindMod_A("kernel32.dll");
+    if (hKernel32 == NULL)
+    {
+        printf_s("failed to get handle of kernel32.dll\n");
+        return false;
+    }
+    PML* pml = GetDefaultPML();
+
+    // common
+    HMODULE handle = GetModuleHandleW(pml, L"kernel32.dll");
+    if (handle == NULL)
+    {
+        printf_s("failed to get handle of kernel32.dll by name\n");
+        return false;
+    }
+    if (handle != hKernel32)
+    {
+        printf_s("unexpected kernel32 handle\n");
+        return false;
+    }
+
+    // test case-insensitive matching
+    HMODULE hKernel32Upper = GetModuleHandleW(pml, L"KERNEL32.DLL");
+    if (hKernel32Upper == NULL)
+    {
+        printf_s("failed case-insensitive matching\n");
+        return false;
+    }
+    if (hKernel32Upper != hKernel32)
+    {
+        printf_s("case-insensitive matching returned different handle\n");
+        return false;
+    }
+
+    // test with non-existent module
+    HMODULE hNotExist = GetModuleHandleW(pml, L"invalid.dll");
+    if (hNotExist != NULL)
+    {
+        printf_s("should return NULL for non-existent module\n");
+        return false;
+    }
+
+    // test with empty string
+    HMODULE hEmpty = GetModuleHandleW(pml, L"");
+    if (hEmpty != NULL)
+    {
+        printf_s("should return NULL for empty string\n");
+        return false;
+    }
 
     printf_s("test GetModuleHandleW passed\n");
     return true;
@@ -56,6 +155,12 @@ static bool TestGetModuleHandleW()
 
 static bool TestIsDebuggerPresent()
 {
+    PEB* peb = runtime->Env.GetPEB();
+    if (!IsDebuggerPresent(peb))
+    {
+        printf_s("not in debug mode\n");
+        return false;
+    }
 
     printf_s("test IsDebuggerPresent passed\n");
     return true;
