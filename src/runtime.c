@@ -143,16 +143,14 @@ void* RT_FindAPI_MH(uint  module, uint procedure, uint key);
 void* RT_FindMod_MHL(PML* pml, uint  module, uint key);
 void* RT_FindAPI_MAL(PML* pml, void* module, uint procedure, uint key);
 void* RT_FindAPI_MHL(PML* pml, uint  module, uint procedure, uint key);
-void* RT_FindMod_A(byte*   module, uint key);
-void* RT_FindMod_W(uint16* module, uint key);
-void* RT_FindMod_AL(PML* pml, byte*   module, uint key);
-void* RT_FindMod_WL(PML* pml, uint16* module, uint key);
+void* RT_FindMod_A(byte*   module);
+void* RT_FindMod_W(uint16* module);
 void* RT_FindAPI_A(byte*   module, byte* procedure);
 void* RT_FindAPI_W(uint16* module, byte* procedure);
 
 void* RT_GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
 void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect);
-void* RT_GetProcAddressOriginal(HMODULE hModule, LPCSTR lpProcName);
+void* RT_GetProcAddressRaw(HMODULE hModule, LPCSTR lpProcName);
 
 TEB* RT_GetTEB();
 PEB* RT_GetPEB();
@@ -431,10 +429,16 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     // create methods for runtime
     Runtime_M* module = (Runtime_M*)moduleAddr;
     // hash api
-    module->HashAPI.FindAPI    = GetFuncAddr(&RT_FindAPI);
-    module->HashAPI.FindAPI_ML = GetFuncAddr(&RT_FindAPI_ML);
-    module->HashAPI.FindAPI_A  = GetFuncAddr(&RT_FindAPI_A);
-    module->HashAPI.FindAPI_W  = GetFuncAddr(&RT_FindAPI_W);
+    module->HashAPI.FindMod_MH  = GetFuncAddr(&RT_FindMod_MH);
+    module->HashAPI.FindAPI_MA  = GetFuncAddr(&RT_FindAPI_MA);
+    module->HashAPI.FindAPI_MH  = GetFuncAddr(&RT_FindAPI_MH);
+    module->HashAPI.FindMod_MHL = GetFuncAddr(&RT_FindMod_MHL);
+    module->HashAPI.FindAPI_MAL = GetFuncAddr(&RT_FindAPI_MAL);
+    module->HashAPI.FindAPI_MHL = GetFuncAddr(&RT_FindAPI_MHL);
+    module->HashAPI.FindMod_A   = GetFuncAddr(&RT_FindMod_A);
+    module->HashAPI.FindMod_W   = GetFuncAddr(&RT_FindMod_W);
+    module->HashAPI.FindAPI_A   = GetFuncAddr(&RT_FindAPI_A);
+    module->HashAPI.FindAPI_W   = GetFuncAddr(&RT_FindAPI_W);
     // library tracker
     module->Library.LoadA   = runtime->LibraryTracker->LoadLibraryA;
     module->Library.LoadW   = runtime->LibraryTracker->LoadLibraryW;
@@ -584,7 +588,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Env.GetPEB = GetFuncAddr(&RT_GetPEB);
     module->Env.GetPML = GetFuncAddr(&RT_GetPML);
     // {THE TRUTH OF THE WORLD} && [THE END OF THE WORLD] :(
-    module->Raw.GetProcAddress = GetFuncAddr(&RT_GetProcAddressOriginal);
+    module->Raw.GetProcAddress = GetFuncAddr(&RT_GetProcAddressRaw);
     module->Raw.ExitProcess    = GetFuncAddr(&RT_ExitProcess);
     // runtime core methods
     module->Core.Sleep   = GetFuncAddr(&RT_SleepHR);
@@ -2045,31 +2049,104 @@ uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem)
     return MemScanByConfig(&ctx, config, results, maxItem);
 }
 
+__declspec(noinline)
+void* RT_FindMod_MH(uint module, uint key)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    return RT_FindMod_MHL(runtime->PML, module, key);
+}
+
+__declspec(noinline)
+void* RT_FindAPI_MA(void* module, uint procedure, uint key)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    return RT_FindAPI_MAL(runtime->PML, module, procedure, key);
+}
+
+__declspec(noinline)
+void* RT_FindAPI_MH(uint module, uint procedure, uint key)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    return RT_FindAPI_MHL(runtime->PML, module, procedure, key);
+}
+
+__declspec(noinline)
+void* RT_FindMod_MHL(PML* pml, uint module, uint key)
+{
+    return FindMod_MHL(pml, module, key);
+}
+
+__declspec(noinline)
+void* RT_FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
+{
+    // check the module is exists
+    if (!IsValidModuleHandle(pml, module))
+    {
+        SetLastErrno(ERR_RUNTIME_MODULE_NOT_FOUND);
+        return NULL;
+    }
+    // try to find Windows API
+    void* proc = FindAPI_SC_MAL(pml, module, procedure, key);
+    if (proc == NULL)
+    {
+        SetLastErrno(ERR_RUNTIME_PROCEDURE_NOT_FOUND);
+        return NULL;
+    }
+    // check api redirector is exists
+    void* rdr = getAPIRedirector(proc);
+    if (rdr != NULL)
+    {
+        return rdr;
+    }
+    return proc;
+}
+
+__declspec(noinline)
+void* RT_FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
+{
+    void* module = RT_FindMod_MHL(pml, module, key);
+    if (module == NULL)
+    {
+        return NULL;
+    }
+    return RT_FindAPI_MAL(pml, module, procedure, key);
+}
+
+__declspec(noinline)
+void* RT_FindMod_A(byte* module)
+{
+    return FindMod_A(module);
+}
+
+__declspec(noinline)
+void* RT_FindMod_W(uint16* module)
+{
+    return FindMod_W(module);
+}
 
 __declspec(noinline)
 void* RT_FindAPI_A(byte* module, byte* procedure)
 {
-#ifdef _WIN64
-    uint key = 0xA6C1B1E79D26D1E7;
-#elif _WIN32
-    uint key = 0x94645D8B;
-#endif
-    uint mHash = CalcModHash_A(module, key);
-    uint pHash = CalcProcHash(procedure, key);
-    return RT_GetProcAddressByHash(mHash, pHash, key, true);
+    Runtime* runtime = getRuntimePointer();
+
+    uint key = 0xFFFFFFFF;
+    uint mod = CalcModHash_A(module, key);
+    HMODULE hModule = FindMod_MHL(runtime->PML, mod, key);
+    return RT_GetProcAddress(hModule, procedure);
 }
 
 __declspec(noinline)
 void* RT_FindAPI_W(uint16* module, byte* procedure)
 {
-#ifdef _WIN64
-    uint key = 0xA6C1B1E79D26D1E7;
-#elif _WIN32
-    uint key = 0x94645D8B;
-#endif
-    uint mHash = CalcModHash_W(module, key);
-    uint pHash = CalcProcHash(procedure, key);
-    return RT_GetProcAddressByHash(mHash, pHash, key, true);
+    Runtime* runtime = getRuntimePointer();
+
+    uint key = 0xFFFFFFFF;
+    uint mod = CalcModHash_W(module, key);
+    HMODULE hModule = FindMod_MHL(runtime->PML, mod, key);
+    return RT_GetProcAddress(hModule, procedure);
 }
 
 __declspec(noinline)
@@ -2117,8 +2194,8 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
     void* proc = FindAPI_SC_MAL(runtime->PML, hModule, pHash, hKey);
     if (proc == NULL)
     {
-        SetLastErrno(ERR_RUNTIME_PROCEDURE_NOT_FOUND);
-        return NULL;
+        // if not found, use native GetProcAddress and try again
+        return runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
     }
     if (!redirect)
     {
@@ -2135,13 +2212,12 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
     {
         return rdr;
     }
-    // if all not found, use native GetProcAddress
-    return runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
+    return proc;
 }
 
 // disable optimize for use call, NOT jmp to runtime->GetProcAddress.
 #pragma optimize("", off)
-void* RT_GetProcAddressOriginal(HMODULE hModule, LPCSTR lpProcName)
+void* RT_GetProcAddressRaw(HMODULE hModule, LPCSTR lpProcName)
 {
     Runtime* runtime = getRuntimePointer();
 
@@ -2171,20 +2247,19 @@ static void* getRuntimeMethods(LPCSTR lpProcName)
     method list[] =
 #ifdef _WIN64
     {
-        { 0x2A75C66DD3725A0C, 0x287E20BE28DA7C0D, GetFuncAddr(&RT_GetProcAddressByName)   },
-        { 0x4BBCE1822B520801, 0xA55992702A7F7347, GetFuncAddr(&RT_GetProcAddressByHash)   },
-        { 0xB6541A994E1BD9C9, 0x9674D54BD95FD0C4, GetFuncAddr(&RT_GetProcAddressByHashML) },
-        { 0x733B11BFF5D380BD, 0xF9EEB584A92B88B3, GetFuncAddr(&RT_GetProcAddressOriginal) },
-        { 0x286F34B40136641A, 0xDA4C40DA3D7DAE2C, GetFuncAddr(&RT_GetTEB)                 },
-        { 0x5C453B47673B57CC, 0x93836F9B160A8469, GetFuncAddr(&RT_GetPEB)                 },
-        { 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetPML)                 },
-        { 0xB1FA77826E174621, 0xE8CE6F7431D20C90, GetFuncAddr(&RT_GetOptions)             },
-        { 0x618F963CAA5EE348, 0x20EE2A5363818605, GetFuncAddr(&RT_GetRuntimeM)            },
-        { 0xA83FF55FECA4B2D5, 0xC9C001C805631D08, GetFuncAddr(&RT_GetInfo)                },
-        { 0x3F0F1951378BA2D7, 0x3990B978D311CE13, GetFuncAddr(&RT_GetMetrics)             },
-        { 0xF1B02539240FCCBE, 0x7CDDB06DD3B3380B, GetFuncAddr(&RT_SleepHR)                },
-        { 0xC202636AB59E272A, 0x83FABCD3C9ED5B2E, GetFuncAddr(&RT_Sleep)                  },
-        { 0x7D7CFE6E023217B8, 0x51D583187BB49302, GetFuncAddr(&RT_ExitProcess)            },
+        { 0x4BBCE1822B520801, 0xA55992702A7F7347, GetFuncAddr(&RT_GetProcAddress)    },
+        { 0xB6541A994E1BD9C9, 0x9674D54BD95FD0C4, GetFuncAddr(&RT_GetProcAddressEx)  },
+        { 0x733B11BFF5D380BD, 0xF9EEB584A92B88B3, GetFuncAddr(&RT_GetProcAddressRaw) },
+        { 0x286F34B40136641A, 0xDA4C40DA3D7DAE2C, GetFuncAddr(&RT_GetTEB)            },
+        { 0x5C453B47673B57CC, 0x93836F9B160A8469, GetFuncAddr(&RT_GetPEB)            },
+        { 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetPML)            },
+        { 0xB1FA77826E174621, 0xE8CE6F7431D20C90, GetFuncAddr(&RT_GetOptions)        },
+        { 0x618F963CAA5EE348, 0x20EE2A5363818605, GetFuncAddr(&RT_GetRuntimeM)       },
+        { 0xA83FF55FECA4B2D5, 0xC9C001C805631D08, GetFuncAddr(&RT_GetInfo)           },
+        { 0x3F0F1951378BA2D7, 0x3990B978D311CE13, GetFuncAddr(&RT_GetMetrics)        },
+        { 0xF1B02539240FCCBE, 0x7CDDB06DD3B3380B, GetFuncAddr(&RT_SleepHR)           },
+        { 0xC202636AB59E272A, 0x83FABCD3C9ED5B2E, GetFuncAddr(&RT_Sleep)             },
+        { 0x7D7CFE6E023217B8, 0x51D583187BB49302, GetFuncAddr(&RT_ExitProcess)       },
         { 0x479C7B50DBFADEE7, 0x649073A187F0F0A9, AS->GetValue   }, // AS_GetValue
         { 0x41D042835BA4C499, 0xD74A73D3EE16AE15, AS->GetPointer }, // AS_GetPointer
         { 0xE84B8AF19E5545A2, 0xCE033EAF91F7C68A, AS->Erase      }, // AS_Erase
@@ -2208,20 +2283,19 @@ static void* getRuntimeMethods(LPCSTR lpProcName)
     };
 #elif _WIN32
     {
-        { 0x4DC36689, 0x69994BCB, GetFuncAddr(&RT_GetProcAddressByName)   },
-        { 0x7D694658, 0xC93F4122, GetFuncAddr(&RT_GetProcAddressByHash)   },
-        { 0xECD00780, 0x7B64F177, GetFuncAddr(&RT_GetProcAddressByHashML) },
-        { 0xB033EAFB, 0xA5A5546E, GetFuncAddr(&RT_GetProcAddressOriginal) },
-        { 0x87C8028B, 0xD697CA60, GetFuncAddr(&RT_GetTEB)                 },
-        { 0xC04FB496, 0x7EE9DDE8, GetFuncAddr(&RT_GetPEB)                 },
-        { 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetPML)                 },
-        { 0xD4D119FF, 0x8CD7C9D0, GetFuncAddr(&RT_GetOptions)             },
-        { 0x2414448A, 0x2E37B5DF, GetFuncAddr(&RT_GetRuntimeM)            },
-        { 0x41205F31, 0x2E96AC51, GetFuncAddr(&RT_GetInfo)                },
-        { 0xD731BCE7, 0x1E7A2A1A, GetFuncAddr(&RT_GetMetrics)             },
-        { 0xC38FBBF5, 0xDEED529C, GetFuncAddr(&RT_SleepHR)                },
-        { 0x707547CF, 0x66DCFA17, GetFuncAddr(&RT_Sleep)                  },
-        { 0xC661D6AC, 0x844DD401, GetFuncAddr(&RT_ExitProcess)            },
+        { 0x7D694658, 0xC93F4122, GetFuncAddr(&RT_GetProcAddress)    },
+        { 0xECD00780, 0x7B64F177, GetFuncAddr(&RT_GetProcAddressEx)  },
+        { 0xB033EAFB, 0xA5A5546E, GetFuncAddr(&RT_GetProcAddressRaw) },
+        { 0x87C8028B, 0xD697CA60, GetFuncAddr(&RT_GetTEB)            },
+        { 0xC04FB496, 0x7EE9DDE8, GetFuncAddr(&RT_GetPEB)            },
+        { 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetPML)            },
+        { 0xD4D119FF, 0x8CD7C9D0, GetFuncAddr(&RT_GetOptions)        },
+        { 0x2414448A, 0x2E37B5DF, GetFuncAddr(&RT_GetRuntimeM)       },
+        { 0x41205F31, 0x2E96AC51, GetFuncAddr(&RT_GetInfo)           },
+        { 0xD731BCE7, 0x1E7A2A1A, GetFuncAddr(&RT_GetMetrics)        },
+        { 0xC38FBBF5, 0xDEED529C, GetFuncAddr(&RT_SleepHR)           },
+        { 0x707547CF, 0x66DCFA17, GetFuncAddr(&RT_Sleep)             },
+        { 0xC661D6AC, 0x844DD401, GetFuncAddr(&RT_ExitProcess)       },
         { 0x6DD5CD24, 0xF0B9A21D, AS->GetValue   }, // AS_GetValue
         { 0xB8A08D9B, 0x7DB3ECC2, AS->GetPointer }, // AS_GetPointer
         { 0x18EF1CF3, 0x978EAC96, AS->Erase      }, // AS_Erase
@@ -2247,8 +2321,7 @@ static void* getRuntimeMethods(LPCSTR lpProcName)
     for (int i = 0; i < arrlen(list); i++)
     {
         method item = list[i];
-        uint pHash = CalcProcHash((byte*)lpProcName, item.hKey);
-        if (pHash != item.pHash)
+        if (CalcProcHash(lpProcName, item.hKey) != item.pHash)
         {
             continue;
         }
@@ -2282,8 +2355,8 @@ static void* getLazyAPIRedirector(HMODULE hModule, LPCSTR lpProcName)
     MemoryTracker_M*   MT = runtime->MemoryTracker;
     ResourceTracker_M* RT = runtime->ResourceTracker;
 
-    // get dll base name for calculate hash
-    uint16 dllName[MAX_PATH];
+    // get dll base name for calculate module hash
+    WCHAR dllName[MAX_PATH];
     mem_init(dllName, sizeof(dllName));
     if (GetModuleBaseNameW(runtime->PML, hModule, dllName, MAX_PATH) == 0)
     {
@@ -2517,6 +2590,8 @@ void RT_ExitProcess(UINT uExitCode)
     Runtime* runtime = getRuntimePointer();
 
     RT_Cleanup();
+
+    // TODO think shield
 
     runtime->ExitProcess(uExitCode);
 }
