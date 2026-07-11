@@ -537,8 +537,6 @@ typedef struct {
         FindAPI_MHL_t FindAPI_MHL;
         FindMod_A_t   FindMod_A;
         FindMod_W_t   FindMod_W;
-        FindMod_AL_t  FindMod_AL;
-        FindMod_WL_t  FindMod_WL;
         FindAPI_A_t   FindAPI_A;
         FindAPI_W_t   FindAPI_W;
     } HashAPI;
