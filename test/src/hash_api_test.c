@@ -23,8 +23,6 @@ static bool TestFindAPI_MAL();
 static bool TestFindAPI_MHL();
 static bool TestFindMod_A();
 static bool TestFindMod_W();
-static bool TestFindMod_AL();
-static bool TestFindMod_WL();
 static bool TestFindAPI_A();
 static bool TestFindAPI_W();
 static bool TestForwarded();
@@ -47,8 +45,6 @@ bool TestHashAPI()
         { TestFindAPI_MHL    },
         { TestFindMod_A      },
         { TestFindMod_W      },
-        { TestFindMod_AL     },
-        { TestFindMod_WL     },
         { TestFindAPI_A      },
         { TestFindAPI_W      },
         { TestForwarded      },
@@ -247,14 +243,8 @@ static bool TestFindMod_A()
         return false;
     }
 
-#ifdef _WIN64
-    uint key = 0x6A6867C72D518853;
-#elif _WIN32
-    uint key = 0xCADE960B;
-#endif
     byte* module = "kernel32.dll";
-
-    void* result = FindMod_A(module, key);
+    void* result = FindMod_A(module);
     if (result != expected)
     {
         printf_s("Result:   %llX\n", (uint64)result);
@@ -275,72 +265,8 @@ static bool TestFindMod_W()
         return false;
     }
 
-#ifdef _WIN64
-    uint key = 0x6A6867C72D518853;
-#elif _WIN32
-    uint key = 0xCADE960B;
-#endif
     uint16* module = L"kernel32.dll";
-
-    void* result = FindMod_W(module, key);
-    if (result != expected)
-    {
-        printf_s("Result:   %llX\n", (uint64)result);
-        printf_s("Expected: %llX\n", (uint64)expected);
-        printf_s("kernel32.dll address is incorrect\n");
-        return false;
-    }
-    printf_s("kernel32.dll: 0x%llX\n", (uint64)result);
-    return true;
-}
-
-static bool TestFindMod_AL()
-{
-    HMODULE expected = LoadLibraryA("kernel32.dll");
-    if (expected == NULL)
-    {
-        printf_s("failed to load kernel32.dll\n");
-        return false;
-    }
-
-#ifdef _WIN64
-    uint key = 0x6A6867C72D518853;
-#elif _WIN32
-    uint key = 0xCADE960B;
-#endif
-    byte* module = "kernel32.dll";
-
-    PML*  pml    = GetDefaultPML();
-    void* result = FindMod_AL(pml, module, key);
-    if (result != expected)
-    {
-        printf_s("Result:   %llX\n", (uint64)result);
-        printf_s("Expected: %llX\n", (uint64)expected);
-        printf_s("kernel32.dll address is incorrect\n");
-        return false;
-    }
-    printf_s("kernel32.dll: 0x%llX\n", (uint64)result);
-    return true;
-}
-
-static bool TestFindMod_WL()
-{
-    HMODULE expected = LoadLibraryA("kernel32.dll");
-    if (expected == NULL)
-    {
-        printf_s("failed to load kernel32.dll\n");
-        return false;
-    }
-
-#ifdef _WIN64
-    uint key = 0x6A6867C72D518853;
-#elif _WIN32
-    uint key = 0xCADE960B;
-#endif
-    uint16* module = L"kernel32.dll";
-
-    PML*  pml    = GetDefaultPML();
-    void* result = FindMod_WL(pml, module, key);
+    void*   result = FindMod_W(module);
     if (result != expected)
     {
         printf_s("Result:   %llX\n", (uint64)result);
