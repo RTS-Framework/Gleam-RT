@@ -18,4 +18,8 @@ void XORBuffer(void* buf, uint bufSize, void* key, uint keySize);
 // EraseBuffer is used to erase data in buffer, it not free memory.
 void EraseBuffer(void* buf, uint size);
 
+// EraseInstruction is used to erase instruction, it is used to preserve
+// statistical characteristics as much as possible while erasing instructions.
+void EraseInstruction(void* buf, uint size);
+
 #endif // CRYPTO_H
