@@ -12,10 +12,12 @@ typedef uint32 DWORD;
 typedef uint64 QWORD;
 
 typedef int8   CHAR;
+typedef uint16 WCHAR;
+typedef uint8  UCHAR;
+
 typedef int16  SHORT;
 typedef int32  LONG;
 typedef int64  LONGLONG;
-typedef uint8  UCHAR;
 typedef uint16 USHORT;
 typedef uint32 ULONG;
 typedef uint64 ULONGLONG;
