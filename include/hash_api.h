@@ -56,13 +56,9 @@ typedef void* (*FindMod_MHL_t)(PML* pml, uint  module, uint key);
 typedef void* (*FindAPI_MAL_t)(PML* pml, void* module, uint procedure, uint key);
 typedef void* (*FindAPI_MHL_t)(PML* pml, uint  module, uint procedure, uint key);
 
-// shortcut and simple tool for upper modules.
-typedef void* (*FindMod_A_t)(byte*   module, uint key);
-typedef void* (*FindMod_W_t)(uint16* module, uint key);
-typedef void* (*FindMod_AL_t)(PML* pml, byte*   module, uint key);
-typedef void* (*FindMod_WL_t)(PML* pml, uint16* module, uint key);
-
 // shortcut for debug, test and toolchain.
+typedef void* (*FindMod_A_t)(byte*   module);
+typedef void* (*FindMod_W_t)(uint16* module);
 typedef void* (*FindAPI_A_t)(byte*   module, byte* procedure);
 typedef void* (*FindAPI_W_t)(uint16* module, byte* procedure);
 
@@ -86,18 +82,17 @@ void* FindMod_W(uint16* module);
 void* FindAPI_A(byte*   module, byte* procedure);
 void* FindAPI_W(uint16* module, byte* procedure);
 
-// CalcModHash_A is used to calculate module ANSI name hash with key.
-uint   CalcModHash_A  (byte* module, uint key);
-uint32 CalcModHash32_A(byte* module, uint32 key);
-uint64 CalcModHash64_A(byte* module, uint64 key);
+// CalcModHash_A/W is used to calculate module name hash with ANSI/UTF-16.
+uint CalcModHash_A(byte*   module, uint key);
+uint CalcModHash_W(uint16* module, uint key);
 
-// CalcModHash_W is used to calculate module UTF-16 name hash with key.
-uint   CalcModHash_W  (uint16* module, uint key);
+uint32 CalcModHash32_A(byte*   module, uint32 key);
 uint32 CalcModHash32_W(uint16* module, uint32 key);
+uint64 CalcModHash64_A(byte*   module, uint64 key);
 uint64 CalcModHash64_W(uint16* module, uint64 key);
 
 // CalcProcHash is used to calculate procedure name hash with key.
-uint   CalcProcHash  (byte* procedure, uint key);
+uint   CalcProcHash  (byte* procedure, uint   key);
 uint32 CalcProcHash32(byte* procedure, uint32 key);
 uint64 CalcProcHash64(byte* procedure, uint64 key);
 
