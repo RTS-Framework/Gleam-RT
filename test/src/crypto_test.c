@@ -9,6 +9,7 @@ static bool TestEncryptBuffer();
 static bool TestDecryptBuffer();
 static bool TestXORBuffer();
 static bool TestEraseBuffer();
+static bool TestEraseInstruction();
 
 static void printHexBytes(byte* buf, uint size);
 
@@ -16,10 +17,11 @@ bool TestCrypto()
 {
     test_t tests[] = 
     {
-        { TestEncryptBuffer },
-        { TestDecryptBuffer },
-        { TestXORBuffer     },
-        { TestEraseBuffer   },
+        { TestEncryptBuffer    },
+        { TestDecryptBuffer    },
+        { TestXORBuffer        },
+        { TestEraseBuffer      },
+        { TestEraseInstruction },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -155,7 +157,6 @@ static bool TestEraseBuffer()
 {
     printf_s("========TestEraseBuffer begin=========\n");
 
-
     byte data[32];
     EraseBuffer(data, sizeof(data));
 
@@ -166,6 +167,18 @@ static bool TestEraseBuffer()
     }
 
     printf_s("========TestEraseBuffer passed========\n\n");
+    return true;
+}
+
+static bool TestEraseInstruction()
+{
+    printf_s("======TestEraseInstruction begin======\n");
+
+    byte inst[256];
+    EraseInstruction(inst, sizeof(inst));
+    printHexBytes(inst, sizeof(inst));
+
+    printf_s("======TestEraseInstruction passed=====\n\n");
     return true;
 }
 
