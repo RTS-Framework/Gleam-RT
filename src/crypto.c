@@ -5,15 +5,13 @@
 #include "crypto.h"
 
 // !!!!!!!!  It is NOT cryptographically secure  !!!!!!!!!
-// 
+//
 // The main purpose of this symmetric encryption algorithm
-// is to encrypt the data in the memory so that it looks 
-// like there is no obvious pattern. 
-// 
-// It's main design goal is to be as small as possible and 
+// is to encrypt the data in the memory so that it looks
+// like there is no obvious pattern.
+//
+// It's main design goal is to be as small as possible and
 // not to use a simple XOR encryption.
-
-#ifndef FAST_CRYPTO
 
 #define PARALLEL_LEVEL 8
 
@@ -520,7 +518,7 @@ static void initSBox(byte* sBox, byte* key, byte* iv)
     // initialize S-Box byte array
     for (int i = 0; i < 256; i++)
     {
-        // + key[0] is used to prevent 
+        // + key[0] is used to prevent
         // incorrect compiler optimization
         sBox[i] = (byte)i + key[0];
     }
@@ -569,32 +567,6 @@ static byte rol(byte value, uint8 bits)
 
 #pragma optimize("t", off)
 
-#else
-
-void EncryptBuffer(void* buf, uint size, byte* key, byte* iv)
-{
-    byte* buffer = buf;
-    byte b = *key + *iv;
-    for (uint i = 0; i < size; i++)
-    {
-        *buffer ^= b;
-        buffer++;
-    }
-}
-
-void DecryptBuffer(void* buf, uint size, byte* key, byte* iv)
-{
-    byte* buffer = buf;
-    byte b = *key + *iv;
-    for (uint i = 0; i < size; i++)
-    {
-        *buffer ^= b;
-        buffer++;
-    }
-}
-
-#endif
-
 #pragma optimize("", off)
 void XORBuffer(void* buf, uint bufSize, void* key, uint keySize)
 {
@@ -618,3 +590,105 @@ void EraseBuffer(void* buf, uint size)
     mem_init(buf, size);
 }
 #pragma optimize("", on)
+
+#pragma optimize("t", on)
+void EraseInstruction(void* buf, uint size)
+{
+    if (size == 0)
+    {
+        return;
+    }
+    byte*  inst = buf;
+    uint64 seed = GenerateSeed();
+    while (size)
+    {   
+        // update seed
+        seed = XORShift64(seed);
+        // select operation
+        uint n = RandUintN(seed, 100);
+        // 30% random bytes.
+        if (n < 30)
+        {
+            uint len = RandUintN(seed, 8) + 1;
+            if (len > size)
+            {
+                len = size;
+            }
+            for (uint i = 0; i < len; i++)
+            {
+                inst[i] = RandByte(seed);
+            }
+
+            inst += len;
+            size -= len;
+            continue;
+        }
+        // 10% push/pop.
+        if (n < 40)
+        {
+            if (RandBool(seed))
+            {
+                *inst = 0x50 + RandUint8N(seed, 8);
+            } else {
+                *inst = 0x58 + RandUint8N(seed, 8);
+            }
+
+            inst++;
+            size--;
+            continue;
+        }
+        // 10% ret/int3/nop.
+        if (n < 50)
+        {
+            byte op;
+            switch (RandUint8N(seed, 3))
+            {
+            case 0:
+                op = 0x90;
+                break;
+            case 1:
+                op = 0xC3;
+                break;
+            default:
+                op = 0xCC;
+                break;
+            }
+            *inst = op;
+
+            inst++;
+            size--;
+            continue;
+        }
+        // mov/xor/test/add/sub/cmp
+        if (size >= 2)
+        {
+            byte op;
+            switch (RandUint8N(seed, 10))
+            {
+                case 0: op = 0x89; break;
+                case 1: op = 0x8B; break;
+                case 2: op = 0x31; break;
+                case 3: op = 0x33; break;
+                case 4: op = 0x85; break;
+                case 5: op = 0x39; break;
+                case 6: op = 0x3B; break;
+                case 7: op = 0x01; break;
+                case 8: op = 0x03; break;
+                default: op = 0x29; break;
+            }
+            // ModRM = register-direct.
+            inst[0] = op;
+            inst[1] = 0xC0 | (RandUint8N(seed, 8) << 3) | RandUint8N(seed, 8);
+
+            inst += 2;
+            size -= 2;
+            continue;
+        }
+        // padding remaining area
+        *inst = RandByte(seed);
+
+        inst++;
+        size--;
+    }
+}
+#pragma optimize("t", off)
