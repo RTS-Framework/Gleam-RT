@@ -101,8 +101,9 @@ typedef struct {
     DWORD       InitTick;  // store initialize tick count
     UINT        ErrorMode; // record old error mode.
 
-    // Windows API redirector about GetProcAddress
-    API_RDR Redirectors[68];
+    // Windows API redirector
+    API_RDR Kernel32RDR[63];
+    API_RDR NtdllRDR   [05];
 
     // try to lock submodules mutex
     HANDLE ModMutexHandle[9];
@@ -191,10 +192,10 @@ bool  RT_flush_api_cache();
 errno RT_stop(bool exitThread, uint32 code);
 
 // HashAPI with spoof call (forge GetProcAddress)
-void* FindAPI_SC_MA(void* module, uint procedure, uint key);
-void* FindAPI_SC_MH(uint  module, uint procedure, uint key);
-void* FindAPI_SC_MAL(PML* pml, void* module, uint procedure, uint key);
-void* FindAPI_SC_MHL(PML* pml, uint  module, uint procedure, uint key);
+void* SC_FindAPI_MA(void* module, uint procedure, uint key);
+void* SC_FindAPI_MH(uint  module, uint procedure, uint key);
+void* SC_FindAPI_MAL(PML* pml, void* module, uint procedure, uint key);
+void* SC_FindAPI_MHL(PML* pml, uint  module, uint procedure, uint key);
 
 // method wrapper for user and Runtime submodules
 uint MW_MemScanByValue(void* value, uint size, uintptr* results, uint maxItem);
@@ -780,9 +781,11 @@ static void buildRuntimeInformation(Runtime* runtime)
 {
     Runtime_Info* info = &runtime->Info;
 
+    // TODO replace the epilogue of asm module
+
     // calculate runtime .text size
     uintptr begin = (uintptr)(GetFuncAddr(&InitRuntime));
-    uintptr end   = (uintptr)(GetFuncAddr(&Shield_Stub)); // TODO replace the epilogue of asm module
+    uintptr end   = (uintptr)(GetFuncAddr(&Shield_Stub));
     uintptr size  = end - begin;
 
     // calculate runtime .text hash
@@ -878,9 +881,7 @@ static bool initRuntimeAPI(Runtime* runtime)
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        PML*  pml  = runtime->PML;
-        void* dll  = runtime->hKernel32;
-        void* proc = FindAPI_SC_MAL(pml, dll, item.pHash, item.hKey);
+        void*  proc = SC_FindAPI_MA(runtime->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -1032,8 +1033,8 @@ static errno initSubmodules(Runtime* runtime)
         .Epilogue    = (uintptr)(runtime->Epilogue),
         .InstSize    = runtime->InstSize,
 
-        .FindAPI_MA = GetFuncAddr(&FindAPI_SC_MA),
-        .FindAPI_MH = GetFuncAddr(&FindAPI_SC_MH),
+        .FindAPI_MA = GetFuncAddr(&SC_FindAPI_MA),
+        .FindAPI_MH = GetFuncAddr(&SC_FindAPI_MH),
 
         .malloc  = GetFuncAddr(&RT_malloc),
         .calloc  = GetFuncAddr(&RT_calloc),
@@ -1330,162 +1331,185 @@ static bool initAPIRedirector(Runtime* runtime)
     ResourceTracker_M* RT = runtime->ResourceTracker;
 
     typedef struct {
-        uint mHash; uint pHash; uint hKey; void* api;
+        uint pHash; uint hKey; void* api;
     } rdr;
-    rdr list[] =
+
+    rdr kernel32[] =
 #ifdef _WIN64
     {
-        { 0xFF4DA9811A24DD2A, 0xE6E26FB6E4FE59CE, 0x10BB9100F93D0F8B, GetFuncAddr(&RT_GetProcAddress) },
-        { 0xC1166F5480F32BFD, 0x12A3CA6BA34EAD87, 0x4DC32CDE85E16492, GetFuncAddr(&RT_SetCurrentDirectoryA) },
-        { 0xFBE4BC0513717538, 0x891F575DD3B8F3E6, 0x9D79D93FAB212FD8, GetFuncAddr(&RT_SetCurrentDirectoryW) },
-        { 0x42727ECD088158B0, 0x5AD097EF20CCF2F6, 0x5D7BAE3110895355, GetFuncAddr(&RT_SetErrorMode) },
-        { 0x6434DEA711176856, 0x0BB33DC44169CD1C, 0x962140866F051973, GetFuncAddr(&RT_SleepHR) }, // kernel32.Sleep
-        { 0xDF5822C48AE06E22, 0x0C095075F316AE39, 0x058807734232290F, GetFuncAddr(&RT_SleepEx) }, // kernel32.SleepEx
-        { 0x4DC42B3903DA99C6, 0xCA400801FF61A34E, 0xE1AC9F7852E1B05D, LT->LoadLibraryA },
-        { 0xFC7A7C50BCFD6225, 0xDBD45608DD3235FA, 0xFEC559962D6601D9, LT->LoadLibraryW },
-        { 0x7375B34705AE6800, 0xDD32124FBD682FB9, 0x049E6B412B5D442D, LT->LoadLibraryExA },
-        { 0x1896A460454253F3, 0x3FCC5C6C3F82C2BE, 0xAB0B4D9079E2A130, LT->LoadLibraryExW },
-        { 0x1496C27FE3608899, 0xB43C2134E4723CA2, 0xF1A7017F9F0C94F3, LT->FreeLibrary },
-        { 0xE80B5CBE037995D7, 0x2788C62E627713D4, 0x866469F01DBF6133, LT->FreeLibraryAndExitThread },
-        { 0xD7409B7A8292AA03, 0x66E9F2BA41E2A0C2, 0x1FA76CFBFF379502, MT->VirtualAlloc },
-        { 0xC8EE591299E0F9A2, 0x603E56ED7C1537F4, 0x52F1C8C0B584364E, MT->VirtualFree },
-        { 0x978351ED493CACDE, 0x3A1198A4675C5EC3, 0x4E8AAF5E5D075B4A, MT->VirtualProtect },
-        { 0x703806E0587E928B, 0xAA7548E17B62D7F8, 0xDCFEB1AF57895416, MT->VirtualQuery },
-        { 0xB01F1D8C667AABC3, 0x07DB7553F4BC04BE, 0xF982F021BF11141E, MT->HeapCreate },
-        { 0x6453FCEA8686D0B2, 0x8969C9C075773B1F, 0x539B4168D258E6D1, MT->HeapDestroy },
-        { 0x48A9D2FB20F58D7E, 0x91937D49AF9FFAB9, 0xFF298C980C1FA51C, MT->HeapAlloc },
-        { 0x431DA6E0CB500521, 0x27D5BFE5E7FEA339, 0xAB8CB329F8568805, MT->HeapReAlloc },
-        { 0xCCCAB3E4FFBC9243, 0xE36248C464C39491, 0x9A21FFFBDCCFCB53, MT->HeapFree },
-        { 0xB201A5400764FE9F, 0x9194EEFD9C18C50E, 0x7DDC64814D267471, MT->HeapSize },
-        { 0x6D994AD4EB52E6A3, 0x970FBBB0DC7425CC, 0xCCA0C65AC9CA766E, MT->GlobalAlloc },
-        { 0x53E8DBD868752C6A, 0xFF13BFC56EF8D89D, 0xBE039A649C308043, MT->GlobalReAlloc },
-        { 0xE83083D2D450DA12, 0x992429E01F37C2CB, 0x1DEC53513323DAF3, MT->GlobalFree },
-        { 0x72DF45871184EAF7, 0x64BDFC1946C13262, 0x0B6B7BAA8E332572, MT->LocalAlloc },
-        { 0x505894A74E77B8DD, 0xA31D116D5758AC8B, 0xF0B791821E236189, MT->LocalReAlloc },
-        { 0x43F1AF438F3E85A3, 0x287C7FAF838267FC, 0x9B059DD440D97436, MT->LocalFree },
-        { 0x3CCA726C479AD6EE, 0x3982604A64E78596, 0xD2E8220B9E91AB06, MT->HeapAlloc },   // ntdll.RtlAllocateHeap
-        { 0xAB07832BADB3A35C, 0xF739177359998320, 0x94BE3DC57A355EA9, MT->HeapReAlloc }, // ntdll.RtlReAllocateHeap
-        { 0x751B90853766930B, 0xB989CF296AEDD473, 0x98D91AD0B8459B8F, MT->HeapFree },    // ntdll.RtlFreeHeap
-        { 0x45BBAE8A1FCFB479, 0x3D50CA10768C5333, 0xE48E4568E8787962, MT->HeapSize },    // ntdll.RtlSizeHeap
-        { 0x7AE661DB0F788E5C, 0xB381DBCED8473B71, 0x69E41F98377E69D4, TT->CreateThread },
-        { 0xF73998C5A8F14826, 0x8B4E255AD410EAD7, 0x9B3C17E907A5484C, TT->ExitThread },
-        { 0x20BD6DCF83AFA005, 0xFB3FE4456FDDEE5F, 0x975665E2E638718B, TT->SuspendThread },
-        { 0x4D761AB490D8073A, 0x9685B1FA1A78AB3B, 0x3147A2CFAB9E8418, TT->ResumeThread },
-        { 0xF8CDF3A3B3344333, 0xF4043DBAE6716F9F, 0x292410324C701889, TT->SwitchToThread },
-        { 0x7FCCDBCBE7C33ADD, 0x13ABEAA649DA39A3, 0xB13709F7CAE53462, TT->GetThreadContext },
-        { 0xAD0FEDE61F0DCBB4, 0xF9200CC7DA05AB20, 0x4916730ED354C174, TT->SetThreadContext },
-        { 0x09A5E16541C6FFD5, 0xB92D0C6BFD17BF1B, 0x1D78909BB79BD1D5, TT->TerminateThread },
-        { 0x09A62B080D340D1B, 0x1478DA3E8F430166, 0xF94DDE91551E2590, TT->TlsAlloc },
-        { 0x57865BE523C6F35C, 0x67ED5FAFB746E8A1, 0xEB45D478BCF5D601, TT->TlsFree },
-        { 0xEB1473C837B3C707, 0x0F1F3A80639190F0, 0x5DDCB437BC0EB0B5, TT->ExitThread }, // ntdll.RtlExitUserThread
-        { 0x99C62FC1DAFA9048, 0x3530C7A2989E405E, 0x5C88A5AEFEF64834, RT->CreateMutexA },
-        { 0x225525D7E1D96BC1, 0x86944DBCCD5B7259, 0xEEE0821AAFA4CA21, RT->CreateMutexW },
-        { 0x64C8B5FAD0281FAE, 0x1F96D8316C44D1D4, 0xC7DA7E9547354011, RT->CreateMutexExA },
-        { 0x5E73458A1ACB6B6A, 0x84F3DC894B35A8DE, 0x0461DDB218E419CE, RT->CreateMutexExW },
-        { 0x65FDAF0179C614B8, 0x35C115CA65D648C4, 0xAA378A25AC9AB5E9, RT->CreateEventA },
-        { 0x21C2ABE21174C47A, 0xEA76EA9AC1F1684A, 0x613B893DE4586476, RT->CreateEventW },
-        { 0xC2F87FCE4482C4F7, 0xEB18086734568FCC, 0x02B4EE3ADC6A3FCA, RT->CreateEventExA },
-        { 0x48140C98E094E87C, 0x181AEEE9288159AF, 0x40C8A0F5488D4F54, RT->CreateEventExW },
-        { 0xF5F46006AC9C2B76, 0xA0B7DF1BA221BC91, 0xA2627AA845D4ADD3, RT->CreateSemaphoreA },
-        { 0x7AEAFF9C6927EBA1, 0xE3D01A901CABA296, 0x042F915AFC8193B3, RT->CreateSemaphoreW },
-        { 0x2F7D90634738CBE8, 0x6E639EF7EE6D9176, 0xDB929B6C60E18532, RT->CreateSemaphoreExA },
-        { 0x0640A74B0320C944, 0x5166B7C020880A94, 0xF71BCA9C7F743C9D, RT->CreateSemaphoreExW },
-        { 0x730DFCCA2AF4090A, 0x70CDEC5C504AE236, 0xB4F98E7A332755BC, RT->CreateWaitableTimerA },
-        { 0x064CC5AE35E819AA, 0xED30A4C7A7A29614, 0xE2DD88A002EB655D, RT->CreateWaitableTimerW },
-        { 0x1E67E2753BD78487, 0x9AF0CF492273B49C, 0x3944AB9D9A903991, RT->CreateWaitableTimerExA },
-        { 0xEDD5DF96E1FED57C, 0x6A5ECC6AC89B05A6, 0x9DCD84144BF41E29, RT->CreateWaitableTimerExW },
-        { 0x1D043CEA4558BA25, 0x8CCB1AEF14C033F5, 0xD4471E9865D53D00, RT->CreateFileA },
-        { 0x920DCCF0F5F7DA72, 0x0354305F3C1449E6, 0xB0226C18509E2B0A, RT->CreateFileW },
-        { 0xFECB303663463D17, 0x90F8CB9DC1CDF040, 0x661D3543C6070977, RT->FindFirstFileA },
-        { 0x43758302CFD0129F, 0x9C617D9F679966A9, 0x7C162B0964F1F869, RT->FindFirstFileW },
-        { 0x4B39DE018161DB6E, 0xCAA6B778974CC796, 0xD2B1B4DB48AEB5F4, RT->FindFirstFileExA },
-        { 0x2AF32F5D17A63DD4, 0xFB3E8E2D3D7BE252, 0x94F2667600F89324, RT->FindFirstFileExW },
-        { 0xAAFBF725D02B6277, 0xE7220B97A4CFC0DF, 0x81EAC7CC69BC5196, RT->CreateIoCompletionPort },
-        { 0xDEFDF1FADF466CDB, 0xD050B317F8B21AD5, 0xD625D5FF82F41F79, RT->CloseHandle },
-        { 0xD3B4923F11FD94BD, 0xCDB1197EBC4CE881, 0x1CA257168FA33339, RT->FindClose },
+        { 0xE6E26FB6E4FE59CE, 0x10BB9100F93D0F8B, GetFuncAddr(&RT_GetProcAddress)       },
+        { 0x12A3CA6BA34EAD87, 0x4DC32CDE85E16492, GetFuncAddr(&RT_SetCurrentDirectoryA) },
+        { 0x891F575DD3B8F3E6, 0x9D79D93FAB212FD8, GetFuncAddr(&RT_SetCurrentDirectoryW) },
+        { 0x5AD097EF20CCF2F6, 0x5D7BAE3110895355, GetFuncAddr(&RT_SetErrorMode)         },
+        { 0x0BB33DC44169CD1C, 0x962140866F051973, GetFuncAddr(&RT_SleepHR) /* Sleep */  },
+        { 0x0C095075F316AE39, 0x058807734232290F, GetFuncAddr(&RT_SleepEx)              },
+
+        { 0xCA400801FF61A34E, 0xE1AC9F7852E1B05D, LT->LoadLibraryA             },
+        { 0xDBD45608DD3235FA, 0xFEC559962D6601D9, LT->LoadLibraryW             },
+        { 0xDD32124FBD682FB9, 0x049E6B412B5D442D, LT->LoadLibraryExA           },
+        { 0x3FCC5C6C3F82C2BE, 0xAB0B4D9079E2A130, LT->LoadLibraryExW           },
+        { 0xB43C2134E4723CA2, 0xF1A7017F9F0C94F3, LT->FreeLibrary              },
+        { 0x2788C62E627713D4, 0x866469F01DBF6133, LT->FreeLibraryAndExitThread },
+        { 0x66E9F2BA41E2A0C2, 0x1FA76CFBFF379502, MT->VirtualAlloc             },
+        { 0x603E56ED7C1537F4, 0x52F1C8C0B584364E, MT->VirtualFree              },
+        { 0x3A1198A4675C5EC3, 0x4E8AAF5E5D075B4A, MT->VirtualProtect           },
+        { 0xAA7548E17B62D7F8, 0xDCFEB1AF57895416, MT->VirtualQuery             },
+        { 0x07DB7553F4BC04BE, 0xF982F021BF11141E, MT->HeapCreate               },
+        { 0x8969C9C075773B1F, 0x539B4168D258E6D1, MT->HeapDestroy              },
+        { 0x91937D49AF9FFAB9, 0xFF298C980C1FA51C, MT->HeapAlloc                },
+        { 0x27D5BFE5E7FEA339, 0xAB8CB329F8568805, MT->HeapReAlloc              },
+        { 0xE36248C464C39491, 0x9A21FFFBDCCFCB53, MT->HeapFree                 },
+        { 0x9194EEFD9C18C50E, 0x7DDC64814D267471, MT->HeapSize                 },
+        { 0x970FBBB0DC7425CC, 0xCCA0C65AC9CA766E, MT->GlobalAlloc              },
+        { 0xFF13BFC56EF8D89D, 0xBE039A649C308043, MT->GlobalReAlloc            },
+        { 0x992429E01F37C2CB, 0x1DEC53513323DAF3, MT->GlobalFree               },
+        { 0x64BDFC1946C13262, 0x0B6B7BAA8E332572, MT->LocalAlloc               },
+        { 0xA31D116D5758AC8B, 0xF0B791821E236189, MT->LocalReAlloc             },
+        { 0x287C7FAF838267FC, 0x9B059DD440D97436, MT->LocalFree                },
+        { 0xB381DBCED8473B71, 0x69E41F98377E69D4, TT->CreateThread             },
+        { 0x8B4E255AD410EAD7, 0x9B3C17E907A5484C, TT->ExitThread               },
+        { 0xFB3FE4456FDDEE5F, 0x975665E2E638718B, TT->SuspendThread            },
+        { 0x9685B1FA1A78AB3B, 0x3147A2CFAB9E8418, TT->ResumeThread             },
+        { 0xF4043DBAE6716F9F, 0x292410324C701889, TT->SwitchToThread           },
+        { 0x13ABEAA649DA39A3, 0xB13709F7CAE53462, TT->GetThreadContext         },
+        { 0xF9200CC7DA05AB20, 0x4916730ED354C174, TT->SetThreadContext         },
+        { 0xB92D0C6BFD17BF1B, 0x1D78909BB79BD1D5, TT->TerminateThread          },
+        { 0x1478DA3E8F430166, 0xF94DDE91551E2590, TT->TlsAlloc                 },
+        { 0x67ED5FAFB746E8A1, 0xEB45D478BCF5D601, TT->TlsFree                  },
+        { 0x3530C7A2989E405E, 0x5C88A5AEFEF64834, RT->CreateMutexA             },
+        { 0x86944DBCCD5B7259, 0xEEE0821AAFA4CA21, RT->CreateMutexW             },
+        { 0x1F96D8316C44D1D4, 0xC7DA7E9547354011, RT->CreateMutexExA           },
+        { 0x84F3DC894B35A8DE, 0x0461DDB218E419CE, RT->CreateMutexExW           },
+        { 0x35C115CA65D648C4, 0xAA378A25AC9AB5E9, RT->CreateEventA             },
+        { 0xEA76EA9AC1F1684A, 0x613B893DE4586476, RT->CreateEventW             },
+        { 0xEB18086734568FCC, 0x02B4EE3ADC6A3FCA, RT->CreateEventExA           },
+        { 0x181AEEE9288159AF, 0x40C8A0F5488D4F54, RT->CreateEventExW           },
+        { 0xA0B7DF1BA221BC91, 0xA2627AA845D4ADD3, RT->CreateSemaphoreA         },
+        { 0xE3D01A901CABA296, 0x042F915AFC8193B3, RT->CreateSemaphoreW         },
+        { 0x6E639EF7EE6D9176, 0xDB929B6C60E18532, RT->CreateSemaphoreExA       },
+        { 0x5166B7C020880A94, 0xF71BCA9C7F743C9D, RT->CreateSemaphoreExW       },
+        { 0x70CDEC5C504AE236, 0xB4F98E7A332755BC, RT->CreateWaitableTimerA     },
+        { 0xED30A4C7A7A29614, 0xE2DD88A002EB655D, RT->CreateWaitableTimerW     },
+        { 0x9AF0CF492273B49C, 0x3944AB9D9A903991, RT->CreateWaitableTimerExA   },
+        { 0x6A5ECC6AC89B05A6, 0x9DCD84144BF41E29, RT->CreateWaitableTimerExW   },
+        { 0x8CCB1AEF14C033F5, 0xD4471E9865D53D00, RT->CreateFileA              },
+        { 0x0354305F3C1449E6, 0xB0226C18509E2B0A, RT->CreateFileW              },
+        { 0x90F8CB9DC1CDF040, 0x661D3543C6070977, RT->FindFirstFileA           },
+        { 0x9C617D9F679966A9, 0x7C162B0964F1F869, RT->FindFirstFileW           },
+        { 0xCAA6B778974CC796, 0xD2B1B4DB48AEB5F4, RT->FindFirstFileExA         },
+        { 0xFB3E8E2D3D7BE252, 0x94F2667600F89324, RT->FindFirstFileExW         },
+        { 0xE7220B97A4CFC0DF, 0x81EAC7CC69BC5196, RT->CreateIoCompletionPort   },
+        { 0xD050B317F8B21AD5, 0xD625D5FF82F41F79, RT->CloseHandle              },
+        { 0xCDB1197EBC4CE881, 0x1CA257168FA33339, RT->FindClose                },
     };
 #elif _WIN32
     {
-        { 0x75C01F83, 0xE7A45E2B, 0x1A710E4F, GetFuncAddr(&RT_GetProcAddress) },
-        { 0x6B13DC24, 0x53E41BF6, 0xFFB6599D, GetFuncAddr(&RT_SetCurrentDirectoryA) },
-        { 0x7C903CB0, 0xCAF08A95, 0xBB8B0575, GetFuncAddr(&RT_SetCurrentDirectoryW) },
-        { 0x32C6D5E5, 0x3DC6B776, 0xD5167779, GetFuncAddr(&RT_SetErrorMode) },
-        { 0x536949F6, 0x6C9410A5, 0x82568B27, GetFuncAddr(&RT_SleepHR) }, // kernel32.Sleep
-        { 0x6B23E4B7, 0xBA37BAF4, 0x0257F540, GetFuncAddr(&RT_SleepEx) }, // kernel32.SleepEx
-        { 0xAE0F3CDC, 0xBF4F25FA, 0xA131C539, LT->LoadLibraryA },
-        { 0x056314A0, 0x55A90F7E, 0x5349346C, LT->LoadLibraryW },
-        { 0x10155272, 0xD2755464, 0x45CB6974, LT->LoadLibraryExA },
-        { 0xE83FAC7C, 0xE7E0555F, 0xD02A70FA, LT->LoadLibraryExW },
-        { 0xC6B49249, 0x7CF00FF3, 0x7E640DFE, LT->FreeLibrary },
-        { 0x6CB7C079, 0xDD1E6C19, 0x1E78E88B, LT->FreeLibraryAndExitThread },
-        { 0xB12814A3, 0x7F957F91, 0x920F498C, MT->VirtualAlloc },
-        { 0xB30913F5, 0xEEB6D179, 0x6BD6BE8F, MT->VirtualFree },
-        { 0x0F6EFC7B, 0x774CBC01, 0x3BEB1DF1, MT->VirtualProtect },
-        { 0x9ED03376, 0x5DBBA619, 0x8A536EBB, MT->VirtualQuery },
-        { 0x701E200B, 0xFAA011A1, 0xAC5B0514, MT->HeapCreate },
-        { 0xEF53D08B, 0x90745C68, 0x7384548D, MT->HeapDestroy },
-        { 0xF62559E9, 0x89B885C0, 0x0CBA79B5, MT->HeapAlloc },
-        { 0xABC1D166, 0x97530A92, 0xEF4E2221, MT->HeapReAlloc },
-        { 0xEB6DE792, 0x69AC5529, 0x9F0F87FB, MT->HeapFree },
-        { 0xD68F0BD7, 0xA9F4245F, 0xED73D3EF, MT->HeapSize },
-        { 0x612B3351, 0xE09ED8B6, 0x012810C6, MT->GlobalAlloc },
-        { 0x5755B294, 0x424951CC, 0x29D66E25, MT->GlobalReAlloc },
-        { 0x31CF7EA8, 0xCE2AD6ED, 0x7367D738, MT->GlobalFree },
-        { 0x00D8F488, 0x5827541B, 0x6F8715EE, MT->LocalAlloc },
-        { 0x1B89932A, 0x541A3F04, 0x02FA4395, MT->LocalReAlloc },
-        { 0x6FE61AEE, 0xEA812AF6, 0x383C2DD3, MT->LocalFree },
-        { 0x49F19F51, 0x228ABB50, 0x5B0571BF, MT->HeapAlloc },   // ntdll.RtlAllocateHeap
-        { 0x92FBC22D, 0xFE3F6DB3, 0x5A30B52A, MT->HeapReAlloc }, // ntdll.RtlReAllocateHeap
-        { 0x8071A3F9, 0x8C626652, 0x0AB58ABE, MT->HeapFree },    // ntdll.RtlFreeHeap
-        { 0x2319794C, 0x8D15D816, 0xCEB11EBF, MT->HeapSize },    // ntdll.RtlSizeHeap
-        { 0x180AA55F, 0x521C35F1, 0x5A388498, TT->CreateThread },
-        { 0x5F6414CA, 0x827087DB, 0x07E06220, TT->ExitThread },
-        { 0x0C4A7B00, 0xE64D2B70, 0xA796CEBC, TT->SuspendThread },
-        { 0x1FC3902D, 0x7DEAD8EA, 0x1DE3BC77, TT->ResumeThread },
-        { 0xA7AFFFE1, 0x21C2F6AD, 0x4725C481, TT->SwitchToThread },
-        { 0xC9BFAF22, 0xD306FEA3, 0xC72778A3, TT->GetThreadContext },
-        { 0x229AEC25, 0x7D98D610, 0x82904254, TT->SetThreadContext },
-        { 0x8C2FB5E2, 0x186C157F, 0xCDD4F7E1, TT->TerminateThread },
-        { 0xD7E2EA10, 0xCEC74DB0, 0x3E447291, TT->TlsAlloc },
-        { 0x76A15683, 0xC0C732AD, 0x535505D9, TT->TlsFree },
-        { 0x84240642, 0xA1CA7092, 0xF6578A0D, TT->ExitThread }, // ntdll.RtlExitUserThread
-        { 0x6B3F6DAC, 0x43853234, 0x54455751, RT->CreateMutexA },
-        { 0x55DC0D79, 0x785F6BF5, 0x3D6CBA5B, RT->CreateMutexW },
-        { 0xC0ADF2A0, 0x21E1899D, 0xAAFF7F26, RT->CreateMutexExA },
-        { 0xFD4A95C1, 0x87F78CD0, 0x0B1DBA2F, RT->CreateMutexExW },
-        { 0x6DCC244C, 0xCC2BAC5F, 0x4D514C21, RT->CreateEventA },
-        { 0x2C2D5A25, 0x8A86DD59, 0x6A4FA4CF, RT->CreateEventW },
-        { 0xE64C076A, 0xD4311E97, 0xD71810CE, RT->CreateEventExA },
-        { 0x395E0289, 0xAEE603B7, 0x0DF82E32, RT->CreateEventExW },
-        { 0xC9E40740, 0x623C96BC, 0xF0B6E24D, RT->CreateSemaphoreA },
-        { 0xF3DD5560, 0x4C95D8DF, 0x23839135, RT->CreateSemaphoreW },
-        { 0x6E2E92AA, 0x8ECEED49, 0xB91D8BFA, RT->CreateSemaphoreExA },
-        { 0x72C09E63, 0xB62A71B3, 0x2C269677, RT->CreateSemaphoreExW },
-        { 0x416EE6B3, 0x60DA6B28, 0x6AF9FCB6, RT->CreateWaitableTimerA },
-        { 0x6A3B2387, 0x36D3924E, 0xF22D3841, RT->CreateWaitableTimerW },
-        { 0xED2289F2, 0x3D1086F9, 0x7ADCB925, RT->CreateWaitableTimerExA },
-        { 0xB608ED94, 0x6FAF9FDA, 0x448DEED2, RT->CreateWaitableTimerExW },
-        { 0x49833F45, 0x28AF75DA, 0x9DC87AA2, RT->CreateFileA },
-        { 0x99F11002, 0x02C3BD06, 0x68E258F3, RT->CreateFileW },
-        { 0xEACF49CC, 0xDEE66AAD, 0x582829BB, RT->FindFirstFileA },
-        { 0x38D22305, 0x2CA21077, 0xEB734887, RT->FindFirstFileW },
-        { 0xA7384FD2, 0x19EC08BE, 0x236E1ADE, RT->FindFirstFileExA },
-        { 0x6D47C5C0, 0xCD54D722, 0xB3DD8291, RT->FindFirstFileExW },
-        { 0x574C1718, 0xA2973DEC, 0x68050AB3, RT->CreateIoCompletionPort },
-        { 0x0E06B653, 0x78265D27, 0x62FF3474, RT->CloseHandle },
-        { 0xCA74F49F, 0x56182478, 0xED040027, RT->FindClose },
+        { 0xE7A45E2B, 0x1A710E4F, GetFuncAddr(&RT_GetProcAddress)       },
+        { 0x53E41BF6, 0xFFB6599D, GetFuncAddr(&RT_SetCurrentDirectoryA) },
+        { 0xCAF08A95, 0xBB8B0575, GetFuncAddr(&RT_SetCurrentDirectoryW) },
+        { 0x3DC6B776, 0xD5167779, GetFuncAddr(&RT_SetErrorMode)         },
+        { 0x6C9410A5, 0x82568B27, GetFuncAddr(&RT_SleepHR) /* Sleep */  },
+        { 0xBA37BAF4, 0x0257F540, GetFuncAddr(&RT_SleepEx)              },
+
+        { 0xBF4F25FA, 0xA131C539, LT->LoadLibraryA             },
+        { 0x55A90F7E, 0x5349346C, LT->LoadLibraryW             },
+        { 0xD2755464, 0x45CB6974, LT->LoadLibraryExA           },
+        { 0xE7E0555F, 0xD02A70FA, LT->LoadLibraryExW           },
+        { 0x7CF00FF3, 0x7E640DFE, LT->FreeLibrary              },
+        { 0xDD1E6C19, 0x1E78E88B, LT->FreeLibraryAndExitThread },
+        { 0x7F957F91, 0x920F498C, MT->VirtualAlloc             },
+        { 0xEEB6D179, 0x6BD6BE8F, MT->VirtualFree              },
+        { 0x774CBC01, 0x3BEB1DF1, MT->VirtualProtect           },
+        { 0x5DBBA619, 0x8A536EBB, MT->VirtualQuery             },
+        { 0xFAA011A1, 0xAC5B0514, MT->HeapCreate               },
+        { 0x90745C68, 0x7384548D, MT->HeapDestroy              },
+        { 0x89B885C0, 0x0CBA79B5, MT->HeapAlloc                },
+        { 0x97530A92, 0xEF4E2221, MT->HeapReAlloc              },
+        { 0x69AC5529, 0x9F0F87FB, MT->HeapFree                 },
+        { 0xA9F4245F, 0xED73D3EF, MT->HeapSize                 },
+        { 0xE09ED8B6, 0x012810C6, MT->GlobalAlloc              },
+        { 0x424951CC, 0x29D66E25, MT->GlobalReAlloc            },
+        { 0xCE2AD6ED, 0x7367D738, MT->GlobalFree               },
+        { 0x5827541B, 0x6F8715EE, MT->LocalAlloc               },
+        { 0x541A3F04, 0x02FA4395, MT->LocalReAlloc             },
+        { 0xEA812AF6, 0x383C2DD3, MT->LocalFree                },
+        { 0x521C35F1, 0x5A388498, TT->CreateThread             },
+        { 0x827087DB, 0x07E06220, TT->ExitThread               },
+        { 0xE64D2B70, 0xA796CEBC, TT->SuspendThread            },
+        { 0x7DEAD8EA, 0x1DE3BC77, TT->ResumeThread             },
+        { 0x21C2F6AD, 0x4725C481, TT->SwitchToThread           },
+        { 0xD306FEA3, 0xC72778A3, TT->GetThreadContext         },
+        { 0x7D98D610, 0x82904254, TT->SetThreadContext         },
+        { 0x186C157F, 0xCDD4F7E1, TT->TerminateThread          },
+        { 0xCEC74DB0, 0x3E447291, TT->TlsAlloc                 },
+        { 0xC0C732AD, 0x535505D9, TT->TlsFree                  },
+        { 0x43853234, 0x54455751, RT->CreateMutexA             },
+        { 0x785F6BF5, 0x3D6CBA5B, RT->CreateMutexW             },
+        { 0x21E1899D, 0xAAFF7F26, RT->CreateMutexExA           },
+        { 0x87F78CD0, 0x0B1DBA2F, RT->CreateMutexExW           },
+        { 0xCC2BAC5F, 0x4D514C21, RT->CreateEventA             },
+        { 0x8A86DD59, 0x6A4FA4CF, RT->CreateEventW             },
+        { 0xD4311E97, 0xD71810CE, RT->CreateEventExA           },
+        { 0xAEE603B7, 0x0DF82E32, RT->CreateEventExW           },
+        { 0x623C96BC, 0xF0B6E24D, RT->CreateSemaphoreA         },
+        { 0x4C95D8DF, 0x23839135, RT->CreateSemaphoreW         },
+        { 0x8ECEED49, 0xB91D8BFA, RT->CreateSemaphoreExA       },
+        { 0xB62A71B3, 0x2C269677, RT->CreateSemaphoreExW       },
+        { 0x60DA6B28, 0x6AF9FCB6, RT->CreateWaitableTimerA     },
+        { 0x36D3924E, 0xF22D3841, RT->CreateWaitableTimerW     },
+        { 0x3D1086F9, 0x7ADCB925, RT->CreateWaitableTimerExA   },
+        { 0x6FAF9FDA, 0x448DEED2, RT->CreateWaitableTimerExW   },
+        { 0x28AF75DA, 0x9DC87AA2, RT->CreateFileA              },
+        { 0x02C3BD06, 0x68E258F3, RT->CreateFileW              },
+        { 0xDEE66AAD, 0x582829BB, RT->FindFirstFileA           },
+        { 0x2CA21077, 0xEB734887, RT->FindFirstFileW           },
+        { 0x19EC08BE, 0x236E1ADE, RT->FindFirstFileExA         },
+        { 0xCD54D722, 0xB3DD8291, RT->FindFirstFileExW         },
+        { 0xA2973DEC, 0x68050AB3, RT->CreateIoCompletionPort   },
+        { 0x78265D27, 0x62FF3474, RT->CloseHandle              },
+        { 0x56182478, 0xED040027, RT->FindClose                },
     };
 #endif
-    for (int i = 0; i < arrlen(list); i++)
+    for (int i = 0; i < arrlen(kernel32); i++)
     {
-        rdr   item = list[i];
-        void* proc = FindAPI_SC(item.mHash, item.pHash, item.hKey);
+        rdr   item = kernel32[i];
+        void* proc = SC_FindAPI_MA(runtime->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
         }
-        runtime->Redirectors[i].src = proc;
-        runtime->Redirectors[i].dst = item.api;
+        runtime->Kernel32RDR[i].src = proc;
+        runtime->Kernel32RDR[i].dst = item.api;
+    }
+
+    rdr ntdll[] =
+#ifdef _WIN64
+    {
+        { 0x3982604A64E78596, 0xD2E8220B9E91AB06, MT->HeapAlloc   }, // RtlAllocateHeap
+        { 0xF739177359998320, 0x94BE3DC57A355EA9, MT->HeapReAlloc }, // RtlReAllocateHeap
+        { 0xB989CF296AEDD473, 0x98D91AD0B8459B8F, MT->HeapFree    }, // RtlFreeHeap
+        { 0x3D50CA10768C5333, 0xE48E4568E8787962, MT->HeapSize    }, // RtlSizeHeap
+        { 0x0F1F3A80639190F0, 0x5DDCB437BC0EB0B5, TT->ExitThread  }, // RtlExitUserThread
+    };
+#elif _WIN32
+    {
+        { 0x228ABB50, 0x5B0571BF, MT->HeapAlloc   }, // RtlAllocateHeap
+        { 0xFE3F6DB3, 0x5A30B52A, MT->HeapReAlloc }, // RtlReAllocateHeap
+        { 0x8C626652, 0x0AB58ABE, MT->HeapFree    }, // RtlFreeHeap
+        { 0x8D15D816, 0xCEB11EBF, MT->HeapSize    }, // RtlSizeHeap
+        { 0xA1CA7092, 0xF6578A0D, TT->ExitThread  }, // RtlExitUserThread
+    };
+#endif
+    for (int i = 0; i < arrlen(ntdll); i++)
+    {
+        rdr   item = ntdll[i];
+        void* proc = SC_FindAPI_MA(runtime->hNtdll, item.pHash, item.hKey);
+        if (proc == NULL)
+        {
+            return false;
+        }
+        runtime->NtdllRDR[i].src = proc;
+        runtime->NtdllRDR[i].dst = item.api;
     }
     return true;
 }
@@ -1733,8 +1757,9 @@ void* RT_malloc(uint size)
     }
     // ensure the size is a multiple of memory page size.
     // it also for prevent track the special page size.
-    uint pageSize = (((size + 16) / runtime->PageSize) + 1) * runtime->PageSize;
-    void* addr = runtime->VirtualAlloc(NULL, pageSize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    SIZE_T pSize = (((size + 16) / runtime->PageSize) + 1) * runtime->PageSize;
+    DWORD  type  = MEM_COMMIT|MEM_RESERVE;
+    void* addr = runtime->VirtualAlloc(NULL, pSize, type, PAGE_READWRITE);
     if (addr == NULL)
     {
         return NULL;
@@ -1746,7 +1771,7 @@ void* RT_malloc(uint size)
     // record buffer size
     mem_copy(address, &size, sizeof(size));
     // record buffer capacity
-    uint cap = pageSize - 16;
+    uint cap = pSize - 16;
     mem_copy(address + sizeof(size), &cap, sizeof(cap));
     dbg_log("[runtime]", "malloc size: %zu", size);
     return (void*)(address + 16);
@@ -1982,23 +2007,23 @@ bool RT_flush_api_cache()
 }
 
 __declspec(noinline)
-void* FindAPI_SC_MA(void* module, uint procedure, uint key)
+void* SC_FindAPI_MA(void* module, uint procedure, uint key)
 {
     Runtime* runtime = getRuntimePointer();
 
-    return FindAPI_SC_MAL(runtime->PML, module, procedure, key);
+    return SC_FindAPI_MAL(runtime->PML, module, procedure, key);
 }
 
 __declspec(noinline)
-void* FindAPI_SC_MH(uint module, uint procedure, uint key)
+void* SC_FindAPI_MH(uint module, uint procedure, uint key)
 {
     Runtime* runtime = getRuntimePointer();
 
-    return FindAPI_SC_MHL(runtime->PML, module, procedure, key);
+    return SC_FindAPI_MHL(runtime->PML, module, procedure, key);
 }
 
 __declspec(noinline)
-void* FindAPI_SC_MAL(PML* pml, void* module, uint procedure, uint key)
+void* SC_FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
 {
     void* proc = FindAPI_MAL(pml, module, procedure, key);
     if (proc == NULL)
@@ -2010,7 +2035,7 @@ void* FindAPI_SC_MAL(PML* pml, void* module, uint procedure, uint key)
 }
 
 __declspec(noinline)
-void* FindAPI_SC_MHL(PML* pml, uint module, uint procedure, uint key)
+void* SC_FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
 {
     void* proc = FindAPI_MHL(pml, module, procedure, key);
     if (proc == NULL)
@@ -2082,6 +2107,11 @@ void* RT_FindMod_MHL(PML* pml, uint module, uint key)
 __declspec(noinline)
 void* RT_FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
 {
+    if (module == NULL)
+    {
+        SetLastErrno(ERR_RUNTIME_INVALID_HMODULE);
+        return NULL;
+    }
     // check the module is exists
     if (!IsValidModuleHandle(pml, module))
     {
@@ -2089,7 +2119,7 @@ void* RT_FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
         return NULL;
     }
     // try to find Windows API
-    void* proc = FindAPI_SC_MAL(pml, module, procedure, key);
+    void* proc = SC_FindAPI_MAL(pml, module, procedure, key);
     if (proc == NULL)
     {
         SetLastErrno(ERR_RUNTIME_PROCEDURE_NOT_FOUND);
@@ -2191,7 +2221,7 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
     uint hKey  = 0xFFFFFFFF;
     uint pHash = CalcProcHash(lpProcName, hKey);
     // try to find Windows API
-    void* proc = FindAPI_SC_MAL(runtime->PML, hModule, pHash, hKey);
+    void* proc = SC_FindAPI_MA(hModule, pHash, hKey);
     if (proc == NULL)
     {
         // if not found, use native GetProcAddress and try again
@@ -2334,9 +2364,18 @@ static void* getAPIRedirector(void* proc)
 {
     Runtime* runtime = getRuntimePointer();
 
-    for (int i = 0; i < arrlen(runtime->Redirectors); i++)
+    for (int i = 0; i < arrlen(runtime->Kernel32RDR); i++)
     {
-        API_RDR rdr = runtime->Redirectors[i];
+        API_RDR rdr = runtime->Kernel32RDR[i];
+        if (rdr.src != proc)
+        {
+            continue;
+        }
+        return rdr.dst;
+    }
+    for (int i = 0; i < arrlen(runtime->NtdllRDR); i++)
+    {
+        API_RDR rdr = runtime->NtdllRDR[i];
         if (rdr.src != proc)
         {
             continue;
