@@ -38,13 +38,20 @@ typedef struct {
     UNICODE_STRING BaseName;
 } PML;
 
+// FindMod like GetModuleHandle, but provide module name hash and key.
+//
 // FindAPI will not call GetProcAddress, if this module is not loaded,
 // it cannot find the target procedure address.
 //
 // FindAPI is support forwarded exports.
 // FindAPI is NOT support DLL about API Sets.
 //
-// FindMod like GetModuleHandle, but provide module name and key.
+// When the procedure hash is HASH_API_ORDINAL, set the argument
+// key to the target function ordinal for try to get it.
+//
+// FindAPI is NOT support multi forwarded exports with ordinal.
+
+#define HASHAPI_ORDINAL 0xFFFFFFFF
 
 // MH means with module hash. MA means with module address(HMODULE).
 typedef void* (*FindMod_MH_t)(uint  module, uint key);
