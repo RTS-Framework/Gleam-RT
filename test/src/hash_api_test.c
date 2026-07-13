@@ -7,13 +7,13 @@
 typedef void* HMODULE;
 
 __declspec(dllimport)
-UINT __stdcall WinExec(LPCSTR lpCmdLine, UINT uCmdShow);
-
-__declspec(dllimport)
 HMODULE __stdcall LoadLibraryA(LPSTR module);
 
 __declspec(dllimport)
 void* __stdcall GetProcAddress(HMODULE module, LPSTR procedure);
+
+__declspec(dllimport)
+UINT __stdcall WinExec(LPCSTR lpCmdLine, UINT uCmdShow);
 
 static bool TestFindMod_MH();
 static bool TestFindAPI_MA();
@@ -25,6 +25,7 @@ static bool TestFindMod_A();
 static bool TestFindMod_W();
 static bool TestFindAPI_A();
 static bool TestFindAPI_W();
+static bool TestOrdinal();
 static bool TestForwarded();
 static bool TestNotFound();
 static bool TestNULLArgument();
@@ -47,6 +48,7 @@ bool TestHashAPI()
         { TestFindMod_W      },
         { TestFindAPI_A      },
         { TestFindAPI_W      },
+        { TestOrdinal        },
         { TestForwarded      },
         { TestNotFound       },
         { TestNULLArgument   },
@@ -309,6 +311,33 @@ static bool TestFindAPI_W()
         return false;
     }
     printf_s("WinExec: 0x%llX\n", (uint64)proc);
+    return true;
+}
+
+static bool TestOrdinal()
+{
+    HMODULE hModule = LoadLibraryA("kernel32.dll");
+    if (hModule == NULL)
+    {
+        printf_s("failed to load kernel32.dll\n");
+        return false;
+    }
+
+    void* expected = GetProcAddress(hModule, (LPSTR)(0x0001));
+    if (expected == NULL)
+    {
+        printf_s("invalid expected procedure\n");
+        return false;
+    }
+    void* proc = FindAPI_MA(hModule, HASHAPI_ORDINAL, 0x0001);
+    if (proc != expected)
+    {
+        printf_s("Result:   %llX\n", (uint64)proc);
+        printf_s("Expected: %llX\n", (uint64)expected);
+        printf_s("Ordinal#1 address is incorrect\n");
+        return false;
+    }
+    printf_s("Ordinal#1: 0x%llX\n", (uint64)proc);
     return true;
 }
 
