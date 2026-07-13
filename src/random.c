@@ -2,66 +2,63 @@
 #include "rel_addr.h"
 #include "random.h"
 
-static uint64  rand(uint64 seed, uint64 mod);
-static uint64  ror(uint64 value, uint8 bits);
-static uintptr getStackAddr();
+static uint64 generateSeed();
+static uint64 getStackAddr();
+static uint64 rand(uint64 seed, uint64 mod);
+static uint64 ror(uint64 value, uint8 bits);
 
 #pragma optimize("t", on)
 
 int RandInt(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
-#ifdef _WIN64
-    return (int)rand(seed, UINT64_MAX);
-#elif _WIN32
     return (int)rand(seed, UINT32_MAX);
-#endif
 }
 
 int8 RandInt8(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (int8)rand(seed, UINT8_MAX);
 }
 
 int16 RandInt16(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (int16)rand(seed, UINT16_MAX);
 }
 
 int32 RandInt32(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (int32)rand(seed, UINT32_MAX);
 }
 
 int64 RandInt64(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (int64)rand(seed, UINT64_MAX);
 }
 
 uint RandUint(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
 #ifdef _WIN64
     return (uint)rand(seed, UINT64_MAX);
@@ -72,45 +69,45 @@ uint RandUint(uint64 seed)
 
 uint8 RandUint8(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (uint8)rand(seed, UINT8_MAX);
 }
 
 uint16 RandUint16(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (uint16)rand(seed, UINT16_MAX);
 }
 
 uint32 RandUint32(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (uint32)rand(seed, UINT32_MAX);
 }
 
 uint64 RandUint64(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return rand(seed, UINT64_MAX);
 }
 
 int RandIntN(uint64 seed, int n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     int num = RandInt(seed) % n;
     if (num < 0)
@@ -122,9 +119,9 @@ int RandIntN(uint64 seed, int n)
 
 int8 RandInt8N(uint64 seed, int8 n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     int8 num = RandInt8(seed) % n;
     if (num < 0)
@@ -136,9 +133,9 @@ int8 RandInt8N(uint64 seed, int8 n)
 
 int16 RandInt16N(uint64 seed, int16 n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     int16 num = RandInt16(seed) % n;
     if (num < 0)
@@ -150,9 +147,9 @@ int16 RandInt16N(uint64 seed, int16 n)
 
 int32 RandInt32N(uint64 seed, int32 n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     int32 num = RandInt32(seed) % n;
     if (num < 0)
@@ -164,9 +161,9 @@ int32 RandInt32N(uint64 seed, int32 n)
 
 int64 RandInt64N(uint64 seed, int64 n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     int64 num = RandInt64(seed) % n;
     if (num < 0)
@@ -178,72 +175,72 @@ int64 RandInt64N(uint64 seed, int64 n)
 
 uint RandUintN(uint64 seed, uint n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return RandUint(seed) % n;
 }
 
 uint8 RandUint8N(uint64 seed, uint8 n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return RandUint8(seed) % n;
 }
 
 uint16 RandUint16N(uint64 seed, uint16 n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return RandUint16(seed) % n;
 }
 
 uint32 RandUint32N(uint64 seed, uint32 n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return RandUint32(seed) % n;
 }
 
 uint64 RandUint64N(uint64 seed, uint64 n)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return RandUint64(seed) % n;
 }
 
 byte RandByte(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (byte)rand(seed, 256);
 }
 
 bool RandBool(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (bool)rand(seed, 2);
 }
 
 BOOL RandBOOL(uint64 seed)
 {
-    if (seed < 4096)
+    if (seed == 0)
     {
-        seed += GenerateSeed();
+        seed = generateSeed();
     }
     return (BOOL)rand(seed, 2);
 }
@@ -262,8 +259,8 @@ void RandBuffer(void* buf, int64 size)
         times = 16;
     }
     // generate seed from buffer address
-    uint64 seed = (uint64)(buffer);
-    seed += GenerateSeed();
+    uint64 seed = generateSeed();
+    seed += (uint64)(buffer);
     for (int64 i = 0; i < times; i++)
     {
         byte b = *(buffer + i);
@@ -272,20 +269,14 @@ void RandBuffer(void* buf, int64 size)
             b = 170;
         }
         seed += ror(seed, b % 4);
-        seed += b;
+        seed *= b;
     }
     for (int64 i = 0; i < size; i++)
     {
         // xor shift
-    #ifdef _WIN64
         seed ^= seed << 13;
         seed ^= seed >> 7;
         seed ^= seed << 17;
-    #elif _WIN32
-        seed ^= seed << 13;
-        seed ^= seed >> 17;
-        seed ^= seed << 5;
-    #endif
         // write generate byte
         *(buffer + i) = (byte)seed;
     }
@@ -299,7 +290,7 @@ void RandSequence(int* array, int n)
         array[i] = i;
     }
     // swap with random index
-    uint64 seed = GenerateSeed();
+    uint64 seed = generateSeed();
     for (int i = n - 1; i > 0; i--)
     {
         int j = RandIntN(seed, i + 1);
@@ -313,9 +304,27 @@ void RandSequence(int* array, int n)
 }
 
 __declspec(noinline)
+static uint64 generateSeed()
+{
+    uint64 seed = GenerateSeed();
+    seed *= XORShift64(seed);
+    seed += getStackAddr();
+    seed ^= XORShift64(seed);
+    return seed;
+}
+
+#pragma warning(push)
+#pragma warning(disable: 4172)
+static uint64 getStackAddr()
+{
+    uint stack = 0;
+    return (uint64)(&stack);
+}
+#pragma warning(pop)
+
+__declspec(noinline)
 static uint64 rand(uint64 seed, uint64 mod)
 {
-    seed += GenerateSeed();
     uint64 a = (uint64)(GetFuncAddr(&ror));
     uint64 c = (uint64)(GetFuncAddr(&getStackAddr));
     int times = 8 + seed % 32;
@@ -324,12 +333,10 @@ static uint64 rand(uint64 seed, uint64 mod)
         // just play game
         a += ror(a, 3);
         c += ror(c, 32);
-        a += getStackAddr();
-        c += getStackAddr();
         seed += ror(seed + a, 3);
         seed += ror(seed + c, 6);
         seed += ror(seed + mod, 9);
-        seed += ror(seed, 1);        
+        seed += ror(seed, 1);
         seed += ror(seed, 17);
         seed = (a * seed + c);
         // xor shift 64
@@ -339,15 +346,6 @@ static uint64 rand(uint64 seed, uint64 mod)
     }
     return seed % mod;
 }
-
-#pragma warning(push)
-#pragma warning(disable: 4172)
-static uintptr getStackAddr()
-{
-    uint stack = 0;
-    return (uintptr)(&stack);
-}
-#pragma warning(pop)
 
 static uint64 ror(uint64 value, uint8 bits)
 {
