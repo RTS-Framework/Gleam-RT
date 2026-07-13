@@ -3,39 +3,41 @@
 #include "random.h"
 #include "test.h"
 
-static void TestGenerateSeed();
-static void TestRandInt();
-static void TestRandInt8();
-static void TestRandInt16();
-static void TestRandInt32();
-static void TestRandInt64();
-static void TestRandUint();
-static void TestRandUint8();
-static void TestRandUint16();
-static void TestRandUint32();
-static void TestRandUint64();
-static void TestRandIntN();
-static void TestRandInt8N();
-static void TestRandInt16N();
-static void TestRandInt32N();
-static void TestRandInt64N();
-static void TestRandUintN();
-static void TestRandUint8N();
-static void TestRandUint16N();
-static void TestRandUint32N();
-static void TestRandUint64N();
-static void TestRandByte();
-static void TestRandBool();
-static void TestRandBOOL();
-static void TestRandBuffer();
-static void TestRandSequence();
+static bool TestGenerateSeed();
+static bool TestDeterminism();
+static bool TestRandInt();
+static bool TestRandInt8();
+static bool TestRandInt16();
+static bool TestRandInt32();
+static bool TestRandInt64();
+static bool TestRandUint();
+static bool TestRandUint8();
+static bool TestRandUint16();
+static bool TestRandUint32();
+static bool TestRandUint64();
+static bool TestRandIntN();
+static bool TestRandInt8N();
+static bool TestRandInt16N();
+static bool TestRandInt32N();
+static bool TestRandInt64N();
+static bool TestRandUintN();
+static bool TestRandUint8N();
+static bool TestRandUint16N();
+static bool TestRandUint32N();
+static bool TestRandUint64N();
+static bool TestRandByte();
+static bool TestRandBool();
+static bool TestRandBOOL();
+static bool TestRandBuffer();
+static bool TestRandSequence();
 
 bool TestRandom()
 {
-    typedef void (*test_t)();
+    typedef bool (*test_t)();
     test_t tests[] = 
     {
         { TestGenerateSeed },
+        { TestDeterminism  },
         { TestRandInt      },
         { TestRandInt8     },
         { TestRandInt16    },
@@ -64,12 +66,17 @@ bool TestRandom()
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
-        tests[i]();
+        printf_s("--------------------------------\n");
+        if (!tests[i]())
+        {
+            return false;
+        }
+        printf_s("--------------------------------\n\n");
     }
     return true;
 }
 
-static void TestGenerateSeed()
+static bool TestGenerateSeed()
 {
     printf_s("======TestGenerateSeed begin=======\n");
 
@@ -79,9 +86,32 @@ static void TestGenerateSeed()
     }
 
     printf_s("======TestGenerateSeed passed======\n\n");
+    return true;
 }
 
-static void TestRandInt()
+static bool TestDeterminism()
+{
+    printf_s("=======TestDeterminism begin=======\n");
+
+    int v1 = RandInt(1234);
+    int v2 = RandInt(1234);
+    int v3 = RandInt(1235);
+    if (v1 != v2)
+    {
+        printf_s("same seed but different value\n");
+        return false;
+    }
+    if (v2 == v3)
+    {
+        printf_s("low entropy\n");
+        return false;
+    }
+
+    printf_s("=======TestDeterminism passed======\n\n");
+    return true;
+}
+
+static bool TestRandInt()
 {
     printf_s("=========TestRandInt begin=========\n");
 
@@ -102,9 +132,10 @@ static void TestRandInt()
     }
 
     printf_s("=========TestRandInt passed========\n\n");
+    return true;
 }
 
-static void TestRandInt8()
+static bool TestRandInt8()
 {
     printf_s("=========TestRandInt8 begin=========\n");
 
@@ -125,9 +156,10 @@ static void TestRandInt8()
     }
 
     printf_s("=========TestRandInt8 passed========\n\n");
+    return true;
 }
 
-static void TestRandInt16()
+static bool TestRandInt16()
 {
     printf_s("=========TestRandInt16 begin=========\n");
 
@@ -148,9 +180,10 @@ static void TestRandInt16()
     }
 
     printf_s("=========TestRandInt16 passed========\n\n");
+    return true;
 }
 
-static void TestRandInt32()
+static bool TestRandInt32()
 {
     printf_s("=========TestRandInt32 begin=========\n");
 
@@ -171,9 +204,10 @@ static void TestRandInt32()
     }
 
     printf_s("=========TestRandInt32 passed========\n\n");
+    return true;
 }
 
-static void TestRandInt64()
+static bool TestRandInt64()
 {
     printf_s("========TestRandInt64 begin========\n");
 
@@ -194,9 +228,10 @@ static void TestRandInt64()
     }
 
     printf_s("========TestRandInt64 passed=======\n\n");
+    return true;
 }
 
-static void TestRandUint()
+static bool TestRandUint()
 {
     printf_s("=========TestRandUint begin========\n");
 
@@ -217,9 +252,10 @@ static void TestRandUint()
     }
 
     printf_s("========TestRandUint passed========\n\n");
+    return true;
 }
 
-static void TestRandUint8()
+static bool TestRandUint8()
 {
     printf_s("=======TestRandUint8 begin========\n");
 
@@ -240,9 +276,10 @@ static void TestRandUint8()
     }
 
     printf_s("=======TestRandUint8 passed=======\n\n");
+    return true;
 }
 
-static void TestRandUint16()
+static bool TestRandUint16()
 {
     printf_s("=========TestRandUint16 begin========\n");
 
@@ -263,9 +300,10 @@ static void TestRandUint16()
     }
 
     printf_s("========TestRandUint16 passed========\n\n");
+    return true;
 }
 
-static void TestRandUint32()
+static bool TestRandUint32()
 {
     printf_s("=========TestRandUint32 begin========\n");
 
@@ -286,9 +324,10 @@ static void TestRandUint32()
     }
 
     printf_s("========TestRandUint32 passed========\n\n");
+    return true;
 }
 
-static void TestRandUint64()
+static bool TestRandUint64()
 {
     printf_s("=======TestRandUint64 begin========\n");
 
@@ -309,9 +348,10 @@ static void TestRandUint64()
     }
 
     printf_s("=======TestRandUint64 passed=======\n\n");
+    return true;
 }
 
-static void TestRandIntN()
+static bool TestRandIntN()
 {
     printf_s("==========RandIntN begin===========\n");
 
@@ -327,9 +367,10 @@ static void TestRandIntN()
     }
 
     printf_s("==========RandIntN passed==========\n\n");
+    return true;
 }
 
-static void TestRandInt8N()
+static bool TestRandInt8N()
 {
     printf_s("==========RandInt8N begin===========\n");
 
@@ -345,9 +386,10 @@ static void TestRandInt8N()
     }
 
     printf_s("==========RandInt8N passed==========\n\n");
+    return true;
 }
 
-static void TestRandInt16N()
+static bool TestRandInt16N()
 {
     printf_s("==========RandInt16N begin===========\n");
 
@@ -363,9 +405,10 @@ static void TestRandInt16N()
     }
 
     printf_s("==========RandInt16N passed==========\n\n");
+    return true;
 }
 
-static void TestRandInt32N()
+static bool TestRandInt32N()
 {
     printf_s("==========RandInt32N begin===========\n");
 
@@ -381,9 +424,10 @@ static void TestRandInt32N()
     }
 
     printf_s("==========RandInt32N passed==========\n\n");
+    return true;
 }
 
-static void TestRandInt64N()
+static bool TestRandInt64N()
 {
     printf_s("=========RandInt64N begin==========\n");
 
@@ -399,9 +443,10 @@ static void TestRandInt64N()
     }
 
     printf_s("=========RandInt64N passed=========\n\n");
+    return true;
 }
 
-static void TestRandUintN()
+static bool TestRandUintN()
 {
     printf_s("=========RandUintN begin===========\n");
 
@@ -417,9 +462,10 @@ static void TestRandUintN()
     }
 
     printf_s("=========RandUintN passed==========\n\n");
+    return true;
 }
 
-static void TestRandUint8N()
+static bool TestRandUint8N()
 {
     printf_s("=========RandUint8N begin===========\n");
 
@@ -435,9 +481,10 @@ static void TestRandUint8N()
     }
 
     printf_s("=========RandUint8N passed==========\n\n");
+    return true;
 }
 
-static void TestRandUint16N()
+static bool TestRandUint16N()
 {
     printf_s("=========RandUint16N begin===========\n");
 
@@ -453,9 +500,10 @@ static void TestRandUint16N()
     }
 
     printf_s("=========RandUint16N passed==========\n\n");
+    return true;
 }
 
-static void TestRandUint32N()
+static bool TestRandUint32N()
 {
     printf_s("=========RandUint32N begin===========\n");
 
@@ -471,9 +519,10 @@ static void TestRandUint32N()
     }
 
     printf_s("=========RandUint32N passed==========\n\n");
+    return true;
 }
 
-static void TestRandUint64N()
+static bool TestRandUint64N()
 {
     printf_s("========RandUint64N begin==========\n");
 
@@ -489,9 +538,10 @@ static void TestRandUint64N()
     }
 
     printf_s("========RandUint64N passed=========\n\n");
+    return true;
 }
 
-static void TestRandByte()
+static bool TestRandByte()
 {
     printf_s("========TestRandByte begin=========\n");
 
@@ -512,9 +562,10 @@ static void TestRandByte()
     }
 
     printf_s("========TestRandByte passed========\n\n");
+    return true;
 }
 
-static void TestRandBool()
+static bool TestRandBool()
 {
     printf_s("=========TestRandBool begin========\n");
 
@@ -535,9 +586,10 @@ static void TestRandBool()
     }
 
     printf_s("========TestRandBool passed========\n\n");
+    return true;
 }
 
-static void TestRandBOOL()
+static bool TestRandBOOL()
 {
     printf_s("=========TestRandBOOL begin========\n");
 
@@ -558,9 +610,10 @@ static void TestRandBOOL()
     }
 
     printf_s("========TestRandBOOL passed========\n\n");
+    return true;
 }
 
-static void TestRandBuffer()
+static bool TestRandBuffer()
 {
     printf_s("=======TestRandBuffer begin========\n");
 
@@ -575,9 +628,10 @@ static void TestRandBuffer()
     printf_s("\n");
 
     printf_s("=======TestRandBuffer passed=======\n\n");
+    return true;
 }
 
-static void TestRandSequence()
+static bool TestRandSequence()
 {
     printf_s("========RandSequence begin==========\n");
 
@@ -592,4 +646,5 @@ static void TestRandSequence()
     printf_s("]\n");
 
     printf_s("========RandSequence passed=========\n\n");
+    return true;
 }
