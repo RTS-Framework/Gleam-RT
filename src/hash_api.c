@@ -123,78 +123,91 @@ void* FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
     uint32* nameTable = (uint32*)(dllBase + dir->AddressOfNames);
     uint32* funcTable = (uint32*)(dllBase + dir->AddressOfFunctions);
     uint16* ordiTable = (uint16*)(dllBase + dir->AddressOfNameOrdinals);
-    // enumerate exported names
-    uint32 numNames = dir->NumberOfNames;
-    for (uint32 i = 0; i < numNames; i++)
+    // try to get function RVA
+    uint32 funcRVA = 0;
+    if (procedure == HASHAPI_ORDINAL)
     {
-        // lookup procedure name by index
-        byte* procName = (byte*)(dllBase + nameTable[i]);
-        uint  procHash = seedHash;
-        for (;;)
+        key -= dir->Base;
+        if (key < dir->NumberOfFunctions)
         {
-            byte b = *procName;
-            if (b == 0x00)
+            funcRVA = funcTable[key];
+        }
+    } else {
+        for (uint32 i = 0; i < dir->NumberOfNames; i++)
+        {
+            // lookup procedure name by index
+            byte* procName = (byte*)(dllBase + nameTable[i]);
+            uint  procHash = seedHash;
+            for (;;)
             {
-                break;
+                byte b = *procName;
+                if (b == 0x00)
+                {
+                    break;
+                }
+                procHash = ror(procHash, ROR_PROC);
+                procHash += b;
+                procName++;
             }
-            procHash = ror(procHash, ROR_PROC);
-            procHash += b;
-            procName++;
-        }
-        // calculate the finally hash and compare it
-        procHash += seedHash + keyHash;
-        if (procHash != procedure)
-        {
-            continue;
-        }
-        // name[i] -> ordinal[i] -> funcRVA[ordinal]
-        uint32 funcRVA = funcTable[ordiTable[i]];
-        // check is forwarded export function
-        if (funcRVA < EAT.VirtualAddress || funcRVA >= EAT.VirtualAddress + EAT.Size)
-        {
-            return (void*)(dllBase + funcRVA);
-        }
-        // get the export name
-        byte* exportName = (byte*)(dllBase + funcRVA);
-        // search the last "." in function name
-        byte* src = exportName;
-        uint  dot = 0;
-        for (uint j = 0;; j++)
-        {
-            byte b = *src;
-            if (b == '.')
+            // calculate the finally hash and compare it
+            procHash += seedHash + keyHash;
+            if (procHash != procedure)
             {
-                dot = j;
+                continue;
             }
-            if (b == 0x00)
-            {
-                break;
-            }
-            src++;
+            // name[i] -> ordinal[i] -> funcRVA[ordinal]
+            funcRVA = funcTable[ordiTable[i]];
+            break;
         }
-        // use "mem_init" for prevent incorrect compiler
-        // optimize and generate incorrect instruction
-        byte dllName[512];
-        mem_init(dllName, sizeof(dllName));
-        // prevent array bound when call mem_copy
-        if (dot > 500)
-        {
-            dot = 500;
-        }
-        mem_copy(dllName, exportName, dot + 1);
-        // build DLL name
-        dllName[dot+1] = 'd';
-        dllName[dot+2] = 'l';
-        dllName[dot+3] = 'l';
-        dllName[dot+4] = 0x00;
-        // build procedure name
-        procName = (byte*)((uintptr)exportName + dot + 1);
-        // build module and procedure hash
-        uint mHash = CalcModHash_A(dllName, key);
-        uint pHash = CalcProcHash(procName, key);
-        return FindAPI_MHL(pml, mHash, pHash, key);
     }
-    return NULL;
+    if (funcRVA == 0)
+    {
+        return NULL;
+    }
+    // check it is forwarded export function
+    if (funcRVA < EAT.VirtualAddress || funcRVA >= EAT.VirtualAddress + EAT.Size)
+    {
+        return (void*)(dllBase + funcRVA);
+    }
+    // get the export name
+    byte* exportName = (byte*)(dllBase + funcRVA);
+    // search the last "." in function name
+    byte* src = exportName;
+    uint  dot = 0;
+    for (uint j = 0;; j++)
+    {
+        byte b = *src;
+        if (b == '.')
+        {
+            dot = j;
+        }
+        if (b == 0x00)
+        {
+            break;
+        }
+        src++;
+    }
+    // use "mem_init" for prevent incorrect compiler
+    // optimize and generate incorrect instruction
+    byte dllName[512];
+    mem_init(dllName, sizeof(dllName));
+    // prevent array bound when call mem_copy
+    if (dot > 500)
+    {
+        dot = 500;
+    }
+    mem_copy(dllName, exportName, dot + 1);
+    // build DLL name
+    dllName[dot + 1] = 'd';
+    dllName[dot + 2] = 'l';
+    dllName[dot + 3] = 'l';
+    dllName[dot + 4] = 0x00;
+    // build procedure name
+    byte* procName = (byte*)((uintptr)exportName + dot + 1);
+    // build module and procedure hash
+    uint mHash = CalcModHash_A(dllName, key);
+    uint pHash = CalcProcHash(procName, key);
+    return FindAPI_MHL(pml, mHash, pHash, key);
 }
 
 __declspec(noinline)
