@@ -15,10 +15,10 @@
 
 #define PARALLEL_LEVEL 8
 
-static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox);
-static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox);
-static void initSBox(byte* sBox, byte* key, byte* iv);
-static void reverseSBox(byte* sBox);
+static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox);
+static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox);
+static void initSBox(byte* sbox, byte* key, byte* iv);
+static void reverseSBox(byte* sbox);
 static byte ror(byte value, uint8 bits);
 static byte rol(byte value, uint8 bits);
 
@@ -30,12 +30,12 @@ void EncryptBuffer(void* buf, uint size, byte* key, byte* iv)
     {
         return;
     }
-    byte sBox[256];
-    initSBox(sBox, key, iv);
-    encryptBuffer(buf, size, key, iv, sBox);
+    byte sbox[256];
+    initSBox(sbox, key, iv);
+    encryptBuffer(buf, size, key, iv, sbox);
 }
 
-static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
+static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 {
     // just generate from random data
     uint32 seeds[8] = {
@@ -99,14 +99,14 @@ static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
         register byte b7 = (byte)(block >> 56);
 
         // substitution
-        b0 = sBox[b0];
-        b1 = sBox[b1];
-        b2 = sBox[b2];
-        b3 = sBox[b3];
-        b4 = sBox[b4];
-        b5 = sBox[b5];
-        b6 = sBox[b6];
-        b7 = sBox[b7];
+        b0 = sbox[b0];
+        b1 = sbox[b1];
+        b2 = sbox[b2];
+        b3 = sbox[b3];
+        b4 = sbox[b4];
+        b5 = sbox[b5];
+        b6 = sbox[b6];
+        b7 = sbox[b7];
 
         b0 ^= seed0;
         b1 ^= seed1;
@@ -172,14 +172,14 @@ static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
         b7 ^= (seed7 >> 24);
 
         // substitution
-        b0 = sBox[b0];
-        b1 = sBox[b1];
-        b2 = sBox[b2];
-        b3 = sBox[b3];
-        b4 = sBox[b4];
-        b5 = sBox[b5];
-        b6 = sBox[b6];
-        b7 = sBox[b7];
+        b0 = sbox[b0];
+        b1 = sbox[b1];
+        b2 = sbox[b2];
+        b3 = sbox[b3];
+        b4 = sbox[b4];
+        b5 = sbox[b5];
+        b6 = sbox[b6];
+        b7 = sbox[b7];
 
         // diffuse cipher data
         b0 ^= last;
@@ -240,7 +240,7 @@ static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
         byte b = buf[i];
 
         // substitution
-        b = sBox[b];
+        b = sbox[b];
 
         // xor and ror
         b ^= seed;
@@ -252,7 +252,7 @@ static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
         b ^= (seed >> 24);
 
         // substitution
-        b = sBox[b];
+        b = sbox[b];
 
         // diffuse cipher data
         b ^= last;
@@ -271,13 +271,13 @@ void DecryptBuffer(void* buf, uint size, byte* key, byte* iv)
     {
         return;
     }
-    byte sBox[256];
-    initSBox(sBox, key, iv);
-    reverseSBox(sBox);
-    decryptBuffer(buf, size, key, iv, sBox);
+    byte sbox[256];
+    initSBox(sbox, key, iv);
+    reverseSBox(sbox);
+    decryptBuffer(buf, size, key, iv, sbox);
 }
 
-static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
+static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 {
     // just generate from random data
     uint32 seeds[8] = {
@@ -357,14 +357,14 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
         last = lastc;
 
         // substitution
-        b0 = sBox[b0];
-        b1 = sBox[b1];
-        b2 = sBox[b2];
-        b3 = sBox[b3];
-        b4 = sBox[b4];
-        b5 = sBox[b5];
-        b6 = sBox[b6];
-        b7 = sBox[b7];
+        b0 = sbox[b0];
+        b1 = sbox[b1];
+        b2 = sbox[b2];
+        b3 = sbox[b3];
+        b4 = sbox[b4];
+        b5 = sbox[b5];
+        b6 = sbox[b6];
+        b7 = sbox[b7];
 
         b0 ^= (seed0 >> 24);
         b1 ^= (seed1 >> 24);
@@ -430,14 +430,14 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
         b7 ^= seed7;
 
         // substitution
-        b0 = sBox[b0];
-        b1 = sBox[b1];
-        b2 = sBox[b2];
-        b3 = sBox[b3];
-        b4 = sBox[b4];
-        b5 = sBox[b5];
-        b6 = sBox[b6];
-        b7 = sBox[b7];
+        b0 = sbox[b0];
+        b1 = sbox[b1];
+        b2 = sbox[b2];
+        b3 = sbox[b3];
+        b4 = sbox[b4];
+        b5 = sbox[b5];
+        b6 = sbox[b6];
+        b7 = sbox[b7];
 
         // diffuse seed
         uint32 diff0 = (uint32)(block >> 0);
@@ -494,7 +494,7 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
         last = lastc;
 
         // substitution
-        b = sBox[b];
+        b = sbox[b];
 
        // xor and rol
         b ^= (seed >> 24);
@@ -506,21 +506,21 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sBox)
         b ^= seed;
 
         // substitution
-        b = sBox[b];
+        b = sbox[b];
 
         // store plain data
         buf[i] = b;
     }
 }
 
-static void initSBox(byte* sBox, byte* key, byte* iv)
+static void initSBox(byte* sbox, byte* key, byte* iv)
 {
     // initialize S-Box byte array
     for (int i = 0; i < 256; i++)
     {
         // + key[0] is used to prevent
         // incorrect compiler optimization
-        sBox[i] = (byte)i + key[0];
+        sbox[i] = (byte)i + key[0];
     }
     // initialize seed for XOR Shift;
     uint32 seed = 0x2294FD61;
@@ -539,19 +539,19 @@ static void initSBox(byte* sBox, byte* key, byte* iv)
         seed = XORShift32(seed);
         byte idx0 = (byte)(seed+32);
         byte idx1 = (byte)(seed+64);
-        byte swap = sBox[idx0];
-        sBox[idx0] = sBox[idx1];
-        sBox[idx1] = swap;
+        byte swap = sbox[idx0];
+        sbox[idx0] = sbox[idx1];
+        sbox[idx1] = swap;
     }
 }
 
-static void reverseSBox(byte* sBox)
+static void reverseSBox(byte* sbox)
 {
     byte buf[256];
-    mem_copy(buf, sBox, sizeof(buf));
+    mem_copy(buf, sbox, sizeof(buf));
     for (int i = 0; i < 256; i++)
     {
-        sBox[buf[i]] = (byte)i;
+        sbox[buf[i]] = (byte)i;
     }
 }
 
@@ -586,6 +586,10 @@ void XORBuffer(void* buf, uint bufSize, void* key, uint keySize)
 #pragma optimize("", off)
 void EraseBuffer(void* buf, uint size)
 {
+    if (size == 0)
+    {
+        return;
+    }
     RandBuffer(buf, size);
     mem_init(buf, size);
 }
@@ -689,6 +693,51 @@ void EraseInstruction(void* buf, uint size)
 
         inst++;
         size--;
+    }
+}
+#pragma optimize("t", off)
+
+#pragma optimize("t", on)
+void ShuffleBuffer(void* buf, uint size)
+{
+    if (size <= 1)
+    {
+        return;
+    }
+    byte* buffer = buf;
+    uint64  seed = GenerateSeed();
+    for (uint i = size - 1; i > 0; i--)
+    {
+        uint j = RandUintN(seed, i + 1);
+        byte tmp  = buffer[i];
+        buffer[i] = buffer[j];
+        buffer[j] = tmp;
+        // update seed
+        seed = XORShift64(seed);
+    }
+}
+#pragma optimize("t", off)
+
+#pragma optimize("t", on)
+void SubstituteBuffer(void* buf, uint size)
+{
+    if (size == 0)
+    {
+        return;
+    }
+    byte* buffer = buf;
+    // generate a random S-box.
+    byte sbox[256];
+    mem_init(sbox, sizeof(sbox));
+    for (uint i = 0; i < 256; i++)
+    {
+        sbox[i] = (byte)i;
+    }
+    ShuffleBuffer(sbox, sizeof(sbox));
+    // substitute buffer.
+    for (uint i = 0; i < size; i++)
+    {
+        buffer[i] = sbox[buffer[i]];
     }
 }
 #pragma optimize("t", off)
