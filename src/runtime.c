@@ -19,6 +19,7 @@
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "detector.h"
 #include "mod_library.h"
 #include "mod_memory.h"
@@ -201,16 +202,7 @@ void* SC_FindAPI_MHL(PML* pml, uint  module, uint procedure, uint key);
 uint MW_MemScanByValue(void* value, uint size, uintptr* results, uint maxItem);
 uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem);
 
-// hard encoded address in getRuntimePointer for replacement
-#ifdef _WIN64
-    #define RUNTIME_POINTER 0x7FABCDEF111111FF
-#elif _WIN32
-    #define RUNTIME_POINTER 0x7FAB11FF
-#endif
 static Runtime* getRuntimePointer();
-
-static bool rt_lock();
-static bool rt_unlock();
 
 static bool  loadOptionFromStub(Runtime_Opts* opts);
 static bool  checkOptionConflict(Runtime_Opts* opts);
@@ -225,8 +217,6 @@ static void* calculateEpilogue();
 static bool  initRuntimeAPI(Runtime* runtime);
 static bool  adjustPageProtect(Runtime* runtime, DWORD* old);
 static bool  recoverPageProtect(Runtime* runtime, DWORD protect);
-static bool  updateRuntimePointer(Runtime* runtime);
-static bool  recoverRuntimePointer(Runtime* runtime);
 static errno initRuntimeEnvironment(Runtime* runtime);
 static errno initSubmodules(Runtime* runtime);
 static errno initDetector(Runtime* runtime, Context* context);
@@ -245,12 +235,16 @@ static errno initSysmon(Runtime* runtime, Context* context);
 static errno initShield(Runtime* runtime, Context* context);
 static bool  initAPIRedirector(Runtime* runtime);
 static bool  flushInstructionCache(Runtime* runtime);
+static bool  updateRuntimePointer(Runtime* runtime);
 static void  eraseArgumentStub(Runtime* runtime);
 static void  eraseRuntimeMethods(Runtime* runtime);
 static void  recoverErrorMode(Runtime* runtime);
 static errno cleanRuntime(Runtime* runtime, bool init);
 static errno closeHandles(Runtime* runtime);
 static void  interruptInit(Runtime* runtime);
+
+static bool rt_lock();
+static bool rt_unlock();
 
 static void* getRuntimeMethods(LPCSTR lpProcName);
 static void* getAPIRedirector(void* proc);
@@ -361,11 +355,6 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
             errno = ERR_RUNTIME_ADJUST_PROTECT;
             break;
         }
-        if (!updateRuntimePointer(runtime))
-        {
-            errno = ERR_RUNTIME_UPDATE_PTR;
-            break;
-        }
         errno = initRuntimeEnvironment(runtime);
         if (errno != NO_ERROR)
         {
@@ -383,6 +372,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         }
         break;
     }
+    updateRuntimePointer(runtime);
     // if failed to initialize runtime, erase argument stub if memory page can write.
     if (errno > ERR_RUNTIME_ADJUST_PROTECT || opts->NotAdjustProtect)
     {
@@ -401,7 +391,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     }
     if (errno == NO_ERROR && !flushInstructionCache(runtime))
     {
-        errno = ERR_RUNTIME_FLUSH_INST;
+        errno = ERR_RUNTIME_FLUSH_INSTRUCTION;
     }
     // check initialize elapsed time is too long
     int32 tick = runtime->GetTickCount();
@@ -419,6 +409,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     // compare the hash after initialized.
     if (opts->NotEraseInstruction)
     {
+        // store the old hash before rebuild info
         byte hash[32];
         mem_copy(hash, runtime->Info.Hash, sizeof(hash));
         buildRuntimeInformation(runtime);
@@ -551,8 +542,11 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Random.Buffer   = GetFuncAddr(&RandBuffer);
     module->Random.Sequence = GetFuncAddr(&RandSequence);
     // crypto module
-    module->Crypto.XOR   = GetFuncAddr(&XORBuffer);
-    module->Crypto.Erase = GetFuncAddr(&EraseBuffer);
+    module->Crypto.XORBuffer        = GetFuncAddr(&XORBuffer);
+    module->Crypto.SubstituteBuffer = GetFuncAddr(&SubstituteBuffer);
+    module->Crypto.ShuffleBuffer    = GetFuncAddr(&ShuffleBuffer);
+    module->Crypto.EraseBuffer      = GetFuncAddr(&EraseBuffer);
+    module->Crypto.EraseInstruction = GetFuncAddr(&EraseInstruction);
     // compress module
     module->Compressor.Compress   = GetFuncAddr(&Compress);
     module->Compressor.Decompress = GetFuncAddr(&Decompress);
@@ -714,9 +708,9 @@ static uint32 calcArgumentStubSize()
 static PEB* getPEBPointer()
 {
 #ifdef _WIN64
-    TEB* teb = __readgsqword(0x30);
+    TEB* teb = (TEB*)__readgsqword(0x30);
 #elif _WIN32
-    TEB* teb = __readfsdword(0x18);
+    TEB* teb = (TEB*)__readfsdword(0x18);
 #endif
     return teb->ProcessEnvironmentBlock;
 }
@@ -767,7 +761,8 @@ static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32)
         return NULL;
     }
     SIZE_T size = MAIN_MEM_PAGE_SIZE + (1 + RandUintN(0, 32)) * 1024;
-    LPVOID addr = virtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    DWORD  type = MEM_COMMIT|MEM_RESERVE;
+    LPVOID addr = virtualAlloc(NULL, size, type, PAGE_READWRITE);
     if (addr == NULL)
     {
         return NULL;
@@ -919,48 +914,6 @@ static bool initRuntimeAPI(Runtime* runtime)
     runtime->SleepEx                = list[0x1B].proc;
     runtime->ExitProcess            = list[0x1C].proc;
     return true;
-}
-
-// CANNOT merge updateRuntimePointer and recoverRuntimePointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
-static bool updateRuntimePointer(Runtime* runtime)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getRuntimePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != RUNTIME_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)runtime;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool recoverRuntimePointer(Runtime* runtime)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getRuntimePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)runtime)
-        {
-            target++;
-            continue;
-        }
-        *pointer = RUNTIME_POINTER;
-        success = true;
-        break;
-    }
-    return success;
 }
 
 static errno initRuntimeEnvironment(Runtime* runtime)
@@ -1343,7 +1296,6 @@ static bool initAPIRedirector(Runtime* runtime)
         { 0x5AD097EF20CCF2F6, 0x5D7BAE3110895355, GetFuncAddr(&RT_SetErrorMode)         },
         { 0x0BB33DC44169CD1C, 0x962140866F051973, GetFuncAddr(&RT_SleepHR) /* Sleep */  },
         { 0x0C095075F316AE39, 0x058807734232290F, GetFuncAddr(&RT_SleepEx)              },
-
         { 0xCA400801FF61A34E, 0xE1AC9F7852E1B05D, LT->LoadLibraryA             },
         { 0xDBD45608DD3235FA, 0xFEC559962D6601D9, LT->LoadLibraryW             },
         { 0xDD32124FBD682FB9, 0x049E6B412B5D442D, LT->LoadLibraryExA           },
@@ -1410,7 +1362,6 @@ static bool initAPIRedirector(Runtime* runtime)
         { 0x3DC6B776, 0xD5167779, GetFuncAddr(&RT_SetErrorMode)         },
         { 0x6C9410A5, 0x82568B27, GetFuncAddr(&RT_SleepHR) /* Sleep */  },
         { 0xBA37BAF4, 0x0257F540, GetFuncAddr(&RT_SleepEx)              },
-
         { 0xBF4F25FA, 0xA131C539, LT->LoadLibraryA             },
         { 0x55A90F7E, 0x5349346C, LT->LoadLibraryW             },
         { 0xD2755464, 0x45CB6974, LT->LoadLibraryExA           },
@@ -1514,6 +1465,11 @@ static bool initAPIRedirector(Runtime* runtime)
     return true;
 }
 
+static bool updateRuntimePointer(Runtime* runtime)
+{
+    *(Runtime**)(POINTER_OFFSET_RUNTIME) = runtime;
+}
+
 __declspec(noinline)
 static void eraseArgumentStub(Runtime* runtime)
 {
@@ -1541,7 +1497,7 @@ static void eraseRuntimeMethods(Runtime* runtime)
     uintptr begin = (uintptr)(GetFuncAddr(&allocateMainMemoryPage));
     uintptr end   = (uintptr)(GetFuncAddr(&eraseRuntimeMethods));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 // ================ next instructions will not be erased after InitRuntime ================
@@ -1718,8 +1674,7 @@ static void interruptInit(Runtime* runtime)
 #pragma optimize("", off)
 static Runtime* getRuntimePointer()
 {
-    uintptr pointer = RUNTIME_POINTER;
-    return (Runtime*)(pointer);
+    return *(Runtime**)POINTER_OFFSET_RUNTIME;
 }
 #pragma optimize("", on)
 
@@ -2137,12 +2092,13 @@ void* RT_FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
 __declspec(noinline)
 void* RT_FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
 {
-    void* module = RT_FindMod_MHL(pml, module, key);
-    if (module == NULL)
+    HMODULE hModule = RT_FindMod_MHL(pml, module, key);
+    if (hModule == NULL)
     {
+        SetLastErrno(ERR_RUNTIME_INVALID_HMODULE);
         return NULL;
     }
-    return RT_FindAPI_MAL(pml, module, procedure, key);
+    return RT_FindAPI_MAL(pml, hModule, procedure, key);
 }
 
 __declspec(noinline)
@@ -2206,26 +2162,32 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
         }
         return method;
     }
-    // process ordinal import
-    if (lpProcName <= (LPCSTR)(0xFFFF))
-    {
-        return runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
-    }
     // check the module is exists
     if (!IsValidModuleHandle(runtime->PML, hModule))
     {
         SetLastErrno(ERR_RUNTIME_MODULE_NOT_FOUND);
         return NULL;
     }
-    // generate hash for find Windows API address
-    uint hKey  = 0xFFFFFFFF;
-    uint pHash = CalcProcHash(lpProcName, hKey);
-    // try to find Windows API
-    void* proc = SC_FindAPI_MA(hModule, pHash, hKey);
+    // try to get procedure address
+    void* proc;
+    if (lpProcName <= (LPCSTR)(0xFFFF))
+    {
+        // process ordinal import
+        proc = SC_FindAPI_MA(hModule, HASHAPI_ORDINAL, (uint)lpProcName);
+    } else {
+        // generate hash for find Windows API address
+        uint hKey  = 0xFFFFFFFF;
+        uint pHash = CalcProcHash((byte*)lpProcName, hKey);
+        proc = SC_FindAPI_MA(hModule, pHash, hKey);
+    }
+    // if not found, use native GetProcAddress and try again
     if (proc == NULL)
     {
-        // if not found, use native GetProcAddress and try again
-        return runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
+        proc = runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
+        if (proc == NULL)
+        {
+            return NULL;
+        }
     }
     if (!redirect)
     {
@@ -2351,7 +2313,7 @@ static void* getRuntimeMethods(LPCSTR lpProcName)
     for (int i = 0; i < arrlen(list); i++)
     {
         method item = list[i];
-        if (CalcProcHash(lpProcName, item.hKey) != item.pHash)
+        if (CalcProcHash((byte*)lpProcName, item.hKey) != item.pHash)
         {
             continue;
         }
@@ -2476,7 +2438,7 @@ static void* getLazyAPIRedirector(HMODULE hModule, LPCSTR lpProcName)
         {
             continue;
         }
-        if (CalcProcHash(lpProcName, item.hKey) != item.pHash)
+        if (CalcProcHash((byte*)lpProcName, item.hKey) != item.pHash)
         {
             continue;
         }
@@ -2489,9 +2451,9 @@ __declspec(noinline)
 TEB* RT_GetTEB()
 {
 #ifdef _WIN64
-    TEB* teb = __readgsqword(0x30);
+    TEB* teb = (TEB*)__readgsqword(0x30);
 #elif _WIN32
-    TEB* teb = __readfsdword(0x18);
+    TEB* teb = (TEB*)__readfsdword(0x18);
 #endif
     return teb;
 }
@@ -3094,9 +3056,6 @@ errno RT_stop(bool exitThread, uint32 code)
         error = enclr;
     }
 
-    // store original pointer for recover instructions
-    Runtime* stub = runtime;
-
     // must replace it until reach here
     runtime = &clone;
 
@@ -3105,17 +3064,6 @@ errno RT_stop(bool exitThread, uint32 code)
     if (!exitThread)
     {
         addr = GetFuncAddr(&InitRuntime);
-    }
-
-    // recover instructions for generate template must
-    // call it after call cleanRuntime, otherwise event
-    // handler will get the incorrect runtime address
-    if (runtime->Options.NotEraseInstruction)
-    {
-        if (!recoverRuntimePointer(stub) && error == NO_ERROR)
-        {
-            error = ERR_RUNTIME_RECOVER_INST;
-        }
     }
 
     // TODO think it
