@@ -1,17 +1,19 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "dll_msvcrt.h"
 #include "dll_ucrtbase.h"
 #include "lib_memory.h"
-#include "rel_addr.h"
 #include "hash_api.h"
 #include "list_md.h"
+#include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "mod_memory.h"
 #include "debug.h"
 
@@ -51,36 +53,39 @@ typedef struct {
     bool NotEraseInstruction;
 
     // store HashAPI with spoof call
-    FindAPI_t FindAPI;
+    FindAPI_MA_t FindAPI_MA;
 
     // API addresses
-    VirtualAlloc_t          VirtualAlloc;
-    VirtualFree_t           VirtualFree;
-    VirtualProtect_t        VirtualProtect;
-    VirtualQuery_t          VirtualQuery;
-    GetProcessHeap_t        GetProcessHeap;
-    GetProcessHeaps_t       GetProcessHeaps;
-    HeapCreate_t            HeapCreate;
-    HeapDestroy_t           HeapDestroy;
-    HeapAlloc_t             HeapAlloc;
-    HeapReAlloc_t           HeapReAlloc;
-    HeapFree_t              HeapFree;
-    HeapSize_t              HeapSize;
-    HeapLock_t              HeapLock;
-    HeapUnlock_t            HeapUnlock;
-    HeapWalk_t              HeapWalk;
-    GlobalAlloc_t           GlobalAlloc;
-    GlobalReAlloc_t         GlobalReAlloc;
-    GlobalFree_t            GlobalFree;
-    LocalAlloc_t            LocalAlloc;
-    LocalReAlloc_t          LocalReAlloc;
-    LocalFree_t             LocalFree;
-    ReleaseMutex_t          ReleaseMutex;
-    WaitForSingleObject_t   WaitForSingleObject;
-    FlushInstructionCache_t FlushInstructionCache;
-    CloseHandle_t           CloseHandle;
+    VirtualAlloc_t        VirtualAlloc;
+    VirtualFree_t         VirtualFree;
+    VirtualProtect_t      VirtualProtect;
+    VirtualQuery_t        VirtualQuery;
+    GetProcessHeap_t      GetProcessHeap;
+    GetProcessHeaps_t     GetProcessHeaps;
+    HeapCreate_t          HeapCreate;
+    HeapDestroy_t         HeapDestroy;
+    HeapAlloc_t           HeapAlloc;
+    HeapReAlloc_t         HeapReAlloc;
+    HeapFree_t            HeapFree;
+    HeapSize_t            HeapSize;
+    HeapLock_t            HeapLock;
+    HeapUnlock_t          HeapUnlock;
+    HeapWalk_t            HeapWalk;
+    GlobalAlloc_t         GlobalAlloc;
+    GlobalReAlloc_t       GlobalReAlloc;
+    GlobalFree_t          GlobalFree;
+    LocalAlloc_t          LocalAlloc;
+    LocalReAlloc_t        LocalReAlloc;
+    LocalFree_t           LocalFree;
+    ReleaseMutex_t        ReleaseMutex;
+    WaitForSingleObject_t WaitForSingleObject;
+    CloseHandle_t         CloseHandle;
 
-    // Cached API addresses
+    // store core library
+    HMODULE hMsvcrt;
+    HMODULE hUcrtbase;
+
+    // cached API addresses
     msvcrt_malloc_t  msvcrt_malloc;
     msvcrt_calloc_t  msvcrt_calloc;
     msvcrt_realloc_t msvcrt_realloc;
@@ -185,20 +190,13 @@ bool  MT_FlushMu();
 errno MT_FreeAll();
 errno MT_Clean();
 
-// hard encoded address in getTrackerPointer for replacement
-#ifdef _WIN64
-    #define TRACKER_POINTER 0x7FABCDEF111111C2
-#elif _WIN32
-    #define TRACKER_POINTER 0x7FABCDC2
-#endif
 static MemoryTracker* getTrackerPointer();
 
 static bool initTrackerAPI(MemoryTracker* tracker, Context* context);
-static bool updateTrackerPointer(MemoryTracker* tracker);
-static bool recoverTrackerPointer(MemoryTracker* tracker);
-static bool initTrackerEnvironment(MemoryTracker* tracker, Context* context);
+static bool initTrackerEnv(MemoryTracker* tracker, Context* context);
 static void eraseTrackerMethods(Context* context);
 static void cleanTracker(MemoryTracker* tracker);
+static void setTrackerPointer(MemoryTracker* tracker);
 
 static bool allocPage(uintptr address, uint size, uint32 type, uint32 protect);
 static bool reserveRegion(MemoryTracker* tracker, uintptr address, uint size);
@@ -244,7 +242,7 @@ MemoryTracker_M* InitMemoryTracker(Context* context)
     // store options
     tracker->NotEraseInstruction = context->NotEraseInstruction;
     // store HashAPI method
-    tracker->FindAPI = context->FindAPI;
+    tracker->FindAPI_MA = context->FindAPI_MA;
     // initialize tracker
     errno errno = NO_ERROR;
     for (;;)
@@ -254,12 +252,7 @@ MemoryTracker_M* InitMemoryTracker(Context* context)
             errno = ERR_MEMORY_INIT_API;
             break;
         }
-        if (!updateTrackerPointer(tracker))
-        {
-            errno = ERR_MEMORY_UPDATE_PTR;
-            break;
-        }
-        if (!initTrackerEnvironment(tracker, context))
+        if (!initTrackerEnv(tracker, context))
         {
             errno = ERR_MEMORY_INIT_ENV;
             break;
@@ -273,6 +266,7 @@ MemoryTracker_M* InitMemoryTracker(Context* context)
         SetLastErrno(errno);
         return NULL;
     }
+    setTrackerPointer(tracker);
     // create methods for tracker
     MemoryTracker_M* module = (MemoryTracker_M*)moduleAddr;
     // methods for API redirector
@@ -333,54 +327,54 @@ __declspec(noinline)
 static bool initTrackerAPI(MemoryTracker* tracker, Context* context)
 {
     typedef struct {
-        uint mHash; uint pHash; uint hKey; void* proc;
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0xC3D7F454B0F1367C, 0x29CAA1EB805BCCA9, 0xC3DD316E122A78F8 }, // GetProcessHeap
-        { 0x1C65BE5C37AA95C6, 0x9D74C15113BF9588, 0x2379B99B83FE4750 }, // GetProcessHeaps
-        { 0x9B753693D7581756, 0xF68CC0D9B9C7E64A, 0x47B324F64EA3ADF6 }, // HeapCreate
-        { 0xD9394045734EC67B, 0x1F1628B71910002E, 0xB03D2BBD67B6E11E }, // HeapDestroy
-        { 0xCBA2FFCEBBDA6311, 0x2D0E7FFC46A974FA, 0x4CCE4C0F745961A8 }, // HeapAlloc
-        { 0x7648F54F09FFF6A3, 0x6926629478847770, 0x0600B5236324CF2C }, // HeapReAlloc
-        { 0x7859FB6ADEDBFEB3, 0x76F24504A5AFF289, 0xB403CEDF926E940E }, // HeapFree
-        { 0xEB321C1883CE223B, 0xB6A30D8BDD946A2A, 0x6597C0FBEC5BF0FF }, // HeapSize
-        { 0x1B1254B5345E349A, 0xDA42A1FD792C69EF, 0x70A8A70633AB538C }, // HeapLock
-        { 0x177DFB4BF6DC672F, 0x15E96139668EA7F7, 0x81CF522DADFDF307 }, // HeapUnlock
-        { 0x02DBC87FF7E6B0FC, 0xBD878594F6327709, 0xF791420ABA1DD1C4 }, // HeapWalk
-        { 0xCCBAD8DAFD4E4D34, 0xEC3023B51707D6B2, 0xD8EBAD02682CC5E2 }, // GlobalAlloc
-        { 0x1D4619640614CC09, 0xBEA69DC6B8731125, 0x5BD8B2E77A4C988B }, // GlobalReAlloc
-        { 0x715089473E4EED43, 0xB25481578CBAF063, 0x159E7D8AD37AB543 }, // GlobalFree
-        { 0x2E02977F2A4BAD1D, 0xB32694F68FE8E9FC, 0x9F3BA31861DB7C02 }, // LocalAlloc
-        { 0xDAFB72DF65BA28E9, 0x2361FBDA61D3BAF5, 0x44D4C7FE4EB9DD69 }, // LocalReAlloc
-        { 0x52AD04FD4B6F5071, 0x29ADFEAAC6FDF166, 0xF5271D3ECF4E1834 }, // LocalFree
+        { 0x29CAA1EB805BCCA9, 0xC3DD316E122A78F8 }, // GetProcessHeap
+        { 0x9D74C15113BF9588, 0x2379B99B83FE4750 }, // GetProcessHeaps
+        { 0xF68CC0D9B9C7E64A, 0x47B324F64EA3ADF6 }, // HeapCreate
+        { 0x1F1628B71910002E, 0xB03D2BBD67B6E11E }, // HeapDestroy
+        { 0x2D0E7FFC46A974FA, 0x4CCE4C0F745961A8 }, // HeapAlloc
+        { 0x6926629478847770, 0x0600B5236324CF2C }, // HeapReAlloc
+        { 0x76F24504A5AFF289, 0xB403CEDF926E940E }, // HeapFree
+        { 0xB6A30D8BDD946A2A, 0x6597C0FBEC5BF0FF }, // HeapSize
+        { 0xDA42A1FD792C69EF, 0x70A8A70633AB538C }, // HeapLock
+        { 0x15E96139668EA7F7, 0x81CF522DADFDF307 }, // HeapUnlock
+        { 0xBD878594F6327709, 0xF791420ABA1DD1C4 }, // HeapWalk
+        { 0xEC3023B51707D6B2, 0xD8EBAD02682CC5E2 }, // GlobalAlloc
+        { 0xBEA69DC6B8731125, 0x5BD8B2E77A4C988B }, // GlobalReAlloc
+        { 0xB25481578CBAF063, 0x159E7D8AD37AB543 }, // GlobalFree
+        { 0xB32694F68FE8E9FC, 0x9F3BA31861DB7C02 }, // LocalAlloc
+        { 0x2361FBDA61D3BAF5, 0x44D4C7FE4EB9DD69 }, // LocalReAlloc
+        { 0x29ADFEAAC6FDF166, 0xF5271D3ECF4E1834 }, // LocalFree
     };
 #elif _WIN32
     {
-        { 0x2B2C8947, 0x591F6D82, 0x23CCA605 }, // GetProcessHeap
-        { 0xDC1F8608, 0xF9054AF4, 0x2F9DE4C9 }, // GetProcessHeaps
-        { 0xC117F387, 0x89B7E7BE, 0x107ED3A3 }, // HeapCreate
-        { 0x33DAD8BE, 0x4E77EB1F, 0x82826372 }, // HeapDestroy
-        { 0xA94D0696, 0x3CE0326D, 0xD00D5308 }, // HeapAlloc
-        { 0xC6E6CCDB, 0xFEC5B9B9, 0xFEF6F936 }, // HeapReAlloc
-        { 0xD1A2B293, 0x348015B0, 0x30A9FCCE }, // HeapFree
-        { 0x3135D780, 0xC6621F51, 0x10B4DDD1 }, // HeapSize
-        { 0x12210591, 0x12E75344, 0x092B59BB }, // HeapLock
-        { 0x007809E7, 0x5E43C9AA, 0x14D80281 }, // HeapUnlock
-        { 0x9793DD33, 0xA3DC2B5E, 0x21E6D11E }, // HeapWalk
-        { 0xD5B84921, 0xA8709B42, 0x7160502F }, // GlobalAlloc
-        { 0x56C5336E, 0x41B8D2A6, 0x0834A19B }, // GlobalReAlloc
-        { 0xACE5842C, 0xDC734542, 0x47A785C3 }, // GlobalFree
-        { 0xAC5F330D, 0x37007239, 0x94F28D59 }, // LocalAlloc
-        { 0xB350CABB, 0x6E32C276, 0xAEF8A48D }, // LocalReAlloc
-        { 0x7F244816, 0xF9BF581E, 0x0F05B794 }, // LocalFree
+        { 0x591F6D82, 0x23CCA605 }, // GetProcessHeap
+        { 0xF9054AF4, 0x2F9DE4C9 }, // GetProcessHeaps
+        { 0x89B7E7BE, 0x107ED3A3 }, // HeapCreate
+        { 0x4E77EB1F, 0x82826372 }, // HeapDestroy
+        { 0x3CE0326D, 0xD00D5308 }, // HeapAlloc
+        { 0xFEC5B9B9, 0xFEF6F936 }, // HeapReAlloc
+        { 0x348015B0, 0x30A9FCCE }, // HeapFree
+        { 0xC6621F51, 0x10B4DDD1 }, // HeapSize
+        { 0x12E75344, 0x092B59BB }, // HeapLock
+        { 0x5E43C9AA, 0x14D80281 }, // HeapUnlock
+        { 0xA3DC2B5E, 0x21E6D11E }, // HeapWalk
+        { 0xA8709B42, 0x7160502F }, // GlobalAlloc
+        { 0x41B8D2A6, 0x0834A19B }, // GlobalReAlloc
+        { 0xDC734542, 0x47A785C3 }, // GlobalFree
+        { 0x37007239, 0x94F28D59 }, // LocalAlloc
+        { 0x6E32C276, 0xAEF8A48D }, // LocalReAlloc
+        { 0xF9BF581E, 0x0F05B794 }, // LocalFree
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = context->FindAPI(item.mHash, item.pHash, item.hKey);
+        void*  proc = context->FindAPI_MA(context->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -405,63 +399,18 @@ static bool initTrackerAPI(MemoryTracker* tracker, Context* context)
     tracker->LocalReAlloc    = list[0x0F].proc;
     tracker->LocalFree       = list[0x10].proc;
 
-    tracker->VirtualAlloc          = context->VirtualAlloc;
-    tracker->VirtualFree           = context->VirtualFree;
-    tracker->VirtualProtect        = context->VirtualProtect;
-    tracker->VirtualQuery          = context->VirtualQuery;
-    tracker->ReleaseMutex          = context->ReleaseMutex;
-    tracker->WaitForSingleObject   = context->WaitForSingleObject;
-    tracker->FlushInstructionCache = context->FlushInstructionCache;
-    tracker->CloseHandle           = context->CloseHandle;
+    tracker->VirtualAlloc        = context->VirtualAlloc;
+    tracker->VirtualFree         = context->VirtualFree;
+    tracker->VirtualProtect      = context->VirtualProtect;
+    tracker->VirtualQuery        = context->VirtualQuery;
+    tracker->ReleaseMutex        = context->ReleaseMutex;
+    tracker->WaitForSingleObject = context->WaitForSingleObject;
+    tracker->CloseHandle         = context->CloseHandle;
     return true;
 }
 
-// CANNOT merge updateTrackerPointer and recoverTrackerPointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
 __declspec(noinline)
-static bool updateTrackerPointer(MemoryTracker* tracker)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getTrackerPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != TRACKER_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)tracker;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool recoverTrackerPointer(MemoryTracker* tracker)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getTrackerPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)tracker)
-        {
-            target++;
-            continue;
-        }
-        *pointer = TRACKER_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool initTrackerEnvironment(MemoryTracker* tracker, Context* context)
+static bool initTrackerEnv(MemoryTracker* tracker, Context* context)
 {
     // create mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_MT_MUTEX_GLOBAL);
@@ -496,7 +445,7 @@ static bool initTrackerEnvironment(MemoryTracker* tracker, Context* context)
     tracker->RT_realloc = context->realloc;
     tracker->RT_free    = context->free;
     // copy runtime context data
-    tracker->PageSize = context->MPS;
+    tracker->PageSize = (uint32)(context->MPS);
     return true;
 }
 
@@ -510,7 +459,7 @@ static void eraseTrackerMethods(Context* context)
     uintptr begin = (uintptr)(GetFuncAddr(&initTrackerAPI));
     uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethods));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
@@ -525,13 +474,16 @@ static void cleanTracker(MemoryTracker* tracker)
     List_Free(&tracker->Heaps);
 }
 
-// updateTrackerPointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateTrackerPointer will fail.
+__declspec(noinline)
+static void setTrackerPointer(MemoryTracker* tracker)
+{
+    *(MemoryTracker**)(POINTER_OFFSET_MEMORY_TRACKER) = tracker;
+}
+
 #pragma optimize("", off)
 static MemoryTracker* getTrackerPointer()
 {
-    uintptr pointer = TRACKER_POINTER;
-    return (MemoryTracker*)(pointer);
+    return *(MemoryTracker**)(POINTER_OFFSET_MEMORY_TRACKER);
 }
 #pragma optimize("", on)
 
@@ -2309,8 +2261,9 @@ void* MT_MemAlloc(uint size)
     }
     // ensure the size is a multiple of memory page size.
     // it also for prevent track the special page size.
-    uint pageSize = (((size + 16) / tracker->PageSize) + 1) * tracker->PageSize;
-    void* addr = MT_VirtualAlloc(NULL, pageSize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    SIZE_T pSize = (((size + 16) / tracker->PageSize) + 1) * tracker->PageSize;
+    DWORD  type  = MEM_COMMIT|MEM_RESERVE;
+    void* addr = MT_VirtualAlloc(NULL, pSize, type, PAGE_READWRITE);
     if (addr == NULL)
     {
         return NULL;
@@ -2322,7 +2275,7 @@ void* MT_MemAlloc(uint size)
     // record buffer size
     mem_copy(address, &size, sizeof(size));
     // record buffer capacity
-    uint cap = pageSize - 16;
+    uint cap = pSize - 16;
     mem_copy(address + sizeof(size), &cap, sizeof(cap));
     dbg_log("[memory]", "malloc size: %zu", size);
     return (void*)(address + 16);
@@ -3316,15 +3269,6 @@ errno MT_Clean()
     if (!tracker->CloseHandle(tracker->hMutex) && errno == NO_ERROR)
     {
         errno = ERR_MEMORY_CLOSE_MUTEX;
-    }
-
-    // recover instructions
-    if (tracker->NotEraseInstruction)
-    {
-        if (!recoverTrackerPointer(tracker) && errno == NO_ERROR)
-        {
-            errno = ERR_MEMORY_RECOVER_INST;
-        }
     }
 
     dbg_log("[memory]", "regions: %zu", tracker->Regions.Len);
