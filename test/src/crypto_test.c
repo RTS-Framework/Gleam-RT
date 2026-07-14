@@ -10,6 +10,8 @@ static bool TestDecryptBuffer();
 static bool TestXORBuffer();
 static bool TestEraseBuffer();
 static bool TestEraseInstruction();
+static bool TestShuffleBuffer();
+static bool TestSubstituteBuffer();
 
 static void printHexBytes(byte* buf, uint size);
 
@@ -22,6 +24,8 @@ bool TestCrypto()
         { TestXORBuffer        },
         { TestEraseBuffer      },
         { TestEraseInstruction },
+        { TestShuffleBuffer    },
+        { TestSubstituteBuffer },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -179,6 +183,30 @@ static bool TestEraseInstruction()
     printHexBytes(inst, sizeof(inst));
 
     printf_s("======TestEraseInstruction passed=====\n\n");
+    return true;
+}
+
+static bool TestShuffleBuffer()
+{
+    printf_s("=======TestShuffleBuffer begin=======\n");
+
+    byte data[256];
+    ShuffleBuffer(data, sizeof(data));
+    printHexBytes(data, sizeof(data));
+
+    printf_s("=======TestShuffleBuffer passed======\n\n");
+    return true;
+}
+
+static bool TestSubstituteBuffer()
+{
+    printf_s("=======TestSubstituteBuffer begin=======\n");
+
+    byte data[256];
+    SubstituteBuffer(data, sizeof(data));
+    printHexBytes(data, sizeof(data));
+
+    printf_s("=======TestSubstituteBuffer passed======\n\n");
     return true;
 }
 
