@@ -1,16 +1,18 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "lib_string.h"
-#include "rel_addr.h"
 #include "hash_api.h"
 #include "list_md.h"
+#include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "mod_library.h"
 #include "debug.h"
 
@@ -24,8 +26,6 @@ typedef struct {
     int64   counter;
     bool    locked;
 } module;
-
-
 
 typedef struct {
     // store options
@@ -81,18 +81,11 @@ errno LT_Decrypt();
 errno LT_FreeAll();
 errno LT_Clean();
 
-// hard encoded address in getTrackerPointer for replacement
-#ifdef _WIN64
-    #define TRACKER_POINTER 0x7FABCDEF111111C1
-#elif _WIN32
-    #define TRACKER_POINTER 0x7FABCDC1
-#endif
 static LibraryTracker* getTrackerPointer();
 
 static bool initTrackerAPI(LibraryTracker* tracker, Context* context);
-static bool updateTrackerPointer(LibraryTracker* tracker);
-static bool recoverTrackerPointer(LibraryTracker* tracker);
 static bool initTrackerEnvironment(LibraryTracker* tracker, Context* context);
+static void updateTrackerPointer(LibraryTracker* tracker);
 static void eraseTrackerMethods(Context* context);
 static void cleanTracker(LibraryTracker* tracker);
 
@@ -123,11 +116,6 @@ LibraryTracker_M* InitLibraryTracker(Context* context)
             errno = ERR_LIBRARY_INIT_API;
             break;
         }
-        if (!updateTrackerPointer(tracker))
-        {
-            errno = ERR_LIBRARY_UPDATE_PTR;
-            break;
-        }
         if (!initTrackerEnvironment(tracker, context))
         {
             errno = ERR_LIBRARY_INIT_ENV;
@@ -135,6 +123,7 @@ LibraryTracker_M* InitLibraryTracker(Context* context)
         }
         break;
     }
+    updateTrackerPointer(tracker);
     eraseTrackerMethods(context);
     if (errno != NO_ERROR)
     {
@@ -173,28 +162,28 @@ __declspec(noinline)
 static bool initTrackerAPI(LibraryTracker* tracker, Context* context)
 {
     typedef struct {
-        uint mHash; uint pHash; uint hKey; void* proc;
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0xC0B237101193F480, 0x808C2FF22B2D9D78, 0xA68CAAECA3134551 }, // LoadLibraryW
-        { 0x3A0F934DE2C8403B, 0xDFF7EC3F5E560E0A, 0x38F2FD039BF9CA9E }, // LoadLibraryExA
-        { 0xF8A45EBD33103931, 0xDA92307872988E4D, 0xA7B682E33EBE53C4 }, // LoadLibraryExW
-        { 0xBEEDD34783B7006B, 0xCF29FE8E7DEFE800, 0x489EA897EC9610DD }, // FreeLibraryAndExitThread
+        { 0x808C2FF22B2D9D78, 0xA68CAAECA3134551 }, // LoadLibraryW
+        { 0xDFF7EC3F5E560E0A, 0x38F2FD039BF9CA9E }, // LoadLibraryExA
+        { 0xDA92307872988E4D, 0xA7B682E33EBE53C4 }, // LoadLibraryExW
+        { 0xCF29FE8E7DEFE800, 0x489EA897EC9610DD }, // FreeLibraryAndExitThread
     };
 #elif _WIN32
     {
-        { 0x5352450D, 0x9C61C8A0, 0x19146BC3 }, // LoadLibraryW
-        { 0x3D1034C3, 0x734CC1DA, 0xEC23248B }, // LoadLibraryExA
-        { 0x346FEF14, 0xD1B55BF0, 0xA20E3043 }, // LoadLibraryExW
-        { 0x12564EBB, 0xF5407AE5, 0xD65FEC05 }, // FreeLibraryAndExitThread
+        { 0x9C61C8A0, 0x19146BC3 }, // LoadLibraryW
+        { 0x734CC1DA, 0xEC23248B }, // LoadLibraryExA
+        { 0xD1B55BF0, 0xA20E3043 }, // LoadLibraryExW
+        { 0xF5407AE5, 0xD65FEC05 }, // FreeLibraryAndExitThread
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = context->FindAPI(item.mHash, item.pHash, item.hKey);
+        void*  proc = context->FindAPI_MA(context->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -215,48 +204,10 @@ static bool initTrackerAPI(LibraryTracker* tracker, Context* context)
     return true;
 }
 
-// CANNOT merge updateTrackerPointer and recoverTrackerPointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
 __declspec(noinline)
-static bool updateTrackerPointer(LibraryTracker* tracker)
+static void updateTrackerPointer(LibraryTracker* tracker)
 {
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getTrackerPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != TRACKER_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)tracker;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool recoverTrackerPointer(LibraryTracker* tracker)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getTrackerPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)tracker)
-        {
-            target++;
-            continue;
-        }
-        *pointer = TRACKER_POINTER;
-        success = true;
-        break;
-    }
-    return success;
+    *(LibraryTracker**)(POINTER_OFFSET_LIBRARY_TRACKER) = tracker;
 }
 
 __declspec(noinline)
@@ -294,7 +245,7 @@ static void eraseTrackerMethods(Context* context)
     uintptr begin = (uintptr)(GetFuncAddr(&initTrackerAPI));
     uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethods));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
@@ -307,13 +258,10 @@ static void cleanTracker(LibraryTracker* tracker)
     List_Free(&tracker->Modules);
 }
 
-// updateTrackerPointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateTrackerPointer will fail.
 #pragma optimize("", off)
 static LibraryTracker* getTrackerPointer()
 {
-    uintptr pointer = TRACKER_POINTER;
-    return (LibraryTracker*)(pointer);
+    return *(LibraryTracker**)POINTER_OFFSET_LIBRARY_TRACKER;
 }
 #pragma optimize("", on)
 
@@ -566,16 +514,18 @@ void LT_FreeLibraryAndExitThread(HMODULE hLibModule, DWORD dwExitCode)
 {
     LibraryTracker* tracker = getTrackerPointer();
 
+    if (hLibModule == HMODULE_GLEAM_RT)
+    {
+        return;
+    }
+
     if (!LT_Lock())
     {
         return;
     }
 
-    if (hLibModule != HMODULE_GLEAM_RT)
-    {
-        delModule(tracker, hLibModule);
-        tracker->RT_flush_api_cache();
-    }
+    delModule(tracker, hLibModule);
+    tracker->RT_flush_api_cache();
     dbg_log("[library]", "FreeLibraryAndExitThread: 0x%zX", hLibModule);
 
     if (!LT_Unlock())
@@ -583,7 +533,7 @@ void LT_FreeLibraryAndExitThread(HMODULE hLibModule, DWORD dwExitCode)
         return;
     }
 
-    // TODO clean thread
+    // TODO clean thread before exit thread
     tracker->FreeLibraryAndExitThread(hLibModule, dwExitCode);
 }
 
@@ -613,6 +563,8 @@ FARPROC LT_GetProcAddress(HMODULE hModule, LPCSTR lpProcName)
     if (lpProcName > (LPCSTR)(0xFFFF))
     {
         dbg_log("[library]", "GetProcAddress: 0x%zX, %s", hModule, lpProcName);
+    } else {
+        dbg_log("[library]", "GetProcAddress: 0x%zX, %d", hModule, (uint16)lpProcName);
     }
 
     if (!LT_Unlock())
@@ -626,29 +578,17 @@ FARPROC LT_GetProcAddress(HMODULE hModule, LPCSTR lpProcName)
 __declspec(noinline)
 static bool isGleamRT_A(LPCSTR lpLibFileName)
 {
-    // build "GleamRT.dll" string
-    byte module[] = {
-        'G'^0x5D, 'l'^0x2A, 'e'^0x17, 'a'^0xCF,
-        'm'^0x5D, 'R'^0x2A, 'T'^0x17, '.'^0xCF,
-        'd'^0x5D, 'l'^0x2A, 'l'^0x17, 000^0xCF,
-    };
-    byte key[] = { 0x5D, 0x2A, 0x17, 0xCF };
-    XORBuffer(module, sizeof(module), key, sizeof(key));
-    return stricmp_a(module, (byte*)lpLibFileName) == 0;
+    uint32 key  = 0xFFFFFFFF;
+    uint32 hash = 0x65DF1F0C;
+    return CalcModHash32_A((byte*)lpLibFileName, key) == hash;
 }
 
 __declspec(noinline)
 static bool isGleamRT_W(LPCWSTR lpLibFileName)
 {
-    // build "GleamRT.dll" string
-    uint16 module[] = {
-        L'G'^0x147F, L'l'^0xAA72, L'e'^0xCA43, L'a'^0x19B2,
-        L'm'^0x147F, L'R'^0xAA72, L'T'^0xCA43, L'.'^0x19B2,
-        L'd'^0x147F, L'l'^0xAA72, L'l'^0xCA43, 0000^0x19B2,
-    };
-    uint16 key[] = { 0x147F, 0xAA72, 0xCA43, 0x19B2 };
-    XORBuffer(module, sizeof(module), key, sizeof(key));
-    return stricmp_w(module, (uint16*)lpLibFileName) == 0;
+    uint32 key  = 0xFFFFFFFF;
+    uint32 hash = 0x65DF1F0C;
+    return CalcModHash32_W((uint16*)lpLibFileName, key) == hash;
 }
 
 static bool addModule(LibraryTracker* tracker, HMODULE hModule)
@@ -971,15 +911,6 @@ errno LT_Clean()
     if (!tracker->CloseHandle(tracker->hMutex) && errno == NO_ERROR)
     {
         errno = ERR_LIBRARY_CLOSE_MUTEX;
-    }
-
-    // recover instructions
-    if (tracker->NotEraseInstruction)
-    {
-        if (!recoverTrackerPointer(tracker) && errno == NO_ERROR)
-        {
-            errno = ERR_LIBRARY_RECOVER_INST;
-        }
     }
 
     dbg_log("[library]", "modules:    %zu", modules->Len);
