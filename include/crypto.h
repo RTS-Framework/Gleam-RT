@@ -15,11 +15,18 @@ void DecryptBuffer(void* buf, uint size, byte* key, byte* iv);
 // XORBuffer is used to xor data in buffer with key.
 void XORBuffer(void* buf, uint bufSize, void* key, uint keySize);
 
-// EraseBuffer is used to erase data in buffer, it not free memory.
+// EraseBuffer is used to erase data in buffer, it will not free memory.
 void EraseBuffer(void* buf, uint size);
 
 // EraseInstruction is used to erase instruction, it is used to preserve
 // statistical characteristics as much as possible while erasing instructions.
 void EraseInstruction(void* buf, uint size);
+
+// ShuffleBuffer is used to randomly permutes the order of bytes in the buffer.
+void ShuffleBuffer(void* buf, uint size);
+
+// SubstituteBuffer is used to replace each byte in the buffer using
+// a randomly generated substitution table (S-box).
+void SubstituteBuffer(void* buf, uint size);
 
 #endif // CRYPTO_H
