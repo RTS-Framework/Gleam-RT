@@ -86,6 +86,7 @@ typedef struct {
 
 // reference panic from Go
 #define PANIC_UNREACHABLE_CODE 0x00000000
+#define PANIC_INVALID_ARGUMENT 0x00000001
 #define PANIC_REACHABLE_TEST   0x00001000
 
 #ifndef panic
