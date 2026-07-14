@@ -1,28 +1,25 @@
 #include "c_types.h"
+#include "win_structs.h"
 #include "errno.h"
 
 __declspec(noinline)
 void SetLastErrno(errno err)
 {
 #ifdef _WIN64
-    uintptr teb = __readgsqword(0x30);
-    errno*  ptr = (errno*)(teb + 0x68);
+    TEB* teb = (TEB*)__readgsqword(0x30);
 #elif _WIN32
-    uintptr teb = __readfsdword(0x18);
-    errno*  ptr = (errno*)(teb + 0x34);
+    TEB* teb = (TEB*)__readfsdword(0x18);
 #endif
-    *ptr = err;
+    teb->LastErrorValue = err;
 }
 
 __declspec(noinline)
 errno GetLastErrno()
 {
 #ifdef _WIN64
-    uintptr teb = __readgsqword(0x30);
-    errno*  ptr = (errno*)(teb + 0x68);
+    TEB* teb = (TEB*)__readgsqword(0x30);
 #elif _WIN32
-    uintptr teb = __readfsdword(0x18);
-    errno*  ptr = (errno*)(teb + 0x34);
+    TEB* teb = (TEB*)__readfsdword(0x18);
 #endif
-    return *ptr;
+    return teb->LastErrorValue;
 }
