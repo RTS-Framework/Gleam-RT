@@ -1,3 +1,4 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
@@ -80,10 +81,10 @@ errno DT_Stop();
 static Detector* getDetectorPointer();
 
 static bool initDetectorAPI(Detector* detector, Context* context);
-static bool initDetectorEnvironment(Detector* detector, Context* context);
-static void updateDetectorPointer(Detector* detector);
-static void eraseDetectorMethods(Context* context);
-static void cleanDetector(Detector* detector);
+static bool initDetectorEnv(Detector* detector, Context* context);
+static void eraseDetectorMethod(Context* context);
+static void cleanDetectorResource(Detector* detector);
+static void setDetectorPointer(Detector* detector);
 
 static bool detectOnceItem();
 static bool detectLoopItem();
@@ -118,21 +119,21 @@ Detector_M* InitDetector(Context* context)
             errno = ERR_DETECTOR_INIT_API;
             break;
         }
-        if (!initDetectorEnvironment(detector, context))
+        if (!initDetectorEnv(detector, context))
         {
             errno = ERR_DETECTOR_INIT_ENV;
             break;
         }
         break;
     }
-    updateDetectorPointer(detector);
-    eraseDetectorMethods(context);
+    eraseDetectorMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanDetector(detector);
+        cleanDetectorResource(detector);
         SetLastErrno(errno);
         return NULL;
     }
+    setDetectorPointer(detector);
     // create methods for detector
     Detector_M* method = (Detector_M*)methodAddr;
     // methods for user
@@ -160,13 +161,7 @@ static bool initDetectorAPI(Detector* detector, Context* context)
 }
 
 __declspec(noinline)
-static void updateDetectorPointer(Detector* detector)
-{
-    *(Detector**)(POINTER_OFFSET_DETECTOR) = detector;
-}
-
-__declspec(noinline)
-static bool initDetectorEnvironment(Detector* detector, Context* context)
+static bool initDetectorEnv(Detector* detector, Context* context)
 {
     // create mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_DETECTOR_MUTEX);
@@ -238,20 +233,20 @@ static bool initDetectorEnvironment(Detector* detector, Context* context)
 }
 
 __declspec(noinline)
-static void eraseDetectorMethods(Context* context)
+static void eraseDetectorMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initDetectorAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseDetectorMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseDetectorMethod));
     uintptr size  = end - begin;
     EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
-static void cleanDetector(Detector* detector)
+static void cleanDetectorResource(Detector* detector)
 {
     if (detector->CloseHandle != NULL && detector->hMutex != NULL)
     {
@@ -265,6 +260,12 @@ static void cleanDetector(Detector* detector)
     {
         detector->VirtualFree(detector->memTrap, 0, MEM_RELEASE);
     }
+}
+
+__declspec(noinline)
+static void setDetectorPointer(Detector* detector)
+{
+    *(Detector**)(POINTER_OFFSET_DETECTOR) = detector;
 }
 
 #pragma optimize("", off)
