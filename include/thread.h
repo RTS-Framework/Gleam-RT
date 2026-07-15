@@ -2,10 +2,10 @@
 #define THREAD_H
 
 #include "c_types.h"
+#include "dll_kernel32.h"
 
-// CamouflageStartAddress is used to camouflage thread
-// start address, it will return a random address at the
-// text section of current executable image.
-void* CamouflageStartAddress(void* list, void* address);
+// CamouflageStartAddress is used to camouflage thread start address,
+// it will return a random address at the text section of the image.
+void* CamouflageStartAddress(HMODULE hModule, void* address);
 
 #endif // THREAD_H
