@@ -1,23 +1,25 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "dll_advapi32.h"
 #include "dll_ws2_32.h"
 #include "lib_memory.h"
-#include "rel_addr.h"
 #include "hash_api.h"
 #include "list_md.h"
+#include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "mod_resource.h"
 #include "debug.h"
 
-// 00······ types of close function
-// ··0000·· functions about resource
-// ······00 function suffix types
+// 0x00······ types of close function
+// 0x··0000·· functions about resource
+// 0x······00 function suffix types
 
 #define TYPE_MASK 0xFF000000
 #define FUNC_MASK 0xFFFFFF00
@@ -105,8 +107,14 @@ typedef struct {
     // store options
     bool NotEraseInstruction;
 
+    // process environment
+    PML* PML;
+
+    // core dll address
+    HMODULE hKernel32;
+
     // store HashAPI with spoof call
-    FindAPI_t FindAPI;
+    FindAPI_MA_t FindAPI_MA;
 
     // API addresses
     CreateMutexA_t           CreateMutexA;
@@ -137,7 +145,11 @@ typedef struct {
     ReleaseMutex_t           ReleaseMutex;
     WaitForSingleObject_t    WaitForSingleObject;
 
-    // Cached API addresses
+    // cached module handles
+    HMODULE hAdvapi32;
+    HMODULE hWs2_32;
+
+    // cached API addresses
     CancelIoEx_t CancelIoEx;
 
     RegCreateKeyA_t   RegCreateKeyA;
@@ -272,8 +284,8 @@ SOCKET RT_WSASocketW(
     int af, int type, int protocol, POINTER lpProtocolInfo, POINTER g, DWORD dwFlags
 );
 int RT_WSAIoctl(
-    SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuffer, 
-    LPVOID lpvOutBuffer, DWORD cbOutBuffer, DWORD* lpcbBytesReturned, 
+    SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuffer,
+    LPVOID lpvOutBuffer, DWORD cbOutBuffer, DWORD* lpcbBytesReturned,
     POINTER lpOverlapped, POINTER lpCompletionRoutine
 );
 SOCKET RT_socket(int af, int type, int protocol);
@@ -313,26 +325,22 @@ bool  RT_FlushMu();
 errno RT_FreeAll();
 errno RT_Clean();
 
-// hard encoded address in getTrackerPointer for replacement
-#ifdef _WIN64
-    #define TRACKER_POINTER 0x7FABCDEF111111C4
-#elif _WIN32
-    #define TRACKER_POINTER 0x7FABCDC4
-#endif
 static ResourceTracker* getTrackerPointer();
 
 static bool initTrackerAPI(ResourceTracker* tracker, Context* context);
-static bool updateTrackerPointer(ResourceTracker* tracker);
-static bool recoverTrackerPointer(ResourceTracker* tracker);
-static bool initTrackerEnvironment(ResourceTracker* tracker, Context* context);
-static void eraseTrackerMethods(Context* context);
-static void cleanTracker(ResourceTracker* tracker);
+static bool initTrackerEnv(ResourceTracker* tracker, Context* context);
+static void eraseTrackerMethod(Context* context);
+static void cleanTrackerResource(ResourceTracker* tracker);
+static void setTrackerPointer(ResourceTracker* tracker);
 
 static bool addHandle(ResourceTracker* tracker, void* hObject, uint32 source);
 static void delHandle(ResourceTracker* tracker, void* hObject, uint32 type);
 static bool addHandleMu(ResourceTracker* tracker, void* hObject, uint32 source);
 static void delHandleMu(ResourceTracker* tracker, void* hObject, uint32 type);
 static bool setHandleLocker(HANDLE hObject, uint32 func, bool lock);
+
+static HMODULE getAdvapi32Handle(ResourceTracker* tracker);
+static HMODULE getWs2_32Handle(ResourceTracker* tracker);
 
 static void  tryToFindAPI();
 static errno doWSACleanup();
@@ -348,8 +356,12 @@ ResourceTracker_M* InitResourceTracker(Context* context)
     mem_init(tracker, sizeof(ResourceTracker));
     // store options
     tracker->NotEraseInstruction = context->NotEraseInstruction;
+    // store process environment
+    tracker->PML = context->PML;
+    // store core dll address
+    tracker->hKernel32 = context->hKernel32;
     // store HashAPI method
-    tracker->FindAPI = context->FindAPI;
+    tracker->FindAPI_MA = context->FindAPI_MA;
     // initialize tracker
     errno errno = NO_ERROR;
     for (;;)
@@ -359,25 +371,21 @@ ResourceTracker_M* InitResourceTracker(Context* context)
             errno = ERR_RESOURCE_INIT_API;
             break;
         }
-        if (!updateTrackerPointer(tracker))
-        {
-            errno = ERR_RESOURCE_UPDATE_PTR;
-            break;
-        }
-        if (!initTrackerEnvironment(tracker, context))
+        if (!initTrackerEnv(tracker, context))
         {
             errno = ERR_RESOURCE_INIT_ENV;
             break;
         }
         break;
     }
-    eraseTrackerMethods(context);
+    eraseTrackerMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanTracker(tracker);
+        cleanTrackerResource(tracker);
         SetLastErrno(errno);
         return NULL;
     }
+    setTrackerPointer(tracker);
     // create methods for tracker
     ResourceTracker_M* module = (ResourceTracker_M*)moduleAddr;
     // methods for API redirector
@@ -454,69 +462,69 @@ ResourceTracker_M* InitResourceTracker(Context* context)
 __declspec(noinline)
 static bool initTrackerAPI(ResourceTracker* tracker, Context* context)
 {
-    typedef struct { 
-        uint mHash; uint pHash; uint hKey; void* proc;
+    typedef struct {
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0x18557173A3FF60DF, 0x82E2C7817D6985C2, 0x5854A1BC5CB98207 }, // CreateMutexA
-        { 0xC3ADA377C4F82801, 0x0D27D1CC083E59BC, 0x64901F0A3DE7DAAD }, // CreateMutexW
-        { 0x528A29C1320E4677, 0x2229D75AB9596D3B, 0x0F183BC92FF08B5B }, // CreateMutexExA
-        { 0xCA930D7CB5651753, 0xAD498782299971C1, 0x809AB547A56D43DD }, // CreateMutexExW
-        { 0x8FAB0277D2B5C4AD, 0x39B7648853350147, 0xD24B7D700589CAFF }, // CreateEventA
-        { 0x977E44CCA46E915E, 0xCAE2C352577D8F17, 0xF10A0EEAA2A723BF }, // CreateEventW
-        { 0xC265622EE8AE58E2, 0x9835563D2AD1B841, 0xC3D8C0B4B533570F }, // CreateEventExA
-        { 0xEA0E4D94515ACB56, 0x479469500BC8031D, 0x80E6FCEF71BA2651 }, // CreateEventExW
-        { 0x9851FFD6885CE173, 0x5B35C6E9766E9C62, 0x01874A5ADBB5A774 }, // CreateSemaphoreA
-        { 0xC262E20BBEAEB68D, 0xA7AE1089ECA5067C, 0x228570F9458C9F38 }, // CreateSemaphoreW
-        { 0x5CB8BBCB1EBF5E4D, 0x2BA959BCCDD4FC92, 0xDA628DB473E27500 }, // CreateSemaphoreExA
-        { 0xD392AF76603A5E90, 0x64D429F55A541308, 0x59EBF327FBE86941 }, // CreateSemaphoreExW
-        { 0xA0234B679FE50DF7, 0x35A80E36BDC1AC73, 0xE10894F523E4FDD5 }, // CreateWaitableTimerA
-        { 0xC1D01AD9FFDBCD8A, 0x35B069801C4EE076, 0x81251C26497B0215 }, // CreateWaitableTimerW
-        { 0xD0223DF928D65CF5, 0x4CAB2ACD0F728D0A, 0x813C63DABDEF833A }, // CreateWaitableTimerExA
-        { 0x7B0752F23CD8963A, 0xF7903FC62374C665, 0x237967C244D53694 }, // CreateWaitableTimerExW
-        { 0xAC2853EFD178E5D2, 0xB3B6BF59531820F1, 0xAEA3520EDB170379 }, // CreateFileA
-        { 0x61F134B5F496B34D, 0x1BB3665A2B6EB94C, 0xD749F5B4B7A1CA87 }, // CreateFileW
-        { 0x9AA3A0F999CD7815, 0x4368EC23E1BD7B7C, 0x3A04BD90C36C1D0C }, // FindFirstFileA
-        { 0x3E6C94BFC8E8CEF7, 0x0F8E7447E87C3E16, 0x84BFE076C2595727 }, // FindFirstFileW
-        { 0x28BC7AE1E227C488, 0xD988A68E2AA9C7B8, 0xD9AE3BCEDB9370FF }, // FindFirstFileExA
-        { 0x352D40E9FCBDCA23, 0x4B3937CFBF5523D9, 0x10A5C6391A59309E }, // FindFirstFileExW
-        { 0xEEE6CC777DE68F08, 0xB3D2B1E17472956B, 0xEAADF7C8131B85D2 }, // FindClose
-        { 0x6DB80C3F17CB324C, 0xA9DE20B0EC6F90B4, 0xF1870B73E05CB84C }, // CreateIoCompletionPort
+        { 0x82E2C7817D6985C2, 0x5854A1BC5CB98207 }, // CreateMutexA
+        { 0x0D27D1CC083E59BC, 0x64901F0A3DE7DAAD }, // CreateMutexW
+        { 0x2229D75AB9596D3B, 0x0F183BC92FF08B5B }, // CreateMutexExA
+        { 0xAD498782299971C1, 0x809AB547A56D43DD }, // CreateMutexExW
+        { 0x39B7648853350147, 0xD24B7D700589CAFF }, // CreateEventA
+        { 0xCAE2C352577D8F17, 0xF10A0EEAA2A723BF }, // CreateEventW
+        { 0x9835563D2AD1B841, 0xC3D8C0B4B533570F }, // CreateEventExA
+        { 0x479469500BC8031D, 0x80E6FCEF71BA2651 }, // CreateEventExW
+        { 0x5B35C6E9766E9C62, 0x01874A5ADBB5A774 }, // CreateSemaphoreA
+        { 0xA7AE1089ECA5067C, 0x228570F9458C9F38 }, // CreateSemaphoreW
+        { 0x2BA959BCCDD4FC92, 0xDA628DB473E27500 }, // CreateSemaphoreExA
+        { 0x64D429F55A541308, 0x59EBF327FBE86941 }, // CreateSemaphoreExW
+        { 0x35A80E36BDC1AC73, 0xE10894F523E4FDD5 }, // CreateWaitableTimerA
+        { 0x35B069801C4EE076, 0x81251C26497B0215 }, // CreateWaitableTimerW
+        { 0x4CAB2ACD0F728D0A, 0x813C63DABDEF833A }, // CreateWaitableTimerExA
+        { 0xF7903FC62374C665, 0x237967C244D53694 }, // CreateWaitableTimerExW
+        { 0xB3B6BF59531820F1, 0xAEA3520EDB170379 }, // CreateFileA
+        { 0x1BB3665A2B6EB94C, 0xD749F5B4B7A1CA87 }, // CreateFileW
+        { 0x4368EC23E1BD7B7C, 0x3A04BD90C36C1D0C }, // FindFirstFileA
+        { 0x0F8E7447E87C3E16, 0x84BFE076C2595727 }, // FindFirstFileW
+        { 0xD988A68E2AA9C7B8, 0xD9AE3BCEDB9370FF }, // FindFirstFileExA
+        { 0x4B3937CFBF5523D9, 0x10A5C6391A59309E }, // FindFirstFileExW
+        { 0xB3D2B1E17472956B, 0xEAADF7C8131B85D2 }, // FindClose
+        { 0xA9DE20B0EC6F90B4, 0xF1870B73E05CB84C }, // CreateIoCompletionPort
     };
 #elif _WIN32
     {
-        { 0x01941FA1, 0x8A911392, 0xCD978D9B }, // CreateMutexA
-        { 0x4F8D79D5, 0x0B198EF8, 0x75914A0C }, // CreateMutexW
-        { 0x439D900C, 0x827BEBBC, 0x35FA9598 }, // CreateMutexExA
-        { 0x53291733, 0x569872A3, 0xD871BDF0 }, // CreateMutexExW
-        { 0x01649CDF, 0x6471A6BE, 0x93C1F48F }, // CreateEventA
-        { 0xF5732A91, 0x5C900A9C, 0x88C4F7C2 }, // CreateEventW
-        { 0xF51D591C, 0x7C041E00, 0x489E0651 }, // CreateEventExA
-        { 0xF0639836, 0x4EDE879A, 0x3935C43E }, // CreateEventExW
-        { 0x0D8DA7A4, 0x8FD5542B, 0x6492CF88 }, // CreateSemaphoreA
-        { 0xB73DAB34, 0x07D8C046, 0x82FD3301 }, // CreateSemaphoreW
-        { 0xDCCEA139, 0x43BAC57C, 0x6CD9AB6E }, // CreateSemaphoreExA
-        { 0xAA60305F, 0x97FFFDD5, 0x9AC87B47 }, // CreateSemaphoreExW
-        { 0x5B220EED, 0x858B7C70, 0x7AF18636 }, // CreateWaitableTimerA
-        { 0xD3637677, 0x7405A69F, 0x16C60103 }, // CreateWaitableTimerW
-        { 0x86C82381, 0x78D2EDFC, 0xA28E2C09 }, // CreateWaitableTimerExA
-        { 0xB90EED9A, 0xF8055853, 0x52763229 }, // CreateWaitableTimerExW
-        { 0xCFDD5352, 0x395AFF95, 0xA697F6D0 }, // CreateFileA
-        { 0xA27950C4, 0x5278B69C, 0x4F7DE081 }, // CreateFileW
-        { 0x7790F793, 0x7F124DC1, 0xBADE79B5 }, // FindFirstFileA
-        { 0x42AC967A, 0x7ABCF3F7, 0x3C6A3022 }, // FindFirstFileW
-        { 0xD80C29F0, 0x2BB62EB9, 0x9F243303 }, // FindFirstFileExA
-        { 0x18422147, 0x50EAC3A5, 0xBC4BC36A }, // FindFirstFileExW
-        { 0x74056D09, 0xFFA89CE3, 0x6E906B38 }, // FindClose
-        { 0x8692E8C4, 0x48D73CFB, 0xD525ECEE }, // CreateIoCompletionPort
+        { 0x8A911392, 0xCD978D9B }, // CreateMutexA
+        { 0x0B198EF8, 0x75914A0C }, // CreateMutexW
+        { 0x827BEBBC, 0x35FA9598 }, // CreateMutexExA
+        { 0x569872A3, 0xD871BDF0 }, // CreateMutexExW
+        { 0x6471A6BE, 0x93C1F48F }, // CreateEventA
+        { 0x5C900A9C, 0x88C4F7C2 }, // CreateEventW
+        { 0x7C041E00, 0x489E0651 }, // CreateEventExA
+        { 0x4EDE879A, 0x3935C43E }, // CreateEventExW
+        { 0x8FD5542B, 0x6492CF88 }, // CreateSemaphoreA
+        { 0x07D8C046, 0x82FD3301 }, // CreateSemaphoreW
+        { 0x43BAC57C, 0x6CD9AB6E }, // CreateSemaphoreExA
+        { 0x97FFFDD5, 0x9AC87B47 }, // CreateSemaphoreExW
+        { 0x858B7C70, 0x7AF18636 }, // CreateWaitableTimerA
+        { 0x7405A69F, 0x16C60103 }, // CreateWaitableTimerW
+        { 0x78D2EDFC, 0xA28E2C09 }, // CreateWaitableTimerExA
+        { 0xF8055853, 0x52763229 }, // CreateWaitableTimerExW
+        { 0x395AFF95, 0xA697F6D0 }, // CreateFileA
+        { 0x5278B69C, 0x4F7DE081 }, // CreateFileW
+        { 0x7F124DC1, 0xBADE79B5 }, // FindFirstFileA
+        { 0x7ABCF3F7, 0x3C6A3022 }, // FindFirstFileW
+        { 0x2BB62EB9, 0x9F243303 }, // FindFirstFileExA
+        { 0x50EAC3A5, 0xBC4BC36A }, // FindFirstFileExW
+        { 0xFFA89CE3, 0x6E906B38 }, // FindClose
+        { 0x48D73CFB, 0xD525ECEE }, // CreateIoCompletionPort
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = context->FindAPI(item.mHash, item.pHash, item.hKey);
+        void*  proc = context->FindAPI_MA(context->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -554,52 +562,8 @@ static bool initTrackerAPI(ResourceTracker* tracker, Context* context)
     return true;
 }
 
-// CANNOT merge updateTrackerPointer and recoverTrackerPointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
 __declspec(noinline)
-static bool updateTrackerPointer(ResourceTracker* tracker)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getTrackerPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != TRACKER_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)tracker;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool recoverTrackerPointer(ResourceTracker* tracker)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getTrackerPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)tracker)
-        {
-            target++;
-            continue;
-        }
-        *pointer = TRACKER_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool initTrackerEnvironment(ResourceTracker* tracker, Context* context)
+static bool initTrackerEnv(ResourceTracker* tracker, Context* context)
 {
     // create mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_RT_MUTEX_GLOBAL);
@@ -627,20 +591,20 @@ static bool initTrackerEnvironment(ResourceTracker* tracker, Context* context)
 }
 
 __declspec(noinline)
-static void eraseTrackerMethods(Context* context)
+static void eraseTrackerMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initTrackerAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
-static void cleanTracker(ResourceTracker* tracker)
+static void cleanTrackerResource(ResourceTracker* tracker)
 {
     if (tracker->CloseHandle != NULL && tracker->hMutex != NULL)
     {
@@ -653,18 +617,21 @@ static void cleanTracker(ResourceTracker* tracker)
     }
 }
 
-// updateTrackerPointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateTrackerPointer will fail.
+__declspec(noinline)
+static void setTrackerPointer(ResourceTracker* tracker)
+{
+    *(ResourceTracker**)(POINTER_OFFSET_RESOURCE_TRACKER) = tracker;
+}
+
 #pragma optimize("", off)
 static ResourceTracker* getTrackerPointer()
 {
-    uintptr pointer = TRACKER_POINTER;
-    return (ResourceTracker*)(pointer);
+    return *(ResourceTracker**)(POINTER_OFFSET_RESOURCE_TRACKER);
 }
 #pragma optimize("", on)
 
 // For unknown reasons, placing RT_Lock before a function call like CreateEventA
-// will cause Go runtime to fail during initialization, so the lock granularity 
+// will cause Go runtime to fail during initialization, so the lock granularity
 // can only be further reduced.
 // In a normal function, the lock granularity is large, almost spanning the entire
 // function, in order to reduce the impact on the context when suspending the thread.
@@ -727,7 +694,7 @@ HANDLE RT_CreateMutexW(POINTER lpMutexAttributes, BOOL bInitialOwner, LPCWSTR lp
     }
     SetLastErrno(lastErr);
 
-    dbg_log("[resource]", "CreateMutexW: 0x%zu", hMutex);    
+    dbg_log("[resource]", "CreateMutexW: 0x%zu", hMutex);
     return hMutex;
 }
 
@@ -823,7 +790,7 @@ HANDLE RT_CreateEventA(
     }
     SetLastErrno(lastErr);
 
-    dbg_log("[resource]", "CreateEventA: 0x%zu", hEvent);    
+    dbg_log("[resource]", "CreateEventA: 0x%zu", hEvent);
     return hEvent;
 }
 
@@ -887,7 +854,7 @@ HANDLE RT_CreateEventExA(
     }
     SetLastErrno(lastErr);
 
-    dbg_log("[resource]", "CreateEventExA: 0x%zu", hEvent);    
+    dbg_log("[resource]", "CreateEventExA: 0x%zu", hEvent);
     return hEvent;
 }
 
@@ -1469,16 +1436,20 @@ LSTATUS RT_RegCreateKeyA(HKEY hKey, LPCSTR lpSubKey, HKEY* phkResult)
         RegCreateKeyA_t RegCreateKeyA = tracker->RegCreateKeyA;
         if (RegCreateKeyA == NULL)
         {
+            HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+            if (hAdvapi32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x96A609C4644380C8;
             uint pHash = 0xCCA21B11ED2032A9;
             uint hhKey = 0xB712895B7F4E3137;
         #elif _WIN32
-            uint mHash = 0x32484FCA;
             uint pHash = 0xF1BBFA85;
             uint hhKey = 0xB34D4A92;
         #endif
-            RegCreateKeyA = tracker->FindAPI(mHash, pHash, hhKey);
+            RegCreateKeyA = tracker->FindAPI_MA(hAdvapi32, pHash, hhKey);
             if (RegCreateKeyA == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1517,16 +1488,20 @@ LSTATUS RT_RegCreateKeyW(HKEY hKey, LPCWSTR lpSubKey, HKEY* phkResult)
         RegCreateKeyW_t RegCreateKeyW = tracker->RegCreateKeyW;
         if (RegCreateKeyW == NULL)
         {
+            HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+            if (hAdvapi32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x7F1EBB0B5BF08964;
             uint pHash = 0xF622574D5E02E9DB;
             uint hhKey = 0x4736E3EDE9B87BD7;
         #elif _WIN32
-            uint mHash = 0x380E972A;
             uint pHash = 0xF78241FB;
             uint hhKey = 0x01A5FA89;
         #endif
-            RegCreateKeyW = tracker->FindAPI(mHash, pHash, hhKey);
+            RegCreateKeyW = tracker->FindAPI_MA(hAdvapi32, pHash, hhKey);
             if (RegCreateKeyW == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1568,16 +1543,20 @@ LSTATUS RT_RegCreateKeyExA(
         RegCreateKeyExA_t RegCreateKeyExA = tracker->RegCreateKeyExA;
         if (RegCreateKeyExA == NULL)
         {
+            HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+            if (hAdvapi32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x10C1CC6DFBC96F56;
             uint pHash = 0x3B563DEE011D55EA;
             uint hhKey = 0x5277163B5A7EE259;
         #elif _WIN32
-            uint mHash = 0xB1B2BFDB;
             uint pHash = 0x6E3FE5C2;
             uint hhKey = 0x1E21042F;
         #endif
-            RegCreateKeyExA = tracker->FindAPI(mHash, pHash, hhKey);
+            RegCreateKeyExA = tracker->FindAPI_MA(hAdvapi32, pHash, hhKey);
             if (RegCreateKeyExA == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1622,16 +1601,20 @@ LSTATUS RT_RegCreateKeyExW(
         RegCreateKeyExW_t RegCreateKeyExW = tracker->RegCreateKeyExW;
         if (RegCreateKeyExW == NULL)
         {
+            HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+            if (hAdvapi32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xA440EA2E6B7DA1CB;
             uint pHash = 0xFE239E0C5881EF75;
             uint hhKey = 0x8B1F06BAC9BC0FB4;
         #elif _WIN32
-            uint mHash = 0xD59266B5;
             uint pHash = 0x29E2F4EF;
             uint hhKey = 0xF4DED6CA;
         #endif
-            RegCreateKeyExW = tracker->FindAPI(mHash, pHash, hhKey);
+            RegCreateKeyExW = tracker->FindAPI_MA(hAdvapi32, pHash, hhKey);
             if (RegCreateKeyExW == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1673,16 +1656,20 @@ LSTATUS RT_RegOpenKeyA(HKEY hKey, LPCSTR lpSubKey, HKEY* phkResult)
         RegOpenKeyA_t RegOpenKeyA = tracker->RegOpenKeyA;
         if (RegOpenKeyA == NULL)
         {
+            HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+            if (hAdvapi32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xFA7EA8AF31135B54;
             uint pHash = 0x22D8B65730135F58;
             uint hhKey = 0x60FDAD6E29C89B00;
         #elif _WIN32
-            uint mHash = 0x5FE996AD;
             uint pHash = 0x1FADD8BD;
             uint hhKey = 0x94E3EBAE;
         #endif
-            RegOpenKeyA = tracker->FindAPI(mHash, pHash, hhKey);
+            RegOpenKeyA = tracker->FindAPI_MA(hAdvapi32, pHash, hhKey);
             if (RegOpenKeyA == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1721,16 +1708,20 @@ LSTATUS RT_RegOpenKeyW(HKEY hKey, LPCWSTR lpSubKey, HKEY* phkResult)
         RegOpenKeyW_t RegOpenKeyW = tracker->RegOpenKeyW;
         if (RegOpenKeyW == NULL)
         {
+            HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+            if (hAdvapi32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x38F57CDA6CA1BF80;
             uint pHash = 0x5D2DA71712AD845F;
             uint hhKey = 0xF3F6F1F37138E467;
         #elif _WIN32
-            uint mHash = 0x7370A861;
             uint pHash = 0x4D8DD02E;
             uint hhKey = 0x6B7B9626;
         #endif
-            RegOpenKeyW = tracker->FindAPI(mHash, pHash, hhKey);
+            RegOpenKeyW = tracker->FindAPI_MA(hAdvapi32, pHash, hhKey);
             if (RegOpenKeyW == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1770,16 +1761,20 @@ LSTATUS RT_RegOpenKeyExA(
         RegOpenKeyExA_t RegOpenKeyExA = tracker->RegOpenKeyExA;
         if (RegOpenKeyExA == NULL)
         {
+            HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+            if (hAdvapi32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x2AE0601CC475EB1A;
             uint pHash = 0xAAE3DFB521796E88;
             uint hhKey = 0x22106841BD214082;
         #elif _WIN32
-            uint mHash = 0xF2834E35;
             uint pHash = 0x93E426ED;
             uint hhKey = 0xFAB77358;
         #endif
-            RegOpenKeyExA = tracker->FindAPI(mHash, pHash, hhKey);
+            RegOpenKeyExA = tracker->FindAPI_MA(hAdvapi32, pHash, hhKey);
             if (RegOpenKeyExA == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1817,20 +1812,24 @@ LSTATUS RT_RegOpenKeyExW(
     errno   lastErr = GetLastErrno();
     for (;;)
     {
+        HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+        if (hAdvapi32 == NULL)
+        {
+            lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+            break;
+        }
         // try to get API address from cache
         RegOpenKeyExW_t RegOpenKeyExW = tracker->RegOpenKeyExW;
         if (RegOpenKeyExW == NULL)
         {
         #ifdef _WIN64
-            uint mHash = 0x532BAEA98DA2BA54;
             uint pHash = 0x7509BA27645BDAD3;
             uint hhKey = 0x55CCE92A674BE515;
         #elif _WIN32
-            uint mHash = 0xB68F1718;
             uint pHash = 0x57EFEFE7;
             uint hhKey = 0x7B845953;
         #endif
-            RegOpenKeyExW = tracker->FindAPI(mHash, pHash, hhKey);
+            RegOpenKeyExW = tracker->FindAPI_MA(hAdvapi32, pHash, hhKey);
             if (RegOpenKeyExW == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1872,16 +1871,20 @@ SOCKET RT_WSASocketA(
         WSASocketA_t WSASocketA = tracker->WSASocketA;
         if (WSASocketA == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xB424460D6D3EC693;
             uint pHash = 0x0F5D3E03A731E351;
             uint hKey  = 0x6E9AA870F2F9AC99;
         #elif _WIN32
-            uint mHash = 0x1408823C;
             uint pHash = 0x9F86512A;
             uint hKey  = 0x64A5FFCA;
         #endif
-            WSASocketA = tracker->FindAPI(mHash, pHash, hKey);
+            WSASocketA = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             if (WSASocketA == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1923,16 +1926,20 @@ SOCKET RT_WSASocketW(
         WSASocketA_t WSASocketW = tracker->WSASocketW;
         if (WSASocketW == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x30A392BC95981448;
             uint pHash = 0xC43AA717D9415F71;
             uint hKey  = 0x30FB0B12069C9DFB;
         #elif _WIN32
-            uint mHash = 0xAEDE20DD;
             uint pHash = 0x780CEC7E;
             uint hKey  = 0xA75A0D12;
         #endif
-            WSASocketW = tracker->FindAPI(mHash, pHash, hKey);
+            WSASocketW = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             if (WSASocketW == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -1962,8 +1969,8 @@ SOCKET RT_WSASocketW(
 
 __declspec(noinline)
 int RT_WSAIoctl(
-    SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuffer, 
-    LPVOID lpvOutBuffer, DWORD cbOutBuffer, DWORD* lpcbBytesReturned, 
+    SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuffer,
+    LPVOID lpvOutBuffer, DWORD cbOutBuffer, DWORD* lpcbBytesReturned,
     POINTER lpOverlapped, POINTER lpCompletionRoutine
 ){
     ResourceTracker* tracker = getTrackerPointer();
@@ -1981,16 +1988,20 @@ int RT_WSAIoctl(
         WSAIoctl_t WSAIoctl = tracker->WSAIoctl;
         if (WSAIoctl == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x90AE148F1075C6EC;
             uint pHash = 0x2CA84E695E895E24;
             uint hKey  = 0xC7DAAAC503BA2B8F;
         #elif _WIN32
-            uint mHash = 0xD77C37E7;
             uint pHash = 0xC8C2BB8E;
             uint hKey  = 0x284C99AE;
         #endif
-            WSAIoctl = tracker->FindAPI(mHash, pHash, hKey);
+            WSAIoctl = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             if (WSAIoctl == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -2039,16 +2050,20 @@ SOCKET RT_socket(int af, int type, int protocol)
         socket_t socket = tracker->socket;
         if (socket == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xEEC793C0338C998B;
             uint pHash = 0xAFC82792DA88601D;
             uint hKey  = 0xEA9BFB6E5BB5CAA9;
         #elif _WIN32
-            uint mHash = 0x7F221CDB;
             uint pHash = 0x73884599;
             uint hKey  = 0x496D9B55;
         #endif
-            socket = tracker->FindAPI(mHash, pHash, hKey);
+            socket = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             if (socket == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -2089,16 +2104,20 @@ SOCKET RT_accept(SOCKET s, POINTER addr, int* addrlen)
         accept_t accept = tracker->accept;
         if (accept == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x3F0E2AACEE8BCF80;
             uint pHash = 0x6BF8E08668FFE9F8;
             uint hKey  = 0x974521B6A59B3E8A;
         #elif _WIN32
-            uint mHash = 0xA4B36517;
             uint pHash = 0x639BA467;
             uint hKey  = 0x37B5BE81;
         #endif
-            accept = tracker->FindAPI(mHash, pHash, hKey);
+            accept = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             if (accept == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -2144,16 +2163,20 @@ int RT_shutdown(SOCKET s, int how)
         shutdown_t shutdown = tracker->shutdown;
         if (shutdown == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xA37CB252069AFC45;
             uint pHash = 0x958D1BF7675DF3C6;
             uint hKey  = 0x8FB0DF6A8F4B0164;
         #elif _WIN32
-            uint mHash = 0x00B6237F;
             uint pHash = 0x29BC24ED;
             uint hKey  = 0x70911362;
         #endif
-            shutdown = tracker->FindAPI(mHash, pHash, hKey);
+            shutdown = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             if (shutdown == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -2274,16 +2297,20 @@ LSTATUS RT_RegCloseKey(HKEY hKey)
         RegCloseKey_t RegCloseKey = tracker->RegCloseKey;
         if (RegCloseKey == NULL)
         {
+            HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+            if (hAdvapi32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xBF61DC9DB58F2119;
             uint pHash = 0x634B2EA7763B50E7;
             uint hhKey = 0x1E92D01ACD546FAA;
         #elif _WIN32
-            uint mHash = 0x21897061;
             uint pHash = 0x05759268;
             uint hhKey = 0x6DD08644;
         #endif
-            RegCloseKey = tracker->FindAPI(mHash, pHash, hhKey);
+            RegCloseKey = tracker->FindAPI_MA(hAdvapi32, pHash, hhKey);
             if (RegCloseKey == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -2323,16 +2350,20 @@ int RT_closesocket(SOCKET hSocket)
         closesocket_t closesocket = tracker->closesocket;
         if (closesocket == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xEF92E9B35ECEA6BA;
             uint pHash = 0xEE5724C40D2CCCD2;
             uint hKey  = 0xA7D1387163EE7961;
         #elif _WIN32
-            uint mHash = 0x5585015C;
             uint pHash = 0xE4D20008;
             uint hKey  = 0xE6423398;
         #endif
-            closesocket = tracker->FindAPI(mHash, pHash, hKey);
+            closesocket = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             if (closesocket == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -2376,7 +2407,7 @@ static bool addHandle(ResourceTracker* tracker, void* hObject, uint32 source)
         return true;
     }
 
-    uint mHash, pHash, hKey;
+    uint pHash, hKey;
     switch (source & TYPE_MASK)
     {
     case TYPE_CLOSE_HANDLE:
@@ -2390,16 +2421,19 @@ static bool addHandle(ResourceTracker* tracker, void* hObject, uint32 source)
         RegCloseKey_t RegCloseKey = tracker->RegCloseKey;
         if (RegCloseKey == NULL)
         {
+            HMODULE hAdvapi32 = getAdvapi32Handle(tracker);
+            if (hAdvapi32 == NULL)
+            {
+                break;
+            }
         #ifdef _WIN64
-            mHash = 0xBF61DC9DB58F2119;
             pHash = 0x634B2EA7763B50E7;
             hKey  = 0x1E92D01ACD546FAA;
         #elif _WIN32
-            mHash = 0x21897061;
             pHash = 0x05759268;
             hKey  = 0x6DD08644;
         #endif
-            RegCloseKey = tracker->FindAPI(mHash, pHash, hKey);
+            RegCloseKey = tracker->FindAPI_MA(hAdvapi32, pHash, hKey);
             tracker->RegCloseKey = RegCloseKey;
         }
         if (RegCloseKey != NULL)
@@ -2412,16 +2446,19 @@ static bool addHandle(ResourceTracker* tracker, void* hObject, uint32 source)
         closesocket_t closesocket = tracker->closesocket;
         if (closesocket == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                break;
+            }
         #ifdef _WIN64
-            mHash = 0xEF92E9B35ECEA6BA;
             pHash = 0xEE5724C40D2CCCD2;
             hKey  = 0xA7D1387163EE7961;
         #elif _WIN32
-            mHash = 0x5585015C;
             pHash = 0xE4D20008;
             hKey  = 0xE6423398;
         #endif
-            closesocket = tracker->FindAPI(mHash, pHash, hKey);
+            closesocket = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             tracker->closesocket = closesocket;
         }
         if (closesocket != NULL)
@@ -2519,16 +2556,20 @@ int RT_WSAStartup(WORD wVersionRequired, POINTER lpWSAData)
         WSAStartup_t WSAStartup = tracker->WSAStartup;
         if (WSAStartup == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xEA897E8A6C57363D;
             uint pHash = 0x2A32B9468CED7FC7;
             uint hKey  = 0xADEBF9D727119E08;
         #elif _WIN32
-            uint mHash = 0xFCDD5F57;
             uint pHash = 0x6C10A1BE;
             uint hKey  = 0x36C5B1D5;
         #endif
-            WSAStartup = tracker->FindAPI(mHash, pHash, hKey);
+            WSAStartup = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             if (WSAStartup == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -2573,16 +2614,20 @@ int RT_WSACleanup()
         WSACleanup_t WSACleanup = tracker->WSACleanup;
         if (WSACleanup == NULL)
         {
+            HMODULE hWs2_32 = getWs2_32Handle(tracker);
+            if (hWs2_32 == NULL)
+            {
+                lastErr = ERR_RESOURCE_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x4315CA7C2DE0953F;
             uint pHash = 0xFAA60831E40346AA;
             uint hKey  = 0xEB60CFC4E8AF64CE;
         #elif _WIN32
-            uint mHash = 0x3F43DBA5;
             uint pHash = 0x2F28803E;
             uint hKey  = 0xFEC6856A;
         #endif
-            WSACleanup = tracker->FindAPI(mHash, pHash, hKey);
+            WSACleanup = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
             if (WSACleanup == NULL)
             {
                 lastErr = ERR_RESOURCE_API_NOT_FOUND;
@@ -2607,6 +2652,52 @@ int RT_WSACleanup()
         return SOCKET_ERROR;
     }
     return retVal;
+}
+
+__declspec(noinline)
+static HMODULE getAdvapi32Handle(ResourceTracker* tracker)
+{
+    if (tracker->hAdvapi32 != NULL)
+    {
+        return tracker->hAdvapi32;
+    }
+#ifdef _WIN64
+    uint mHash = 0xFA7EA8AF31135B54;
+    uint hKey  = 0x60FDAD6E29C89B00;
+#elif _WIN32
+    uint mHash = 0x5FE996AD;
+    uint hKey  = 0x94E3EBAE;
+#endif
+    HMODULE module = FindMod_MHL(tracker->PML, mHash, hKey);
+    if (module == NULL)
+    {
+        return NULL;
+    }
+    tracker->hAdvapi32 = module;
+    return module;
+}
+
+__declspec(noinline)
+static HMODULE getWs2_32Handle(ResourceTracker* tracker)
+{
+    if (tracker->hWs2_32 != NULL)
+    {
+        return tracker->hWs2_32;
+    }
+#ifdef _WIN64
+    uint mHash = 0xEF92E9B35ECEA6BA;
+    uint hKey  = 0xA7D1387163EE7961;
+#elif _WIN32
+    uint mHash = 0x5585015C;
+    uint hKey  = 0xE6423398;
+#endif
+    HMODULE module = FindMod_MHL(tracker->PML, mHash, hKey);
+    if (module == NULL)
+    {
+        return NULL;
+    }
+    tracker->hWs2_32 = module;
+    return module;
 }
 
 __declspec(noinline)
@@ -2888,6 +2979,9 @@ void RT_Flush()
 {
     ResourceTracker* tracker = getTrackerPointer();
 
+    tracker->hAdvapi32 = NULL;
+    tracker->hWs2_32   = NULL;
+
     tracker->CancelIoEx = NULL;
 
     tracker->RegCreateKeyA   = NULL;
@@ -3110,15 +3204,6 @@ errno RT_Clean()
         error = ERR_RESOURCE_CLOSE_MUTEX;
     }
 
-    // recover instructions
-    if (tracker->NotEraseInstruction)
-    {
-        if (!recoverTrackerPointer(tracker) && error == NO_ERROR)
-        {
-            error = ERR_RESOURCE_RECOVER_INST;
-        }
-    }
-
     dbg_log("[resource]", "handles: %zu", handles->Len);
     return error;
 }
@@ -3127,29 +3212,29 @@ static void tryToFindAPI()
 {
     ResourceTracker* tracker = getTrackerPointer();
 
-    typedef struct { 
-        uint mHash; uint pHash; uint hKey; void* proc;
+    typedef struct {
+        void* module; uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0xC4984645B356A7CA, 0x501838FB2F515443, 0x13F9E474C15125B2 }, // CancelIoEx
-        { 0x4E6024F14E9301CF, 0x54C3240233CCD66A, 0x3BF5EF169E089B09 }, // RegCloseKey
-        { 0x424EA1F161C7EF34, 0x1221B341D24D8989, 0xCE263A026A2173CA }, // shutdown
-        { 0xF4A81300A6A78A79, 0x9CDA1B81F057D32B, 0xB46F9B5F228665A7 }, // closesocket
+        { tracker->hKernel32, 0x501838FB2F515443, 0x13F9E474C15125B2 }, // CancelIoEx
+        { tracker->hAdvapi32, 0x54C3240233CCD66A, 0x3BF5EF169E089B09 }, // RegCloseKey
+        { tracker->hWs2_32,   0x1221B341D24D8989, 0xCE263A026A2173CA }, // shutdown
+        { tracker->hWs2_32,   0x9CDA1B81F057D32B, 0xB46F9B5F228665A7 }, // closesocket
     };
 #elif _WIN32
     {
-        { 0xBE5D22C7, 0xA935663D, 0x02DF2D58 }, // CancelIoEx
-        { 0xE3B65E24, 0x5649F184, 0xAA804765 }, // RegCloseKey
-        { 0xAF47C532, 0x9F18D3A7, 0xE91CDB79 }, // shutdown
-        { 0x7C67CD01, 0x2B26FADD, 0xC168AE5E }, // closesocket
+        { tracker->hKernel32, 0xA935663D, 0x02DF2D58 }, // CancelIoEx
+        { tracker->hAdvapi32, 0x5649F184, 0xAA804765 }, // RegCloseKey
+        { tracker->hWs2_32,   0x9F18D3A7, 0xE91CDB79 }, // shutdown
+        { tracker->hWs2_32,   0x2B26FADD, 0xC168AE5E }, // closesocket
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item  = list[i];
-        list[i].proc = tracker->FindAPI(item.mHash, item.pHash, item.hKey);
+        list[i].proc = tracker->FindAPI_MA(item.module, item.pHash, item.hKey);
     }
     tracker->CancelIoEx  = list[0x00].proc;
     tracker->RegCloseKey = list[0x01].proc;
@@ -3161,28 +3246,37 @@ static errno doWSACleanup()
 {
     ResourceTracker* tracker = getTrackerPointer();
 
-    // try to get API address from cache
-    WSACleanup_t WSACleanup = tracker->WSACleanup;
-    if (WSACleanup == NULL)
-    {
-    #ifdef _WIN64
-        uint mHash = 0x4315CA7C2DE0953F;
-        uint pHash = 0xFAA60831E40346AA;
-        uint hKey  = 0xEB60CFC4E8AF64CE;
-    #elif _WIN32
-        uint mHash = 0x3F43DBA5;
-        uint pHash = 0x2F28803E;
-        uint hKey  = 0xFEC6856A;
-    #endif
-        WSACleanup = tracker->FindAPI(mHash, pHash, hKey);
-    }
-    if (WSACleanup == NULL)
+    int64 counter = tracker->Counters[CTR_WSA_STARTUP];
+    if (counter == 0)
     {
         return NO_ERROR;
     }
 
+    // try to get API address from cache
+    WSACleanup_t WSACleanup = tracker->WSACleanup;
+    if (WSACleanup == NULL)
+    {
+        HMODULE hWs2_32 = getWs2_32Handle(tracker);
+        if (hWs2_32 == NULL)
+        {
+            return ERR_RESOURCE_MOD_NOT_FOUND;
+        }
+    #ifdef _WIN64
+        uint pHash = 0xFAA60831E40346AA;
+        uint hKey  = 0xEB60CFC4E8AF64CE;
+    #elif _WIN32
+        uint pHash = 0x2F28803E;
+        uint hKey  = 0xFEC6856A;
+    #endif
+        WSACleanup = tracker->FindAPI_MA(hWs2_32, pHash, hKey);
+        if (WSACleanup == NULL)
+        {
+            return ERR_RESOURCE_API_NOT_FOUND;
+        }
+        tracker->WSACleanup = WSACleanup;
+    }
+
     errno errno = NO_ERROR;
-    int64 counter = tracker->Counters[CTR_WSA_STARTUP];
     for (int64 i = 0; i < counter; i++)
     {
         if (WSACleanup() != 0)
