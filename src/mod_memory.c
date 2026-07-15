@@ -52,6 +52,9 @@ typedef struct {
     // store options
     bool NotEraseInstruction;
 
+    // process environment
+    PML* PML;
+
     // store HashAPI with spoof call
     FindAPI_MA_t FindAPI_MA;
 
@@ -81,7 +84,7 @@ typedef struct {
     WaitForSingleObject_t WaitForSingleObject;
     CloseHandle_t         CloseHandle;
 
-    // store core library
+    // cached module handles
     HMODULE hMsvcrt;
     HMODULE hUcrtbase;
 
@@ -194,8 +197,8 @@ static MemoryTracker* getTrackerPointer();
 
 static bool initTrackerAPI(MemoryTracker* tracker, Context* context);
 static bool initTrackerEnv(MemoryTracker* tracker, Context* context);
-static void eraseTrackerMethods(Context* context);
-static void cleanTracker(MemoryTracker* tracker);
+static void eraseTrackerMethod(Context* context);
+static void cleanTrackerResource(MemoryTracker* tracker);
 static void setTrackerPointer(MemoryTracker* tracker);
 
 static bool allocPage(uintptr address, uint size, uint32 type, uint32 protect);
@@ -209,6 +212,9 @@ static void protectPage(uintptr address, uint size, uint32 protect);
 static bool addHeapObject(MemoryTracker* tracker, HANDLE hHeap, uint32 options);
 static bool delHeapObject(MemoryTracker* tracker, HANDLE hHeap);
 static uint calcHeapMark(MemoryTracker* tracker, uintptr addr, uint size);
+
+static HMODULE getMsvcrtHandle(MemoryTracker* tracker);
+static HMODULE getUcrtbaseHandle(MemoryTracker* tracker);
 
 static uint32 replacePageProtect(uint32 protect);
 static bool   isPageTypeTrackable(uint32 type);
@@ -241,6 +247,8 @@ MemoryTracker_M* InitMemoryTracker(Context* context)
     mem_init(tracker, sizeof(MemoryTracker));
     // store options
     tracker->NotEraseInstruction = context->NotEraseInstruction;
+    // store process environment
+    tracker->PML = context->PML;
     // store HashAPI method
     tracker->FindAPI_MA = context->FindAPI_MA;
     // initialize tracker
@@ -259,10 +267,10 @@ MemoryTracker_M* InitMemoryTracker(Context* context)
         }
         break;
     }
-    eraseTrackerMethods(context);
+    eraseTrackerMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanTracker(tracker);
+        cleanTrackerResource(tracker);
         SetLastErrno(errno);
         return NULL;
     }
@@ -450,20 +458,20 @@ static bool initTrackerEnv(MemoryTracker* tracker, Context* context)
 }
 
 __declspec(noinline)
-static void eraseTrackerMethods(Context* context)
+static void eraseTrackerMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initTrackerAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethod));
     uintptr size  = end - begin;
     EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
-static void cleanTracker(MemoryTracker* tracker)
+static void cleanTrackerResource(MemoryTracker* tracker)
 {
     if (tracker->CloseHandle != NULL && tracker->hMutex != NULL)
     {
@@ -1366,16 +1374,20 @@ void* __cdecl MT_msvcrt_malloc(uint size)
         msvcrt_malloc_t malloc = tracker->msvcrt_malloc;
         if (malloc == NULL)
         {
+            HMODULE hMsvcrt = getMsvcrtHandle(tracker);
+            if (hMsvcrt == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x136CB071EF4DA0EF;
             uint pHash = 0xA4E537E24F07D662;
             uint hKey  = 0x329B6DA8E90118ED;
         #elif _WIN32
-            uint mHash = 0x485F281D;
             uint pHash = 0xBBEC7575;
             uint hKey  = 0x1AECAE06;
         #endif
-            malloc = tracker->FindAPI(mHash, pHash, hKey);
+            malloc = tracker->FindAPI_MA(hMsvcrt, pHash, hKey);
             if (malloc == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1428,16 +1440,20 @@ void* __cdecl MT_msvcrt_calloc(uint num, uint size)
         msvcrt_calloc_t calloc = tracker->msvcrt_calloc;
         if (calloc == NULL)
         {
+            HMODULE hMsvcrt = getMsvcrtHandle(tracker);
+            if (hMsvcrt == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x24BEF2B1B592657B;
             uint pHash = 0x63F6205AAA82CF4E;
             uint hKey  = 0xC5BAF8FCBD2172F4;
         #elif _WIN32
-            uint mHash = 0x486DC33E;
             uint pHash = 0x1EF14D6E;
             uint hKey  = 0x9E9C4BA5;
         #endif
-            calloc = tracker->FindAPI(mHash, pHash, hKey);
+            calloc = tracker->FindAPI_MA(hMsvcrt, pHash, hKey);
             if (calloc == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1496,16 +1512,20 @@ void* __cdecl MT_msvcrt_realloc(void* ptr, uint size)
         msvcrt_realloc_t realloc = tracker->msvcrt_realloc;
         if (realloc == NULL)
         {
+            HMODULE hMsvcrt = getMsvcrtHandle(tracker);
+            if (hMsvcrt == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x135AAA35D376EF41;
             uint pHash = 0x51A8F630FC8E67C4;
             uint hKey  = 0xFF7BCB0F578542FA;
         #elif _WIN32
-            uint mHash = 0x4E56C9CF;
             uint pHash = 0xBE2BFEFB;
             uint hKey  = 0xCF70F7F3;
         #endif
-            realloc = tracker->FindAPI(mHash, pHash, hKey);
+            realloc = tracker->FindAPI_MA(hMsvcrt, pHash, hKey);
             if (realloc == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1516,16 +1536,20 @@ void* __cdecl MT_msvcrt_realloc(void* ptr, uint size)
         msvcrt_msize_t msize = tracker->msvcrt_msize;
         if (msize == NULL)
         {
+            HMODULE hMsvcrt = getMsvcrtHandle(tracker);
+            if (hMsvcrt == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xFF919BD0F407C246;
             uint pHash = 0x5E0B85F02E4FEC22;
             uint hKey  = 0x9855E214CD9310A8;
         #elif _WIN32
-            uint mHash = 0x3DD7996A;
             uint pHash = 0x845CB2FD;
             uint hKey  = 0x9591B59B;
         #endif
-            msize = tracker->FindAPI(mHash, pHash, hKey);
+            msize = tracker->FindAPI_MA(hMsvcrt, pHash, hKey);
             if (msize == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1603,16 +1627,20 @@ void __cdecl MT_msvcrt_free(void* ptr)
         msvcrt_free_t free = tracker->msvcrt_free;
         if (free == NULL)
         {
+            HMODULE hMsvcrt = getMsvcrtHandle(tracker);
+            if (hMsvcrt == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xDE6C9ADEF3C34189;
             uint pHash = 0x0E9B5E427C74F4E4;
             uint hKey  = 0xA57ED0DE75FBF6D8;
         #elif _WIN32
-            uint mHash = 0x14AC52AA;
             uint pHash = 0xA5B6E022;
             uint hKey  = 0x626D1BC5;
         #endif
-            free = tracker->FindAPI(mHash, pHash, hKey);
+            free = tracker->FindAPI_MA(hMsvcrt, pHash, hKey);
             if (free == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1623,16 +1651,20 @@ void __cdecl MT_msvcrt_free(void* ptr)
         msvcrt_msize_t msize = tracker->msvcrt_msize;
         if (msize == NULL)
         {
+            HMODULE hMsvcrt = getMsvcrtHandle(tracker);
+            if (hMsvcrt == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xFF919BD0F407C246;
             uint pHash = 0x5E0B85F02E4FEC22;
             uint hKey  = 0x9855E214CD9310A8;
         #elif _WIN32
-            uint mHash = 0x3DD7996A;
             uint pHash = 0x845CB2FD;
             uint hKey  = 0x9591B59B;
         #endif
-            msize = tracker->FindAPI(mHash, pHash, hKey);
+            msize = tracker->FindAPI_MA(hMsvcrt, pHash, hKey);
             if (msize == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1710,16 +1742,20 @@ uint __cdecl MT_msvcrt_msize(void* ptr)
         msvcrt_msize_t msize = tracker->msvcrt_msize;
         if (msize == NULL)
         {
+            HMODULE hMsvcrt = getMsvcrtHandle(tracker);
+            if (hMsvcrt == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xFF919BD0F407C246;
             uint pHash = 0x5E0B85F02E4FEC22;
             uint hKey  = 0x9855E214CD9310A8;
         #elif _WIN32
-            uint mHash = 0x3DD7996A;
             uint pHash = 0x845CB2FD;
             uint hKey  = 0x9591B59B;
         #endif
-            msize = tracker->FindAPI(mHash, pHash, hKey);
+            msize = tracker->FindAPI_MA(hMsvcrt, pHash, hKey);
             if (msize == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1775,16 +1811,20 @@ void* __cdecl MT_ucrtbase_malloc(uint size)
         ucrtbase_malloc_t malloc = tracker->ucrtbase_malloc;
         if (malloc == NULL)
         {
+            HMODULE hUcrtbase = getUcrtbaseHandle(tracker);
+            if (hUcrtbase == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xC8979D68FC153E63;
             uint pHash = 0xC3ED093E867586EE;
             uint hKey  = 0x843D1732A8C40E00;
         #elif _WIN32
-            uint mHash = 0xE116757B;
             uint pHash = 0xF402BD57;
             uint hKey  = 0x4B5196C8;
         #endif
-            malloc = tracker->FindAPI(mHash, pHash, hKey);
+            malloc = tracker->FindAPI_MA(hUcrtbase, pHash, hKey);
             if (malloc == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1837,16 +1877,20 @@ void* __cdecl MT_ucrtbase_calloc(uint num, uint size)
         ucrtbase_calloc_t calloc = tracker->ucrtbase_calloc;
         if (calloc == NULL)
         {
+            HMODULE hUcrtbase = getUcrtbaseHandle(tracker);
+            if (hUcrtbase == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xBA11B584C0E2C354;
             uint pHash = 0xB567215A4B430B3F;
             uint hKey  = 0xBF71AC304E763DD9;
         #elif _WIN32
-            uint mHash = 0x65389226;
             uint pHash = 0x21A8EDB6;
             uint hKey  = 0x83A98C6F;
         #endif
-            calloc = tracker->FindAPI(mHash, pHash, hKey);
+            calloc = tracker->FindAPI_MA(hUcrtbase, pHash, hKey);
             if (calloc == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1905,16 +1949,20 @@ void* __cdecl MT_ucrtbase_realloc(void* ptr, uint size)
         ucrtbase_realloc_t realloc = tracker->ucrtbase_realloc;
         if (realloc == NULL)
         {
+            HMODULE hUcrtbase = getUcrtbaseHandle(tracker);
+            if (hUcrtbase == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x11B0889A6084A30F;
             uint pHash = 0x438FC396E49E76F1;
             uint hKey  = 0x2147D0F4BBF0BF25;
         #elif _WIN32
-            uint mHash = 0x611CB923;
             uint pHash = 0xADA4F1A3;
             uint hKey  = 0x964B5F08;
         #endif
-            realloc = tracker->FindAPI(mHash, pHash, hKey);
+            realloc = tracker->FindAPI_MA(hUcrtbase, pHash, hKey);
             if (realloc == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -1925,16 +1973,20 @@ void* __cdecl MT_ucrtbase_realloc(void* ptr, uint size)
         ucrtbase_msize_t msize = tracker->ucrtbase_msize;
         if (msize == NULL)
         {
+            HMODULE hUcrtbase = getUcrtbaseHandle(tracker);
+            if (hUcrtbase == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x1831D75A4DDFA430;
             uint pHash = 0x14374030484BEBDD;
             uint hKey  = 0xE5F0D94E0ED9AC76;
         #elif _WIN32
-            uint mHash = 0xDBC9F2B0;
             uint pHash = 0xB8CB06F0;
             uint hKey  = 0xFF1B4883;
         #endif
-            msize = tracker->FindAPI(mHash, pHash, hKey);
+            msize = tracker->FindAPI_MA(hUcrtbase, pHash, hKey);
             if (msize == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -2012,16 +2064,20 @@ void __cdecl MT_ucrtbase_free(void* ptr)
         ucrtbase_free_t free = tracker->ucrtbase_free;
         if (free == NULL)
         {
+            HMODULE hUcrtbase = getUcrtbaseHandle(tracker);
+            if (hUcrtbase == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0xCE9C8798388A6DA3;
             uint pHash = 0x474EAF96B49B242D;
             uint hKey  = 0x4664A17DDAE0B020;
         #elif _WIN32
-            uint mHash = 0xE42F7591;
             uint pHash = 0x49DCB887;
             uint hKey  = 0xA1753154;
         #endif
-            free = tracker->FindAPI(mHash, pHash, hKey);
+            free = tracker->FindAPI_MA(hUcrtbase, pHash, hKey);
             if (free == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -2032,16 +2088,20 @@ void __cdecl MT_ucrtbase_free(void* ptr)
         ucrtbase_msize_t msize = tracker->ucrtbase_msize;
         if (msize == NULL)
         {
+            HMODULE hUcrtbase = getUcrtbaseHandle(tracker);
+            if (hUcrtbase == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x1831D75A4DDFA430;
             uint pHash = 0x14374030484BEBDD;
             uint hKey  = 0xE5F0D94E0ED9AC76;
         #elif _WIN32
-            uint mHash = 0xDBC9F2B0;
             uint pHash = 0xB8CB06F0;
             uint hKey  = 0xFF1B4883;
         #endif
-            msize = tracker->FindAPI(mHash, pHash, hKey);
+            msize = tracker->FindAPI_MA(hUcrtbase, pHash, hKey);
             if (msize == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -2119,16 +2179,20 @@ uint __cdecl MT_ucrtbase_msize(void* ptr)
         ucrtbase_msize_t msize = tracker->ucrtbase_msize;
         if (msize == NULL)
         {
+            HMODULE hUcrtbase = getUcrtbaseHandle(tracker);
+            if (hUcrtbase == NULL)
+            {
+                lastErr = ERR_MEMORY_MOD_NOT_FOUND;
+                break;
+            }
         #ifdef _WIN64
-            uint mHash = 0x1831D75A4DDFA430;
             uint pHash = 0x14374030484BEBDD;
             uint hKey  = 0xE5F0D94E0ED9AC76;
         #elif _WIN32
-            uint mHash = 0xDBC9F2B0;
             uint pHash = 0xB8CB06F0;
             uint hKey  = 0xFF1B4883;
         #endif
-            msize = tracker->FindAPI(mHash, pHash, hKey);
+            msize = tracker->FindAPI_MA(hUcrtbase, pHash, hKey);
             if (msize == NULL)
             {
                 lastErr = ERR_MEMORY_API_NOT_FOUND;
@@ -2172,6 +2236,52 @@ static uint calcHeapMark(MemoryTracker* tracker, uintptr addr, uint size)
     mark = XORShift(mark ^ addr);
     mark = XORShift(mark);
     return mark + size;
+}
+
+__declspec(noinline)
+static HMODULE getMsvcrtHandle(MemoryTracker* tracker)
+{
+    if (tracker->hMsvcrt != NULL)
+    {
+        return tracker->hMsvcrt;
+    }
+#ifdef _WIN64
+    uint mHash = 0xFF919BD0F407C246;
+    uint hKey  = 0x9855E214CD9310A8;
+#elif _WIN32
+    uint mHash = 0x3DD7996A;
+    uint hKey  = 0x9591B59B;
+#endif
+    HMODULE module = FindMod_MHL(tracker->PML, mHash, hKey);
+    if (module == NULL)
+    {
+        return NULL;
+    }
+    tracker->hMsvcrt = module;
+    return module;
+}
+
+__declspec(noinline)
+static HMODULE getUcrtbaseHandle(MemoryTracker* tracker)
+{
+    if (tracker->hUcrtbase != NULL)
+    {
+        return tracker->hUcrtbase;
+    }
+#ifdef _WIN64
+    uint mHash = 0xBA11B584C0E2C354;
+    uint hKey  = 0xBF71AC304E763DD9;
+#elif _WIN32
+    uint mHash = 0x65389226;
+    uint hKey  = 0x83A98C6F;
+#endif
+    HMODULE module = FindMod_MHL(tracker->PML, mHash, hKey);
+    if (module == NULL)
+    {
+        return NULL;
+    }
+    tracker->hUcrtbase = module;
+    return module;
 }
 
 // replacePageProtect is used to make sure all the page are readable.
@@ -2947,17 +3057,20 @@ void MT_Flush()
 {
     MemoryTracker* tracker = getTrackerPointer();
 
-   tracker->msvcrt_malloc  = NULL;
-   tracker->msvcrt_calloc  = NULL;
-   tracker->msvcrt_realloc = NULL;
-   tracker->msvcrt_free    = NULL;
-   tracker->msvcrt_msize   = NULL;
+    tracker->hMsvcrt   = NULL;
+    tracker->hUcrtbase = NULL;
 
-   tracker->ucrtbase_malloc  = NULL;
-   tracker->ucrtbase_calloc  = NULL;
-   tracker->ucrtbase_realloc = NULL;
-   tracker->ucrtbase_free    = NULL;
-   tracker->ucrtbase_msize   = NULL;
+    tracker->msvcrt_malloc  = NULL;
+    tracker->msvcrt_calloc  = NULL;
+    tracker->msvcrt_realloc = NULL;
+    tracker->msvcrt_free    = NULL;
+    tracker->msvcrt_msize   = NULL;
+
+    tracker->ucrtbase_malloc  = NULL;
+    tracker->ucrtbase_calloc  = NULL;
+    tracker->ucrtbase_realloc = NULL;
+    tracker->ucrtbase_free    = NULL;
+    tracker->ucrtbase_msize   = NULL;
 }
 
 __declspec(noinline)
