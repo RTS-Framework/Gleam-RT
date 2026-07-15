@@ -1,13 +1,16 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "lib_memory.h"
+#include "hash_api.h"
 #include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "mod_argument.h"
 #include "debug.h"
 
@@ -53,20 +56,13 @@ errno AS_Encrypt();
 errno AS_Decrypt();
 errno AS_Clean();
 
-// hard encoded address in getStorePointer for replacement
-#ifdef _WIN64
-    #define STORE_POINTER 0x7FABCDEF111111C5
-#elif _WIN32
-    #define STORE_POINTER 0x7FABCDC5
-#endif
 static ArgumentStore* getStorePointer();
 
 static bool initStoreAPI(ArgumentStore* store, Context* context);
-static bool updateStorePointer(ArgumentStore* store);
-static bool recoverStorePointer(ArgumentStore* store);
-static bool initStoreEnvironment(ArgumentStore* store, Context* context);
-static void eraseStoreMethods(Context* context);
-static void cleanStore(ArgumentStore* store);
+static bool initStoreEnv(ArgumentStore* store, Context* context);
+static void eraseStoreMethod(Context* context);
+static void cleanStoreResource(ArgumentStore* store);
+static void setStorePointer(ArgumentStore* store);
 
 static errno loadArguments(ArgumentStore* store, Context* context);
 static byte  ror(byte value, uint8 bits);
@@ -92,12 +88,7 @@ ArgumentStore_M* InitArgumentStore(Context* context)
             errno = ERR_ARGUMENT_INIT_API;
             break;
         }
-        if (!updateStorePointer(store))
-        {
-            errno = ERR_ARGUMENT_UPDATE_PTR;
-            break;
-        }
-        if (!initStoreEnvironment(store, context))
+        if (!initStoreEnv(store, context))
         {
             errno = ERR_ARGUMENT_INIT_ENV;
             break;
@@ -109,13 +100,14 @@ ArgumentStore_M* InitArgumentStore(Context* context)
         }
         break;
     }
-    eraseStoreMethods(context);
+    eraseStoreMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanStore(store);
+        cleanStoreResource(store);
         SetLastErrno(errno);
         return NULL;
     }
+    setStorePointer(store);
     // create methods for store
     ArgumentStore_M* module = (ArgumentStore_M*)moduleAddr;
     // methods for upper module
@@ -145,51 +137,7 @@ static bool initStoreAPI(ArgumentStore* store, Context* context)
     return true;
 }
 
-// CANNOT merge updateStorePointer and recoverStorePointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
-__declspec(noinline)
-static bool updateStorePointer(ArgumentStore* store)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getStorePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != STORE_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)store;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool recoverStorePointer(ArgumentStore* store)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getStorePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)store)
-        {
-            target++;
-            continue;
-        }
-        *pointer = STORE_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool initStoreEnvironment(ArgumentStore* store, Context* context)
+static bool initStoreEnv(ArgumentStore* store, Context* context)
 {
     // create global mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_AS_MUTEX_GLOBAL);
@@ -221,10 +169,11 @@ static errno loadArguments(ArgumentStore* store, Context* context)
         return ERR_ARGUMENT_INVALID_NUM;
     }
     // allocate memory page for store them
-    uint32 pageSize = context->MPS;
+    uint32 pageSize = (uint32)(context->MPS);
     uint32 memSize  = (((size + num) / pageSize) + 1) * pageSize;
-    memSize += (uint32)(1 + RandUintN(0, 16)) * pageSize;
-    byte* mem = store->VirtualAlloc(NULL, memSize, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    memSize += (1 + RandUint32N(0, 16)) * pageSize;
+    DWORD type = MEM_COMMIT|MEM_RESERVE;
+    byte* mem = store->VirtualAlloc(NULL, memSize, type, PAGE_READWRITE);
     if (mem == NULL)
     {
         return ERR_ARGUMENT_ALLOC_MEM;
@@ -306,20 +255,20 @@ static byte rol(byte value, uint8 bits)
 }
 
 __declspec(noinline)
-static void eraseStoreMethods(Context* context)
+static void eraseStoreMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initStoreAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseStoreMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseStoreMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
-static void cleanStore(ArgumentStore* store)
+static void cleanStoreResource(ArgumentStore* store)
 {
     if (store->Address != NULL)
     {
@@ -335,13 +284,16 @@ static void cleanStore(ArgumentStore* store)
     }
 }
 
-// updateStorePointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateStorePointer will fail.
+__declspec(noinline)
+static void setStorePointer(ArgumentStore* store)
+{
+    *(ArgumentStore**)(POINTER_OFFSET_LIBRARY_TRACKER) = store;
+}
+
 #pragma optimize("", off)
 static ArgumentStore* getStorePointer()
 {
-    uintptr pointer = STORE_POINTER;
-    return (ArgumentStore*)(pointer);
+    return *(ArgumentStore**)POINTER_OFFSET_LIBRARY_TRACKER;
 }
 #pragma optimize("", on)
 
@@ -584,15 +536,6 @@ errno AS_Clean()
     if (!store->CloseHandle(store->hMutex) && errno == NO_ERROR)
     {
         errno = ERR_ARGUMENT_CLOSE_MUTEX;
-    }
-
-    // recover instructions
-    if (store->NotEraseInstruction)
-    {
-        if (!recoverStorePointer(store) && errno == NO_ERROR)
-        {
-            errno = ERR_ARGUMENT_RECOVER_INST;
-        }
     }
     return errno;
 }
