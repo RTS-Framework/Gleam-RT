@@ -1,17 +1,18 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "lib_memory.h"
-#include "rel_addr.h"
 #include "hash_api.h"
 #include "list_md.h"
+#include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
-#include "win_api.h"
 #include "thread.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "mod_thread.h"
 #include "debug.h"
 
@@ -26,8 +27,11 @@ typedef struct {
     // store options
     bool NotEraseInstruction;
 
-    // store environment
-    void* IMOML;
+    // process environment
+    PML* PML;
+
+    // process exe image base
+    HMODULE ImageBase;
 
     // API addresses
     CreateThread_t         CreateThread;
@@ -109,20 +113,13 @@ HANDLE tt_createThread(
     LPVOID lpParameter, DWORD dwCreationFlags, DWORD* lpThreadId, BOOL track
 );
 
-// hard encoded address in getTrackerPointer for replacement
-#ifdef _WIN64
-    #define TRACKER_POINTER 0x7FABCDEF111111C3
-#elif _WIN32
-    #define TRACKER_POINTER 0x7FABCDC3
-#endif
 static ThreadTracker* getTrackerPointer();
 
 static bool initTrackerAPI(ThreadTracker* tracker, Context* context);
-static bool updateTrackerPointer(ThreadTracker* tracker);
-static bool recoverTrackerPointer(ThreadTracker* tracker);
-static bool initTrackerEnvironment(ThreadTracker* tracker, Context* context);
-static void eraseTrackerMethods(Context* context);
-static void cleanTracker(ThreadTracker* tracker);
+static bool initTrackerEnv(ThreadTracker* tracker, Context* context);
+static void eraseTrackerMethod(Context* context);
+static void cleanTrackerResource(ThreadTracker* tracker);
+static void setTrackerPointer(ThreadTracker* tracker);
 
 static bool getThread(ThreadTracker* tracker, DWORD threadID, thread** pThread);
 static bool addThread(ThreadTracker* tracker, DWORD threadID, HANDLE hThread);
@@ -143,8 +140,10 @@ ThreadTracker_M* InitThreadTracker(Context* context)
     mem_init(tracker, sizeof(ThreadTracker));
     // store options
     tracker->NotEraseInstruction = context->NotEraseInstruction;
-    // store environment
-    tracker->IMOML = context->IMOML;
+    // store process environment
+    tracker->PML = context->PML;
+    // store process image base
+    tracker->ImageBase = context->ImageBase;
     // initialize tracker
     errno errno = NO_ERROR;
     for (;;)
@@ -154,25 +153,21 @@ ThreadTracker_M* InitThreadTracker(Context* context)
             errno = ERR_THREAD_INIT_API;
             break;
         }
-        if (!updateTrackerPointer(tracker))
-        {
-            errno = ERR_THREAD_UPDATE_PTR;
-            break;
-        }
-        if (!initTrackerEnvironment(tracker, context))
+        if (!initTrackerEnv(tracker, context))
         {
             errno = ERR_THREAD_INIT_ENV;
             break;
         }
         break;
     }
-    eraseTrackerMethods(context);
+    eraseTrackerMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanTracker(tracker);
+        cleanTrackerResource(tracker);
         SetLastErrno(errno);
         return NULL;
     }
+    setTrackerPointer(tracker);
     // create methods for tracker
     ThreadTracker_M* module = (ThreadTracker_M*)moduleAddr;
     // methods for API redirector
@@ -211,37 +206,37 @@ ThreadTracker_M* InitThreadTracker(Context* context)
 __declspec(noinline)
 static bool initTrackerAPI(ThreadTracker* tracker, Context* context)
 {
-    typedef struct { 
-        uint mHash; uint pHash; uint hKey; void* proc;
+    typedef struct {
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0xBE904CF80CF17C39, 0x519776E56C20ED23, 0x5301991C18DCD17D }, // CreateThread
-        { 0xF23240D671D7EC62, 0x0C68B86B8614EB50, 0x45ACC1750A672E67 }, // SwitchToThread
-        { 0x8B18734C0789B973, 0xA2C60822A1BE2D5A, 0x76B5C9DD472F424A }, // SetThreadContext
-        { 0x9994C637BC7D7FCB, 0xF2FE8E7A503389EA, 0x26E4C3B35DA8BD0E }, // GetThreadId
-        { 0xB71E7C8FEFD05DB5, 0x8A0B3145841ADACF, 0xE46B1941576D6197 }, // GetCurrentThreadId
-        { 0xE77B1C721DEE4878, 0xCF70DFC838ECCA31, 0xC28365451F8D8061 }, // TerminateThread
-        { 0xE6A216055D1CEF2E, 0x0B5C25B37828D617, 0xA44A88E4F1BD1B3F }, // TlsAlloc
-        { 0xBCED74DF5203BAD4, 0x22130B4B51186B34, 0xC9741392031C8FF3 }, // TlsFree
+        { 0x519776E56C20ED23, 0x5301991C18DCD17D }, // CreateThread
+        { 0x0C68B86B8614EB50, 0x45ACC1750A672E67 }, // SwitchToThread
+        { 0xA2C60822A1BE2D5A, 0x76B5C9DD472F424A }, // SetThreadContext
+        { 0xF2FE8E7A503389EA, 0x26E4C3B35DA8BD0E }, // GetThreadId
+        { 0x8A0B3145841ADACF, 0xE46B1941576D6197 }, // GetCurrentThreadId
+        { 0xCF70DFC838ECCA31, 0xC28365451F8D8061 }, // TerminateThread
+        { 0x0B5C25B37828D617, 0xA44A88E4F1BD1B3F }, // TlsAlloc
+        { 0x22130B4B51186B34, 0xC9741392031C8FF3 }, // TlsFree
     };
 #elif _WIN32
     {
-        { 0x21B7D96A, 0xBFD234C5, 0x79B41A6D }, // CreateThread
-        { 0x10389EFD, 0xFD4F3BAC, 0xDE25CF78 }, // SwitchToThread
-        { 0xAF648BCE, 0xAB5EB7D9, 0x885A79B8 }, // SetThreadContext
-        { 0xD932B610, 0x1EDB556A, 0xEAE314E1 }, // GetThreadId
-        { 0x9DCDA638, 0xD7F7DC6A, 0xE476968C }, // GetCurrentThreadId
-        { 0xEC2E0B2B, 0x010AE228, 0x72B16724 }, // TerminateThread
-        { 0x09C1B0DC, 0xE9B75640, 0x5532D70D }, // TlsAlloc
-        { 0xAB3BF90E, 0x828A480E, 0xB2033621 }, // TlsFree
+        { 0xBFD234C5, 0x79B41A6D }, // CreateThread
+        { 0xFD4F3BAC, 0xDE25CF78 }, // SwitchToThread
+        { 0xAB5EB7D9, 0x885A79B8 }, // SetThreadContext
+        { 0x1EDB556A, 0xEAE314E1 }, // GetThreadId
+        { 0xD7F7DC6A, 0xE476968C }, // GetCurrentThreadId
+        { 0x010AE228, 0x72B16724 }, // TerminateThread
+        { 0xE9B75640, 0x5532D70D }, // TlsAlloc
+        { 0x828A480E, 0xB2033621 }, // TlsFree
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = context->FindAPI(item.mHash, item.pHash, item.hKey);
+        void*  proc = context->FindAPI_MA(context->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -270,52 +265,8 @@ static bool initTrackerAPI(ThreadTracker* tracker, Context* context)
     return true;
 }
 
-// CANNOT merge updateTrackerPointer and recoverTrackerPointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
 __declspec(noinline)
-static bool updateTrackerPointer(ThreadTracker* tracker)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getTrackerPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != TRACKER_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)tracker;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool recoverTrackerPointer(ThreadTracker* tracker)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getTrackerPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)tracker)
-        {
-            target++;
-            continue;
-        }
-        *pointer = TRACKER_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool initTrackerEnvironment(ThreadTracker* tracker, Context* context)
+static bool initTrackerEnv(ThreadTracker* tracker, Context* context)
 {
     // create mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_TT_MUTEX_GLOBAL);
@@ -357,20 +308,20 @@ static bool initTrackerEnvironment(ThreadTracker* tracker, Context* context)
 }
 
 __declspec(noinline)
-static void eraseTrackerMethods(Context* context)
+static void eraseTrackerMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initTrackerAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethod));
     uintptr size  = end - begin;
     RandBuffer((byte*)begin, (int64)size);
 }
 
 __declspec(noinline)
-static void cleanTracker(ThreadTracker* tracker)
+static void cleanTrackerResource(ThreadTracker* tracker)
 {
     // close mutex handle
     if (tracker->CloseHandle != NULL && tracker->hMutex != NULL)
@@ -399,13 +350,16 @@ static void cleanTracker(ThreadTracker* tracker)
     List_Free(&tracker->TLSIndex);
 }
 
-// updateTrackerPointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateTrackerPointer will fail.
+__declspec(noinline)
+static void setTrackerPointer(ThreadTracker* tracker)
+{
+    *(ThreadTracker**)(POINTER_OFFSET_THREAD_TRACKER) = tracker;
+}
+
 #pragma optimize("", off)
 static ThreadTracker* getTrackerPointer()
 {
-    uintptr pointer = TRACKER_POINTER;
-    return (ThreadTracker*)(pointer);
+    return *(ThreadTracker**)(POINTER_OFFSET_THREAD_TRACKER);
 }
 #pragma optimize("", on)
 
@@ -440,7 +394,7 @@ HANDLE tt_createThread(
     {
         // create thread from camouflaged start address and pause it
         bool  resume   = (dwCreationFlags & 0xF) != CREATE_SUSPENDED;
-        void* fakeAddr = CamouflageStartAddress(tracker->IMOML, lpStartAddress);
+        void* fakeAddr = CamouflageStartAddress(tracker->ImageBase, lpStartAddress);
         dwCreationFlags |= CREATE_SUSPENDED;
         hThread = tracker->CreateThread(
             lpThreadAttributes, dwStackSize, fakeAddr,
@@ -591,7 +545,7 @@ DWORD TT_SuspendThread(HANDLE hThread)
                 thread->numSuspend++;
                 tracker->NumSuspend++;
             }
-        }   
+        }
     }
     dbg_log("[thread]", "SuspendThread: 0x%zX", hThread);
 
@@ -1504,15 +1458,6 @@ errno TT_Clean()
     if (!tracker->CloseHandle(tracker->hMutex) && errno == NO_ERROR)
     {
         errno = ERR_THREAD_CLOSE_MUTEX;
-    }
-
-    // recover instructions
-    if (tracker->NotEraseInstruction)
-    {
-        if (!recoverTrackerPointer(tracker) && errno == NO_ERROR)
-        {
-            errno = ERR_THREAD_RECOVER_INST;
-        }
     }
 
     dbg_log("[thread]", "threads:   %zu", tracker->Threads.Len);
