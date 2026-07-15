@@ -84,10 +84,10 @@ errno LT_Clean();
 static LibraryTracker* getTrackerPointer();
 
 static bool initTrackerAPI(LibraryTracker* tracker, Context* context);
-static bool initTrackerEnvironment(LibraryTracker* tracker, Context* context);
-static void updateTrackerPointer(LibraryTracker* tracker);
-static void eraseTrackerMethods(Context* context);
-static void cleanTracker(LibraryTracker* tracker);
+static bool initTrackerEnv(LibraryTracker* tracker, Context* context);
+static void eraseTrackerMethod(Context* context);
+static void cleanTrackerResource(LibraryTracker* tracker);
+static void setTrackerPointer(LibraryTracker* tracker);
 
 static bool isGleamRT_A(LPCSTR lpLibFileName);
 static bool isGleamRT_W(LPCWSTR lpLibFileName);
@@ -116,21 +116,21 @@ LibraryTracker_M* InitLibraryTracker(Context* context)
             errno = ERR_LIBRARY_INIT_API;
             break;
         }
-        if (!initTrackerEnvironment(tracker, context))
+        if (!initTrackerEnv(tracker, context))
         {
             errno = ERR_LIBRARY_INIT_ENV;
             break;
         }
         break;
     }
-    updateTrackerPointer(tracker);
-    eraseTrackerMethods(context);
+    eraseTrackerMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanTracker(tracker);
+        cleanTrackerResource(tracker);
         SetLastErrno(errno);
         return NULL;
     }
+    setTrackerPointer(tracker);
     // create methods for tracker
     LibraryTracker_M* module = (LibraryTracker_M*)moduleAddr;
     // methods for API redirector
@@ -205,13 +205,7 @@ static bool initTrackerAPI(LibraryTracker* tracker, Context* context)
 }
 
 __declspec(noinline)
-static void updateTrackerPointer(LibraryTracker* tracker)
-{
-    *(LibraryTracker**)(POINTER_OFFSET_LIBRARY_TRACKER) = tracker;
-}
-
-__declspec(noinline)
-static bool initTrackerEnvironment(LibraryTracker* tracker, Context* context)
+static bool initTrackerEnv(LibraryTracker* tracker, Context* context)
 {
     // create mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_LT_MUTEX_GLOBAL);
@@ -236,26 +230,32 @@ static bool initTrackerEnvironment(LibraryTracker* tracker, Context* context)
 }
 
 __declspec(noinline)
-static void eraseTrackerMethods(Context* context)
+static void eraseTrackerMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initTrackerAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethod));
     uintptr size  = end - begin;
     EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
-static void cleanTracker(LibraryTracker* tracker)
+static void cleanTrackerResource(LibraryTracker* tracker)
 {
     if (tracker->CloseHandle != NULL && tracker->hMutex != NULL)
     {
         tracker->CloseHandle(tracker->hMutex);
     }
     List_Free(&tracker->Modules);
+}
+
+__declspec(noinline)
+static void setTrackerPointer(LibraryTracker* tracker)
+{
+    *(LibraryTracker**)(POINTER_OFFSET_LIBRARY_TRACKER) = tracker;
 }
 
 #pragma optimize("", off)
