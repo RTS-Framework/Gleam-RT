@@ -1,14 +1,17 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "lib_memory.h"
-#include "rel_addr.h"
+#include "hash_api.h"
 #include "list_md.h"
+#include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "mod_storage.h"
 #include "debug.h"
 
@@ -59,20 +62,13 @@ errno IMS_Encrypt();
 errno IMS_Decrypt();
 errno IMS_Clean();
 
-// hard encoded address in getStoragePointer for replacement
-#ifdef _WIN64
-    #define STORAGE_POINTER 0x7FABCDEF111111C6
-#elif _WIN32
-    #define STORAGE_POINTER 0x7FABCDC6
-#endif
 static InMemoryStorage* getStoragePointer();
 
 static bool initStorageAPI(InMemoryStorage* Storage, Context* context);
-static bool updateStoragePointer(InMemoryStorage* Storage);
-static bool recoverStoragePointer(InMemoryStorage* Storage);
-static bool initStorageEnvironment(InMemoryStorage* Storage, Context* context);
-static void eraseStorageMethods(Context* context);
-static void cleanStorage(InMemoryStorage* storage);
+static bool initStorageEnv(InMemoryStorage* Storage, Context* context);
+static void eraseStorageMethod(Context* context);
+static void cleanStorageResource(InMemoryStorage* storage);
+static void setStoragePointer(InMemoryStorage* Storage);
 
 static imsItem* getItem(int id);
 static bool addItem(int id, void* data, uint size);
@@ -99,25 +95,21 @@ InMemoryStorage_M* InitInMemoryStorage(Context* context)
             errno = ERR_STORAGE_INIT_API;
             break;
         }
-        if (!updateStoragePointer(storage))
-        {
-            errno = ERR_STORAGE_UPDATE_PTR;
-            break;
-        }
-        if (!initStorageEnvironment(storage, context))
+        if (!initStorageEnv(storage, context))
         {
             errno = ERR_STORAGE_INIT_ENV;
             break;
         }
         break;
     }
-    eraseStorageMethods(context);
+    eraseStorageMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanStorage(storage);
+        cleanStorageResource(storage);
         SetLastErrno(errno);
         return NULL;
     }
+    setStoragePointer(storage);
     // create methods for storage
     InMemoryStorage_M* module = (InMemoryStorage_M*)moduleAddr;
     // methods for upper module
@@ -152,51 +144,7 @@ static bool initStorageAPI(InMemoryStorage* storage, Context* context)
 }
 #pragma optimize("", on)
 
-// CANNOT merge updateStoragePointer and recoverStoragePointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
-__declspec(noinline)
-static bool updateStoragePointer(InMemoryStorage* storage)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getStoragePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != STORAGE_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)storage;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool recoverStoragePointer(InMemoryStorage* storage)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getStoragePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)storage)
-        {
-            target++;
-            continue;
-        }
-        *pointer = STORAGE_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool initStorageEnvironment(InMemoryStorage* storage, Context* context)
+static bool initStorageEnv(InMemoryStorage* storage, Context* context)
 {
     // create mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_IS_MUTEX_GLOBAL);
@@ -219,20 +167,20 @@ static bool initStorageEnvironment(InMemoryStorage* storage, Context* context)
 }
 
 __declspec(noinline)
-static void eraseStorageMethods(Context* context)
+static void eraseStorageMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initStorageAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseStorageMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseStorageMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
-static void cleanStorage(InMemoryStorage* storage)
+static void cleanStorageResource(InMemoryStorage* storage)
 {
     if (storage->CloseHandle != NULL && storage->hMutex != NULL)
     {
@@ -241,13 +189,16 @@ static void cleanStorage(InMemoryStorage* storage)
     List_Free(&storage->Items);
 }
 
-// updateStoragePointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateStoragePointer will fail.
+__declspec(noinline)
+static void setStoragePointer(InMemoryStorage* storage)
+{
+    *(InMemoryStorage**)(POINTER_OFFSET_IN_MEMORY_STORAGE) = storage;
+}
+
 #pragma optimize("", off)
 static InMemoryStorage* getStoragePointer()
 {
-    uintptr pointer = STORAGE_POINTER;
-    return (InMemoryStorage*)(pointer);
+    return *(InMemoryStorage**)POINTER_OFFSET_IN_MEMORY_STORAGE;
 }
 #pragma optimize("", on)
 
@@ -522,13 +473,14 @@ static bool addItem(int id, void* data, uint size)
     for (;;)
     {
         // allocate memory for store data
-        memPage = storage->VirtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+        DWORD type = MEM_COMMIT|MEM_RESERVE;
+        memPage = storage->VirtualAlloc(NULL, size, type, PAGE_READWRITE);
         if (memPage == NULL)
         {
             break;
         }
         mem_copy(memPage, data, size);
-        // create and insert item to list 
+        // create and insert item to list
         imsItem item = {
             .id   = id,
             .data = memPage,
@@ -561,7 +513,8 @@ static bool setItem(imsItem* item, void* data, uint size)
     for (;;)
     {
         // allocate memory for store data
-        memPage = storage->VirtualAlloc(NULL, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+        DWORD type = MEM_COMMIT|MEM_RESERVE;
+        memPage = storage->VirtualAlloc(NULL, size, type, PAGE_READWRITE);
         if (memPage == NULL)
         {
             break;
@@ -744,15 +697,6 @@ errno IMS_Clean()
     if (!storage->CloseHandle(storage->hMutex) && errno == NO_ERROR)
     {
         errno = ERR_STORAGE_CLOSE_MUTEX;
-    }
-
-    // recover instructions
-    if (storage->NotEraseInstruction)
-    {
-        if (!recoverStoragePointer(storage) && errno == NO_ERROR)
-        {
-            errno = ERR_STORAGE_RECOVER_INST;
-        }
     }
 
     dbg_log("[storage]", "items: %zu", items->Len);
