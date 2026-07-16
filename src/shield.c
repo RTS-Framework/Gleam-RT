@@ -1,9 +1,10 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "lib_memory.h"
-#include "rel_addr.h"
 #include "hash_api.h"
+#include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
 #include "errno.h"
@@ -95,12 +96,12 @@ errno SD_Clean();
 static Shield* getShieldPointer();
 
 static bool  initShieldAPI(Shield* shield, Context* context);
-static void  updateShieldPointer(Shield* shield);
-static errno initShieldEnvironment(Shield* shield, Context* context);
-static void  eraseShieldMethods(Context* context);
-static void  cleanShield(Shield* shield);
+static errno initShieldEnv(Shield* shield, Context* context);
+static void  eraseShieldMethod(Context* context);
+static void  cleanShieldResource(Shield* shield);
+static void  setShieldPointer(Shield* shield);
 
-static errno cleanResource(Shield* shield);
+static errno sd_clean(Shield* shield);
 
 Shield_M* InitShield(Context* context)
 {
@@ -123,21 +124,21 @@ Shield_M* InitShield(Context* context)
             errno = ERR_SHIELD_INIT_API;
             break;
         }
-        errno = initShieldEnvironment(shield, context);
+        errno = initShieldEnv(shield, context);
         if (errno != NO_ERROR)
         {
             break;
         }
         break;
     }
-    updateShieldPointer(shield);
-    eraseShieldMethods(context);
+    eraseShieldMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanShield(shield);
+        cleanShieldResource(shield);
         SetLastErrno(errno);
         return NULL;
     }
+    setShieldPointer(shield);
     // create methods for shield
     Shield_M* method = (Shield_M*)methodAddr;
     // methods for user
@@ -168,28 +169,28 @@ static bool initShieldAPI(Shield* shield, Context* context)
 
     // get original API address
     typedef struct {
-        uint mHash; uint pHash; uint hKey; void* proc;
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0xB81CFE7E68817EBC, 0x9ED80CDB7C8DC7CB, 0x93DEFC8B369AEB09 }, // VirtualFree
-        { 0x09DCD4916EAF02FB, 0x07847A7F31B555AA, 0xE8CD656DB309997E }, // VirtualProtect
-        { 0xB7A6984C86379802, 0x47310D64BDB74A5A, 0xB770E3DCC3F639EF }, // ExitThread
-        { 0xBF4577A186DA850B, 0x7084089B2EECD03E, 0x859DED82D1FEBB27 }, // WaitForSingleObject
+        { 0x9ED80CDB7C8DC7CB, 0x93DEFC8B369AEB09 }, // VirtualFree
+        { 0x07847A7F31B555AA, 0xE8CD656DB309997E }, // VirtualProtect
+        { 0x47310D64BDB74A5A, 0xB770E3DCC3F639EF }, // ExitThread
+        { 0x7084089B2EECD03E, 0x859DED82D1FEBB27 }, // WaitForSingleObject
     };
 #elif _WIN32
     {
-        { 0xC80B8735, 0x6E1ADA58, 0xF607BBCE }, // VirtualFree
-        { 0x10AA34C4, 0xC5560D17, 0xB641E477 }, // VirtualProtect
-        { 0x88FF610F, 0xCE1AB90A, 0x1CA2C5D8 }, // ExitThread
-        { 0xEE6856BE, 0xB1FF31C3, 0xA11C1DDA }, // WaitForSingleObject
+        { 0x6E1ADA58, 0xF607BBCE }, // VirtualFree
+        { 0xC5560D17, 0xB641E477 }, // VirtualProtect
+        { 0xCE1AB90A, 0x1CA2C5D8 }, // ExitThread
+        { 0xB1FF31C3, 0xA11C1DDA }, // WaitForSingleObject
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = FindAPI(item.mHash, item.pHash, item.hKey);
+        void*  proc = FindAPI_MAL(context->PML, context->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -203,12 +204,8 @@ static bool initShieldAPI(Shield* shield, Context* context)
     return true;
 }
 
-static void updateShieldPointer(Shield* shield)
-{
-    *(Shield**)(POINTER_OFFSET_SHIELD) = shield;
-}
-
-static errno initShieldEnvironment(Shield* shield, Context* context)
+__declspec(noinline)
+static errno initShieldEnv(Shield* shield, Context* context)
 {
     // check stub is valid
     uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
@@ -343,19 +340,20 @@ static errno initShieldEnvironment(Shield* shield, Context* context)
 }
 
 __declspec(noinline)
-static void eraseShieldMethods(Context* context)
+static void eraseShieldMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initShieldAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseShieldMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseShieldMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
-static void cleanShield(Shield* shield)
+__declspec(noinline)
+static void cleanShieldResource(Shield* shield)
 {
     if (shield->Shelter != NULL)
     {
@@ -371,12 +369,17 @@ static void cleanShield(Shield* shield)
     }
 }
 
-#pragma optimize("", off)
+__declspec(noinline)
+static void setShieldPointer(Shield* shield)
+{
+    *(Shield**)(POINTER_OFFSET_SHIELD) = shield;
+}
+
+__declspec(noinline)
 static Shield* getShieldPointer()
 {
     return *(Shield**)POINTER_OFFSET_SHIELD;
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 BOOL SD_GetStatus(SD_Status* status)
@@ -441,7 +444,7 @@ void SD_Stop()
 {
     Shield* shield = getShieldPointer();
 
-    cleanResource(shield);
+    sd_clean(shield);
 
     // build stop arguments
     Stop_Args args = {
@@ -484,11 +487,11 @@ errno SD_Clean()
     {
         shield->VirtualFree(shield->ShieldPage, 0, MEM_RELEASE);
     }
-    return cleanResource(shield);
+    return sd_clean(shield);
 }
 
 __declspec(noinline)
-static errno cleanResource(Shield* shield)
+static errno sd_clean(Shield* shield)
 {
     errno errno = NO_ERROR;
 
