@@ -109,7 +109,7 @@ int RandIntN(uint64 seed, int n)
     {
         seed = generateSeed();
     }
-    return (int)RandUint(seed) % n;
+    return (RandUint(seed) & 0x7FFFFFFF) % n;
 }
 
 int8 RandInt8N(uint64 seed, int8 n)
@@ -122,7 +122,7 @@ int8 RandInt8N(uint64 seed, int8 n)
     {
         seed = generateSeed();
     }
-    return (int8)RandUint8(seed) % n;
+    return (RandUint8(seed) & 0x7F) % n;
 }
 
 int16 RandInt16N(uint64 seed, int16 n)
@@ -135,7 +135,7 @@ int16 RandInt16N(uint64 seed, int16 n)
     {
         seed = generateSeed();
     }
-    return (int16)RandUint16(seed) % n;
+    return (RandUint16(seed) & 0x7FFF) % n;
 }
 
 int32 RandInt32N(uint64 seed, int32 n)
@@ -148,7 +148,7 @@ int32 RandInt32N(uint64 seed, int32 n)
     {
         seed = generateSeed();
     }
-    return (int32)RandUint32(seed) % n;
+    return (RandUint32(seed) & 0x7FFFFFFF) % n;
 }
 
 int64 RandInt64N(uint64 seed, int64 n)
@@ -161,7 +161,7 @@ int64 RandInt64N(uint64 seed, int64 n)
     {
         seed = generateSeed();
     }
-    return (int64)RandUint64(seed) % n;
+    return (RandUint64(seed) & 0x7FFFFFFFFFFFFFFF) % n;
 }
 
 uint RandUintN(uint64 seed, uint n)
