@@ -5,19 +5,20 @@
 #include "dll_winhttp.h"
 #include "lib_memory.h"
 #include "lib_string.h"
-#include "rel_addr.h"
 #include "hash_api.h"
+#include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "win_http.h"
 #include "debug.h"
 
-#define DEFAULT_CONNECT_TIMEOUT (60 * 1000)  // 1m
-#define DEFAULT_SEND_TIMEOUT    (600 * 1000) // 10m
-#define DEFAULT_RECEIVE_TIMEOUT (600 * 1000) // 10m
+#define DEFAULT_CONNECT_TIMEOUT (120 * 1000) // 2m
+#define DEFAULT_SEND_TIMEOUT    (300 * 1000) // 5m
+#define DEFAULT_RECEIVE_TIMEOUT (300 * 1000) // 5m
 
 #ifdef RELEASE_MODE
     #define CHUNK_SIZE 4096
@@ -26,27 +27,13 @@
 #endif
 
 typedef struct {
-    // store options
+    // store option
     bool NotEraseInstruction;
 
     // store HashAPI with spoof call
-    FindAPI_t FindAPI;
+    FindAPI_MA_t FindAPI_MA;
 
-    // API addresses
-    WinHttpCrackUrl_t           WinHttpCrackUrl;
-    WinHttpOpen_t               WinHttpOpen;
-    WinHttpConnect_t            WinHttpConnect;
-    WinHttpSetOption_t          WinHttpSetOption;
-    WinHttpSetTimeouts_t        WinHttpSetTimeouts;
-    WinHttpOpenRequest_t        WinHttpOpenRequest;
-    WinHttpSetCredentials_t     WinHttpSetCredentials;
-    WinHttpSendRequest_t        WinHttpSendRequest;
-    WinHttpReceiveResponse_t    WinHttpReceiveResponse;
-    WinHttpQueryHeaders_t       WinHttpQueryHeaders;
-    WinHttpQueryDataAvailable_t WinHttpQueryDataAvailable;
-    WinHttpReadData_t           WinHttpReadData;
-    WinHttpCloseHandle_t        WinHttpCloseHandle;
-
+    // API address
     LoadLibraryA_t        LoadLibraryA;
     FreeLibrary_t         FreeLibrary;
     ReleaseMutex_t        ReleaseMutex;
@@ -61,10 +48,25 @@ typedef struct {
     mt_free_t    free;
     mt_msize_t   msize;
 
+    // WinHTTP API
+    WinHttpCrackUrl_t           WinHttpCrackUrl;
+    WinHttpOpen_t               WinHttpOpen;
+    WinHttpConnect_t            WinHttpConnect;
+    WinHttpSetOption_t          WinHttpSetOption;
+    WinHttpSetTimeouts_t        WinHttpSetTimeouts;
+    WinHttpOpenRequest_t        WinHttpOpenRequest;
+    WinHttpSetCredentials_t     WinHttpSetCredentials;
+    WinHttpSendRequest_t        WinHttpSendRequest;
+    WinHttpReceiveResponse_t    WinHttpReceiveResponse;
+    WinHttpQueryHeaders_t       WinHttpQueryHeaders;
+    WinHttpQueryDataAvailable_t WinHttpQueryDataAvailable;
+    WinHttpReadData_t           WinHttpReadData;
+    WinHttpCloseHandle_t        WinHttpCloseHandle;
+
     // protect data
-    HMODULE hModule; // winhttp.dll
-    int32   counter; // call counter
-    HANDLE  hMutex;  // global mutex
+    HMODULE hWinHTTP; // winhttp.dll
+    int32   counter;  // call counter
+    HANDLE  hMutex;   // global mutex
 } WinHTTP;
 
 // methods for user
@@ -80,22 +82,16 @@ bool  WH_Unlock();
 errno WH_Clean();
 errno WH_Uninstall();
 
-// hard encoded address in getModulePointer for replacement
-#ifdef _WIN64
-    #define MODULE_POINTER 0x7FABCDEF111111E3
-#elif _WIN32
-    #define MODULE_POINTER 0x7FABCDE3
-#endif
 static WinHTTP* getModulePointer();
+
+static bool initModuleAPI(WinHTTP* module, Context* context);
+static bool initModuleEnv(WinHTTP* module, Context* context);
+static void eraseModuleMethod(Context* context);
+static void cleanModuleResource(WinHTTP* module);
+static void setModulePointer(WinHTTP* module);
 
 static bool wh_lock();
 static bool wh_unlock();
-
-static bool initModuleAPI(WinHTTP* module, Context* context);
-static bool updateModulePointer(WinHTTP* module);
-static bool recoverModulePointer(WinHTTP* module);
-static bool initModuleEnvironment(WinHTTP* module, Context* context);
-static void eraseModuleMethods(Context* context);
 
 static bool initWinHTTPEnv();
 static bool findWinHTTPAPI();
@@ -115,7 +111,7 @@ WinHTTP_M* InitWinHTTP(Context* context)
     // store options
     module->NotEraseInstruction = context->NotEraseInstruction;
     // store HashAPI method
-    module->FindAPI = context->FindAPI;
+    module->FindAPI_MA = context->FindAPI_MA;
     // initialize module
     errno errno = NO_ERROR;
     for (;;)
@@ -125,24 +121,21 @@ WinHTTP_M* InitWinHTTP(Context* context)
             errno = ERR_WIN_HTTP_INIT_API;
             break;
         }
-        if (!updateModulePointer(module))
-        {
-            errno = ERR_WIN_HTTP_UPDATE_PTR;
-            break;
-        }
-        if (!initModuleEnvironment(module, context))
+        if (!initModuleEnv(module, context))
         {
             errno = ERR_WIN_HTTP_INIT_ENV;
             break;
         }
         break;
     }
-    eraseModuleMethods(context);
+    eraseModuleMethod(context);
     if (errno != NO_ERROR)
     {
+        cleanModuleResource(module);
         SetLastErrno(errno);
         return NULL;
     }
+    setModulePointer(module);
     // methods for user
     WinHTTP_M* method = (WinHTTP_M*)methodAddr;
     method->Init    = GetFuncAddr(&WH_Init);
@@ -158,6 +151,7 @@ WinHTTP_M* InitWinHTTP(Context* context)
     return method;
 }
 
+__declspec(noinline)
 static bool initModuleAPI(WinHTTP* module, Context* context)
 {
     module->LoadLibraryA        = context->LoadLibraryA;
@@ -169,49 +163,8 @@ static bool initModuleAPI(WinHTTP* module, Context* context)
     return true;
 }
 
-// CANNOT merge updateModulePointer and recoverModulePointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
-static bool updateModulePointer(WinHTTP* module)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getModulePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != MODULE_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)module;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool recoverModulePointer(WinHTTP* module)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getModulePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)module)
-        {
-            target++;
-            continue;
-        }
-        *pointer = MODULE_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool initModuleEnvironment(WinHTTP* module, Context* context)
+__declspec(noinline)
+static bool initModuleEnv(WinHTTP* module, Context* context)
 {
     // create global mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_WIN_HTTP_MUTEX);
@@ -229,27 +182,39 @@ static bool initModuleEnvironment(WinHTTP* module, Context* context)
     return true;
 }
 
-static void eraseModuleMethods(Context* context)
+__declspec(noinline)
+static void eraseModuleMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initModuleAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseModuleMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseModuleMethod));
     uintptr size  = end - begin;
     RandBuffer((byte*)begin, (int64)size);
 }
 
-// updateModulePointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateModulePointer will fail.
-#pragma optimize("", off)
+__declspec(noinline)
+static void cleanModuleResource(WinHTTP* module)
+{
+    if (module->CloseHandle != NULL && module->hMutex != NULL)
+    {
+        module->CloseHandle(module->hMutex);
+    }
+}
+
+__declspec(noinline)
+static void setModulePointer(WinHTTP* module)
+{
+    *(WinHTTP**)(POINTER_OFFSET_WIN_HTTP) = module;
+}
+
+__declspec(noinline)
 static WinHTTP* getModulePointer()
 {
-    uintptr pointer = MODULE_POINTER;
-    return (WinHTTP*)(pointer);
+    return *(WinHTTP**)(POINTER_OFFSET_WIN_HTTP);
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 static bool wh_lock()
@@ -281,7 +246,7 @@ static bool initWinHTTPEnv()
     bool success = false;
     for (;;)
     {
-        if (module->hModule != NULL)
+        if (module->hWinHTTP != NULL)
         {
             success = true;
             break;
@@ -295,19 +260,20 @@ static bool initWinHTTPEnv()
         byte key[] = { 0xAC, 0x1F, 0x49, 0xC6 };
         XORBuffer(dllName, sizeof(dllName), key, sizeof(key));
         // load winhttp.dll
-        HMODULE hModule = module->LoadLibraryA(dllName);
-        if (hModule == NULL)
+        HMODULE hWinHTTP = module->LoadLibraryA(dllName);
+        if (hWinHTTP == NULL)
         {
             break;
         }
+        module->hWinHTTP = hWinHTTP;
         // prepare API address
         if (!findWinHTTPAPI())
         {
+            module->FreeLibrary(hWinHTTP);
+            module->hWinHTTP = NULL;
             SetLastErrno(ERR_WIN_HTTP_API_NOT_FOUND);
-            module->FreeLibrary(hModule);
             break;
         }
-        module->hModule = hModule;
         success = true;
         break;
     }
@@ -324,46 +290,46 @@ static bool findWinHTTPAPI()
     WinHTTP* module = getModulePointer();
 
     typedef struct {
-        uint mHash; uint pHash; uint hKey; void* proc;
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0x09D56BC14F0B6C5E, 0xE59E661D741355B1, 0xD052806E5485D8F3 }, // WinHttpCrackUrl
-        { 0x48111F4A757CD4E9, 0x400E6753E5A63DB5, 0x9AE5BB8A388C66FF }, // WinHttpOpen
-        { 0x0600BECC52646A86, 0x3AD430BDF4E40E81, 0xB77C5939E9F269B7 }, // WinHttpConnect
-        { 0x645038161B3949A0, 0x75763E7480A283C2, 0x265FD4E89F306B11 }, // WinHttpSetOption
-        { 0x0C99496927A97519, 0x03F9B9C7EC78C7B7, 0x263A3CF0A8E787B2 }, // WinHttpSetTimeouts
-        { 0xD854A8329F298286, 0x35CAC42BDF5C2E53, 0x7537C9CB65D124DF }, // WinHttpOpenRequest
-        { 0xD97996FDB8D33971, 0xC2176B4AD259C681, 0x1C7CAB33C956A2F3 }, // WinHttpSetCredentials
-        { 0x01775CB7F8C8E0B5, 0x2C636CE923F54F95, 0xE49D95A9BA936AF4 }, // WinHttpSendRequest
-        { 0x63FCDA0135E6E952, 0x4D417E29D9D07A84, 0xD241F044CDBFA5A6 }, // WinHttpReceiveResponse
-        { 0x846DFF2AE3418FFC, 0xBBD8FCD7C3E90802, 0xD6E29292911A058D }, // WinHttpQueryHeaders
-        { 0x49455785F9836A89, 0xE460003E9B7CFB78, 0xA98D4D8FA9DBE5D5 }, // WinHttpQueryDataAvailable
-        { 0xC25DFC7F4CDFA29F, 0xAE80D797A058627F, 0x6F06189D852089A1 }, // WinHttpReadData
-        { 0x7C8A3FFAAE6DC640, 0x18DB9A67ECF2B929, 0xF165DBDA96760D48 }, // WinHttpCloseHandle
+        { 0xE59E661D741355B1, 0xD052806E5485D8F3 }, // WinHttpCrackUrl
+        { 0x400E6753E5A63DB5, 0x9AE5BB8A388C66FF }, // WinHttpOpen
+        { 0x3AD430BDF4E40E81, 0xB77C5939E9F269B7 }, // WinHttpConnect
+        { 0x75763E7480A283C2, 0x265FD4E89F306B11 }, // WinHttpSetOption
+        { 0x03F9B9C7EC78C7B7, 0x263A3CF0A8E787B2 }, // WinHttpSetTimeouts
+        { 0x35CAC42BDF5C2E53, 0x7537C9CB65D124DF }, // WinHttpOpenRequest
+        { 0xC2176B4AD259C681, 0x1C7CAB33C956A2F3 }, // WinHttpSetCredentials
+        { 0x2C636CE923F54F95, 0xE49D95A9BA936AF4 }, // WinHttpSendRequest
+        { 0x4D417E29D9D07A84, 0xD241F044CDBFA5A6 }, // WinHttpReceiveResponse
+        { 0xBBD8FCD7C3E90802, 0xD6E29292911A058D }, // WinHttpQueryHeaders
+        { 0xE460003E9B7CFB78, 0xA98D4D8FA9DBE5D5 }, // WinHttpQueryDataAvailable
+        { 0xAE80D797A058627F, 0x6F06189D852089A1 }, // WinHttpReadData
+        { 0x18DB9A67ECF2B929, 0xF165DBDA96760D48 }, // WinHttpCloseHandle
     };
 #elif _WIN32
     {
-        { 0x5E87949A, 0xFDCD864F, 0xEE5F0DE9 }, // WinHttpCrackUrl
-        { 0x53CBD0C2, 0xCFB8E23F, 0x80044D74 }, // WinHttpOpen
-        { 0xF25B5F12, 0xCFFE7D55, 0x5D4BC20F }, // WinHttpConnect
-        { 0x1EF0CAE3, 0x259036E6, 0x63B22F45 }, // WinHttpSetOption
-        { 0x34D42CD0, 0xCF6ED9F1, 0x30BC6A37 }, // WinHttpSetTimeouts
-        { 0x7277263A, 0xF19E1395, 0x6D5D882A }, // WinHttpOpenRequest
-        { 0xF7A8AAE2, 0x97F2F42F, 0x0C1EDCBC }, // WinHttpSetCredentials
-        { 0xBCF04E19, 0x29D2E5E5, 0xC7AA7D3C }, // WinHttpSendRequest
-        { 0xD8FA46F3, 0xD6DCC7D7, 0x480607BE }, // WinHttpReceiveResponse
-        { 0x05635BCB, 0x000BB368, 0x87BCB34A }, // WinHttpQueryHeaders
-        { 0x8F830F1C, 0x71AF1A21, 0xC057873A }, // WinHttpQueryDataAvailable
-        { 0xD05A7C68, 0xE8E70E93, 0x48337705 }, // WinHttpReadData
-        { 0x9F6BD63F, 0xA6470EF8, 0x16DD1E10 }, // WinHttpCloseHandle
+        { 0xFDCD864F, 0xEE5F0DE9 }, // WinHttpCrackUrl
+        { 0xCFB8E23F, 0x80044D74 }, // WinHttpOpen
+        { 0xCFFE7D55, 0x5D4BC20F }, // WinHttpConnect
+        { 0x259036E6, 0x63B22F45 }, // WinHttpSetOption
+        { 0xCF6ED9F1, 0x30BC6A37 }, // WinHttpSetTimeouts
+        { 0xF19E1395, 0x6D5D882A }, // WinHttpOpenRequest
+        { 0x97F2F42F, 0x0C1EDCBC }, // WinHttpSetCredentials
+        { 0x29D2E5E5, 0xC7AA7D3C }, // WinHttpSendRequest
+        { 0xD6DCC7D7, 0x480607BE }, // WinHttpReceiveResponse
+        { 0x000BB368, 0x87BCB34A }, // WinHttpQueryHeaders
+        { 0x71AF1A21, 0xC057873A }, // WinHttpQueryDataAvailable
+        { 0xE8E70E93, 0x48337705 }, // WinHttpReadData
+        { 0xA6470EF8, 0x16DD1E10 }, // WinHttpCloseHandle
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = module->FindAPI(item.mHash, item.pHash, item.hKey);
+        void*  proc = module->FindAPI_MA(module->hWinHTTP, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -394,7 +360,7 @@ static bool tryToFreeLibrary()
     bool success = false;
     for (;;)
     {
-        if (module->hModule == NULL)
+        if (module->hWinHTTP == NULL)
         {
             success = true;
             break;
@@ -404,11 +370,11 @@ static bool tryToFreeLibrary()
             SetLastErrno(ERR_WIN_HTTP_MODULE_BUSY);
             break;
         }
-        if (!module->FreeLibrary(module->hModule))
+        if (!module->FreeLibrary(module->hWinHTTP))
         {
             break;
         }
-        module->hModule = NULL;
+        module->hWinHTTP = NULL;
         success = true;
         break;
     }
@@ -576,7 +542,7 @@ errno WH_Do(UTF16 method, HTTP_Request* req, HTTP_Response* resp)
             );
         } else {
             hSession = module->WinHttpOpen(
-                req->UserAgent, WINHTTP_ACCESS_TYPE_NAMED_PROXY, 
+                req->UserAgent, WINHTTP_ACCESS_TYPE_NAMED_PROXY,
                 req->ProxyURL, NULL, 0
             );
         }
@@ -618,7 +584,7 @@ errno WH_Do(UTF16 method, HTTP_Request* req, HTTP_Response* resp)
         {
             break;
         }
-        // build request path  
+        // build request path
         strncpy_w(reqPath, path, 4096);
         strncpy_w(reqPath + url_com.dwUrlPathLength, extra, 4096);
         // build flag
@@ -692,7 +658,7 @@ errno WH_Do(UTF16 method, HTTP_Request* req, HTTP_Response* resp)
         // get response header
         DWORD headerLen;
         module->WinHttpQueryHeaders(
-            hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, 
+            hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX,
             NULL, &headerLen, WINHTTP_NO_HEADER_INDEX
         );
         if (GetLastErrno() != ERROR_INSUFFICIENT_BUFFER)
@@ -816,7 +782,7 @@ bool WH_Lock()
 {
     WinHTTP* module = getModulePointer();
 
-    // maximum sleep 10s 
+    // maximum sleep 10s
     for (int i = 0; i < 1000; i++)
     {
         if (!wh_lock())
@@ -867,9 +833,9 @@ errno WH_Uninstall()
     errno errno = NO_ERROR;
 
     // free winhttp.dll
-    if (module->hModule != NULL)
+    if (module->hWinHTTP != NULL)
     {
-        if (!module->FreeLibrary(module->hModule) && errno == NO_ERROR)
+        if (!module->FreeLibrary(module->hWinHTTP) && errno == NO_ERROR)
         {
             errno = ERR_WIN_HTTP_FREE_LIBRARY;
         }
@@ -879,15 +845,6 @@ errno WH_Uninstall()
     if (!module->CloseHandle(module->hMutex) && errno == NO_ERROR)
     {
         errno = ERR_WIN_HTTP_CLOSE_MUTEX;
-    }
-
-    // recover instructions
-    if (module->NotEraseInstruction)
-    {
-        if (!recoverModulePointer(module) && errno == NO_ERROR)
-        {
-            errno = ERR_WIN_HTTP_RECOVER_INST;
-        }
     }
     return errno;
 }
