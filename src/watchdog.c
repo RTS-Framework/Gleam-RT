@@ -1,12 +1,15 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
-#include "rel_addr.h"
 #include "hash_api.h"
+#include "rel_addr.h"
 #include "random.h"
+#include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "watchdog.h"
 #include "debug.h"
 
@@ -15,10 +18,11 @@
 #define RESULT_STOP_EVENT 2
 
 typedef struct {
-    // store options
+    // store option
     bool DisableWatchdog;
     bool NotEraseInstruction;
 
+    // API address
     SuspendThread_t          SuspendThread;
     ResumeThread_t           ResumeThread;
     GetThreadContext_t       GetThreadContext;
@@ -73,20 +77,13 @@ errno WD_Pause();
 errno WD_Continue();
 errno WD_Stop();
 
-// hard encoded address in getWatchdogPointer for replacement
-#ifdef _WIN64
-    #define WATCHDOG_POINTER 0x7FABCDEF111111F2
-#elif _WIN32
-    #define WATCHDOG_POINTER 0x7FABCDF2
-#endif
 static Watchdog* getWatchdogPointer();
 
 static bool initWatchdogAPI(Watchdog* watchdog, Context* context);
-static bool updateWatchdogPointer(Watchdog* watchdog);
-static bool recoverWatchdogPointer(Watchdog* watchdog);
-static bool initWatchdogEnvironment(Watchdog* watchdog, Context* context);
-static void eraseWatchdogMethods(Context* context);
-static void cleanWatchdog(Watchdog* watchdog);
+static bool initWatchdogEnv(Watchdog* watchdog, Context* context);
+static void eraseWatchdogMethod(Context* context);
+static void cleanWatchdogResource(Watchdog* watchdog);
+static void setWatchdogPointer(Watchdog* watchdog);
 
 static uint  wd_watcher();
 static uint  wd_sleep(uint32 milliseconds);
@@ -121,25 +118,21 @@ Watchdog_M* InitWatchdog(Context* context)
             errno = ERR_WATCHDOG_INIT_API;
             break;
         }
-        if (!updateWatchdogPointer(watchdog))
-        {
-            errno = ERR_WATCHDOG_UPDATE_PTR;
-            break;
-        }
-        if (!initWatchdogEnvironment(watchdog, context))
+        if (!initWatchdogEnv(watchdog, context))
         {
             errno = ERR_WATCHDOG_INIT_ENV;
             break;
         }
         break;
     }
-    eraseWatchdogMethods(context);
+    eraseWatchdogMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanWatchdog(watchdog);
+        cleanWatchdogResource(watchdog);
         SetLastErrno(errno);
         return NULL;
     }
+    setWatchdogPointer(watchdog);
     // create methods for watchdog
     Watchdog_M* method = (Watchdog_M*)methodAddr;
     // methods for user
@@ -161,25 +154,26 @@ Watchdog_M* InitWatchdog(Context* context)
     return method;
 }
 
+__declspec(noinline)
 static bool initWatchdogAPI(Watchdog* watchdog, Context* context)
 {
-    typedef struct { 
-        uint mHash; uint pHash; uint hKey; void* proc;
+    typedef struct {
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0x30BFA6B95AFB38E9, 0xB85028D3B8C79467, 0xE741B3D6D25343A1 }, // ResetEvent
+        { 0xB85028D3B8C79467, 0xE741B3D6D25343A1 }, // ResetEvent
     };
 #elif _WIN32
     {
-        { 0x9603D553, 0x5C129486, 0x12BD2862 }, // ResetEvent
+        { 0x5C129486, 0x12BD2862 }, // ResetEvent
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = context->FindAPI(item.mHash, item.pHash, item.hKey);
+        void*  proc = context->FindAPI_MA(context->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -201,49 +195,8 @@ static bool initWatchdogAPI(Watchdog* watchdog, Context* context)
     return true;
 }
 
-// CANNOT merge updateWatchdogPointer and recoverWatchdogPointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
-static bool updateWatchdogPointer(Watchdog* watchdog)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getWatchdogPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != WATCHDOG_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)watchdog;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool recoverWatchdogPointer(Watchdog* watchdog)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getWatchdogPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)watchdog)
-        {
-            target++;
-            continue;
-        }
-        *pointer = WATCHDOG_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool initWatchdogEnvironment(Watchdog* watchdog, Context* context)
+__declspec(noinline)
+static bool initWatchdogEnv(Watchdog* watchdog, Context* context)
 {
     // create global mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_WD_MUTEX_GLOBAL);
@@ -277,19 +230,21 @@ static bool initWatchdogEnvironment(Watchdog* watchdog, Context* context)
     return true;
 }
 
-static void eraseWatchdogMethods(Context* context)
+__declspec(noinline)
+static void eraseWatchdogMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initWatchdogAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseWatchdogMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseWatchdogMethod));
     uintptr size  = end - begin;
     RandBuffer((byte*)begin, (int64)size);
 }
 
-static void cleanWatchdog(Watchdog* watchdog)
+__declspec(noinline)
+static void cleanWatchdogResource(Watchdog* watchdog)
 {
     if (watchdog->CloseHandle == NULL)
     {
@@ -309,15 +264,17 @@ static void cleanWatchdog(Watchdog* watchdog)
     }
 }
 
-// updateWatchdogPointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateWatchdogPointer will fail.
-#pragma optimize("", off)
+__declspec(noinline)
+static void setWatchdogPointer(Watchdog* module)
+{
+    *(Watchdog**)(POINTER_OFFSET_WATCHDOG) = module;
+}
+
+__declspec(noinline)
 static Watchdog* getWatchdogPointer()
 {
-    uintptr pointer = WATCHDOG_POINTER;
-    return (Watchdog*)(pointer);
+    return *(Watchdog**)POINTER_OFFSET_WATCHDOG;
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 static uint wd_watcher()
@@ -810,15 +767,6 @@ errno WD_Stop()
     if (!watchdog->CloseHandle(watchdog->statusMu) && errno == NO_ERROR)
     {
         errno = ERR_WATCHDOG_CLOSE_STATUS;
-    }
-
-    // recover instructions
-    if (watchdog->NotEraseInstruction)
-    {
-        if (!recoverWatchdogPointer(watchdog) && errno == NO_ERROR)
-        {
-            errno = ERR_WATCHDOG_RECOVER_INST;
-        }
     }
     return errno;
 }
