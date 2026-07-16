@@ -1,26 +1,42 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "dll_advapi32.h"
 #include "lib_memory.h"
-#include "rel_addr.h"
 #include "hash_api.h"
+#include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "win_crypto.h"
 #include "debug.h"
 
 typedef struct {
-    // store options
+    // store option
     bool NotEraseInstruction;
 
     // store HashAPI with spoof call
-    FindAPI_t FindAPI;
+    FindAPI_MA_t FindAPI_MA;
 
-    // API addresses
+    // API address
+    LoadLibraryA_t        LoadLibraryA;
+    FreeLibrary_t         FreeLibrary;
+    ReleaseMutex_t        ReleaseMutex;
+    WaitForSingleObject_t WaitForSingleObject;
+    CloseHandle_t         CloseHandle;
+
+    // submodules method
+    mt_malloc_t  malloc;
+    mt_calloc_t  calloc;
+    mt_realloc_t realloc;
+    mt_free_t    free;
+    mt_msize_t   msize;
+
+    // advapi32 API
     CryptAcquireContextA_t  CryptAcquireContextA;
     CryptReleaseContext_t   CryptReleaseContext;
     CryptGenRandom_t        CryptGenRandom;
@@ -39,22 +55,9 @@ typedef struct {
     CryptSignHashA_t        CryptSignHashA;
     CryptVerifySignatureA_t CryptVerifySignatureA;
 
-    LoadLibraryA_t        LoadLibraryA;
-    FreeLibrary_t         FreeLibrary;
-    ReleaseMutex_t        ReleaseMutex;
-    WaitForSingleObject_t WaitForSingleObject;
-    CloseHandle_t         CloseHandle;
-
-    // submodules method
-    mt_malloc_t  malloc;
-    mt_calloc_t  calloc;
-    mt_realloc_t realloc;
-    mt_free_t    free;
-    mt_msize_t   msize;
-
     // protect data
-    HMODULE hModule; // advapi32.dll
-    HANDLE  hMutex;  // global mutex
+    HMODULE hAdvapi32; // advapi32.dll
+    HANDLE  hMutex;    // global mutex
 } WinCrypto;
 
 // methods for user
@@ -75,22 +78,16 @@ errno WC_FreeDLL();
 errno WC_Clean();
 errno WC_Uninstall();
 
-// hard encoded address in getModulePointer for replacement
-#ifdef _WIN64
-    #define MODULE_POINTER 0x7FABCDEF111111E4
-#elif _WIN32
-    #define MODULE_POINTER 0x7FABCDE4
-#endif
 static WinCrypto* getModulePointer();
+
+static bool initModuleAPI(WinCrypto* module, Context* context);
+static bool initModuleEnv(WinCrypto* module, Context* context);
+static void eraseModuleMethod(Context* context);
+static void cleanModuleResource(WinCrypto* module);
+static void setModulePointer(WinCrypto* module);
 
 static bool wc_lock();
 static bool wc_unlock();
-
-static bool initModuleAPI(WinCrypto* module, Context* context);
-static bool updateModulePointer(WinCrypto* module);
-static bool recoverModulePointer(WinCrypto* module);
-static bool initModuleEnvironment(WinCrypto* module, Context* context);
-static void eraseModuleMethods(Context* context);
 
 static bool initWinCryptoEnv();
 static bool findWinCryptoAPI();
@@ -111,7 +108,7 @@ WinCrypto_M* InitWinCrypto(Context* context)
     // store options
     module->NotEraseInstruction = context->NotEraseInstruction;
     // store HashAPI method
-    module->FindAPI = context->FindAPI;
+    module->FindAPI_MA = context->FindAPI_MA;
     // initialize module
     errno errno = NO_ERROR;
     for (;;)
@@ -121,24 +118,21 @@ WinCrypto_M* InitWinCrypto(Context* context)
             errno = ERR_WIN_CRYPTO_INIT_API;
             break;
         }
-        if (!updateModulePointer(module))
-        {
-            errno = ERR_WIN_CRYPTO_UPDATE_PTR;
-            break;
-        }
-        if (!initModuleEnvironment(module, context))
+        if (!initModuleEnv(module, context))
         {
             errno = ERR_WIN_CRYPTO_INIT_ENV;
             break;
         }
         break;
     }
-    eraseModuleMethods(context);
+    eraseModuleMethod(context);
     if (errno != NO_ERROR)
     {
+        cleanModuleResource(module);
         SetLastErrno(errno);
         return NULL;
     }
+    setModulePointer(module);
     // methods for user
     WinCrypto_M* method = (WinCrypto_M*)methodAddr;
     method->RandBuffer = GetFuncAddr(&WC_RandBuffer);
@@ -159,6 +153,7 @@ WinCrypto_M* InitWinCrypto(Context* context)
     return method;
 }
 
+__declspec(noinline)
 static bool initModuleAPI(WinCrypto* module, Context* context)
 {
     module->LoadLibraryA        = context->LoadLibraryA;
@@ -169,49 +164,8 @@ static bool initModuleAPI(WinCrypto* module, Context* context)
     return true;
 }
 
-// CANNOT merge updateModulePointer and recoverModulePointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
-static bool updateModulePointer(WinCrypto* module)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getModulePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != MODULE_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)module;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool recoverModulePointer(WinCrypto* module)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getModulePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)module)
-        {
-            target++;
-            continue;
-        }
-        *pointer = MODULE_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool initModuleEnvironment(WinCrypto* module, Context* context)
+__declspec(noinline)
+static bool initModuleEnv(WinCrypto* module, Context* context)
 {
     // create global mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_WIN_CRYPTO_MUTEX);
@@ -229,27 +183,39 @@ static bool initModuleEnvironment(WinCrypto* module, Context* context)
     return true;
 }
 
-static void eraseModuleMethods(Context* context)
+__declspec(noinline)
+static void eraseModuleMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initModuleAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseModuleMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseModuleMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
-// updateModulePointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateModulePointer will fail.
-#pragma optimize("", off)
+__declspec(noinline)
+static void cleanModuleResource(WinCrypto* module)
+{
+    if (module->CloseHandle != NULL && module->hMutex != NULL)
+    {
+        module->CloseHandle(module->hMutex);
+    }
+}
+
+__declspec(noinline)
+static void setModulePointer(WinCrypto* module)
+{
+    *(WinCrypto**)(POINTER_OFFSET_WIN_CRYPTO) = module;
+}
+
+__declspec(noinline)
 static WinCrypto* getModulePointer()
 {
-    uintptr pointer = MODULE_POINTER;
-    return (WinCrypto*)(pointer);
+    return *(WinCrypto**)(POINTER_OFFSET_WIN_CRYPTO);
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 static bool wc_lock()
@@ -281,34 +247,35 @@ static bool initWinCryptoEnv()
     bool success = false;
     for (;;)
     {
-        if (module->hModule != NULL)
+        if (module->hAdvapi32 != NULL)
         {
             success = true;
             break;
         }
         // decrypt to "advapi32.dll\0"
         byte dllName[] = {
-            'a'^0xC4, 'd'^0x79, 'v'^0xF2, 'a'^0x2A, 
-            'p'^0xC4, 'i'^0x79, '3'^0xF2, '2'^0x2A, 
+            'a'^0xC4, 'd'^0x79, 'v'^0xF2, 'a'^0x2A,
+            'p'^0xC4, 'i'^0x79, '3'^0xF2, '2'^0x2A,
             '.'^0xC4, 'd'^0x79, 'l'^0xF2, 'l'^0x2A,
             000^0xC4,
         };
         byte key[] = { 0xC4, 0x79, 0xF2, 0x2A };
         XORBuffer(dllName, sizeof(dllName), key, sizeof(key));
         // load advapi32.dll
-        HMODULE hModule = module->LoadLibraryA(dllName);
-        if (hModule == NULL)
+        HMODULE hAdvapi32 = module->LoadLibraryA(dllName);
+        if (hAdvapi32 == NULL)
         {
             break;
         }
+        module->hAdvapi32 = hAdvapi32;
         // prepare API address
         if (!findWinCryptoAPI())
         {
+            module->FreeLibrary(hAdvapi32);
+            module->hAdvapi32 = NULL;
             SetLastErrno(ERR_WIN_CRYPTO_API_NOT_FOUND);
-            module->FreeLibrary(hModule);
             break;
         }
-        module->hModule = hModule;
         success = true;
         break;
     }
@@ -324,55 +291,55 @@ static bool findWinCryptoAPI()
 {
     WinCrypto* module = getModulePointer();
 
-    typedef struct { 
-        uint mHash; uint pHash; uint hKey; void* proc;
+    typedef struct {
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0xB6F03004CD357474, 0xA351B02C407D69CC, 0xDD7D00B830A394FC }, // CryptAcquireContextA
-        { 0x8A9FC9ED17AEC71C, 0x41AC4A30D20E8B2E, 0x96556E657055BDA9 }, // CryptReleaseContext
-        { 0x3A1784CBE54B0BA4, 0x1B55DEBA9D6933F1, 0x6825FB594E8F80A8 }, // CryptGenRandom
-        { 0xF884FA6B7F026840, 0xE7B2EB87FFEFBFD9, 0xA53E8656CF8E08E9 }, // CryptGenKey
-        { 0xF9BC05DA31E3EBC1, 0x3C4A4F16EA243D9B, 0x0AF2AB242BB0FDEF }, // CryptExportKey
-        { 0x310476309F1DC16F, 0x524072F2DF4E467D, 0x088DB8077AE3C86A }, // CryptCreateHash
-        { 0x211744E8281B5C93, 0xC8AC1AF2337010F2, 0x2FCAA3A4CA39D3B5 }, // CryptSetHashParam
-        { 0x12DB3C697FB240FB, 0xB37F8BC073D55030, 0x0E2E3591487BC537 }, // CryptGetHashParam
-        { 0x04B6E067AE35CEF7, 0xE009015BBB558D1E, 0x99DCA0D4D95616B5 }, // CryptHashData
-        { 0xD0850B88090F8D81, 0x1ECFE1493FF6DE12, 0xAF82AA225567AA48 }, // CryptDestroyHash
-        { 0xEE7DE621C28FA074, 0x41252C966AB64519, 0xC4FDE9574C0B980D }, // CryptImportKey
-        { 0xA6B92B9EDED891B3, 0xBBC77F4D4C9F6622, 0x128791C921FC7F3D }, // CryptSetKeyParam
-        { 0x7877D5D429180A3E, 0xEA409B53F00E75B3, 0xC10D507F5B675A5A }, // CryptEncrypt
-        { 0xDF51786F7585A937, 0x6EB2FB49A3EA8901, 0x23ACC4ADF57F71C8 }, // CryptDecrypt
-        { 0x81A9DD1891A0B37D, 0xBCA59C1124951985, 0x5C3EF6F56744B1E2 }, // CryptDestroyKey
-        { 0xCE673261B7235F0C, 0xE5F99AB76164C991, 0xD92E0734B071DFDA }, // CryptSignHashA
-        { 0xEA2B2384AFD2A96D, 0xB475E30ADAA479D9, 0xEE5CE4DB4859F811 }, // CryptVerifySignatureA
+        { 0xA351B02C407D69CC, 0xDD7D00B830A394FC }, // CryptAcquireContextA
+        { 0x41AC4A30D20E8B2E, 0x96556E657055BDA9 }, // CryptReleaseContext
+        { 0x1B55DEBA9D6933F1, 0x6825FB594E8F80A8 }, // CryptGenRandom
+        { 0xE7B2EB87FFEFBFD9, 0xA53E8656CF8E08E9 }, // CryptGenKey
+        { 0x3C4A4F16EA243D9B, 0x0AF2AB242BB0FDEF }, // CryptExportKey
+        { 0x524072F2DF4E467D, 0x088DB8077AE3C86A }, // CryptCreateHash
+        { 0xC8AC1AF2337010F2, 0x2FCAA3A4CA39D3B5 }, // CryptSetHashParam
+        { 0xB37F8BC073D55030, 0x0E2E3591487BC537 }, // CryptGetHashParam
+        { 0xE009015BBB558D1E, 0x99DCA0D4D95616B5 }, // CryptHashData
+        { 0x1ECFE1493FF6DE12, 0xAF82AA225567AA48 }, // CryptDestroyHash
+        { 0x41252C966AB64519, 0xC4FDE9574C0B980D }, // CryptImportKey
+        { 0xBBC77F4D4C9F6622, 0x128791C921FC7F3D }, // CryptSetKeyParam
+        { 0xEA409B53F00E75B3, 0xC10D507F5B675A5A }, // CryptEncrypt
+        { 0x6EB2FB49A3EA8901, 0x23ACC4ADF57F71C8 }, // CryptDecrypt
+        { 0xBCA59C1124951985, 0x5C3EF6F56744B1E2 }, // CryptDestroyKey
+        { 0xE5F99AB76164C991, 0xD92E0734B071DFDA }, // CryptSignHashA
+        { 0xB475E30ADAA479D9, 0xEE5CE4DB4859F811 }, // CryptVerifySignatureA
     };
 #elif _WIN32
     {
-        { 0x5985FEC7, 0x070B9EB5, 0xBEAFA370 }, // CryptAcquireContextA
-        { 0x2A0E7859, 0xE5E4A413, 0x046D26C1 }, // CryptReleaseContext
-        { 0xA7DB5AA9, 0x73CF8409, 0x830D3537 }, // CryptGenRandom
-        { 0xDF1BE7D0, 0xDDD40A08, 0x10874E83 }, // CryptGenKey
-        { 0xB09C8CFE, 0x76DF4FAD, 0xA4762C49 }, // CryptExportKey
-        { 0x3BB01C54, 0xD9AD5D20, 0x5A153264 }, // CryptCreateHash
-        { 0xE15CD1D7, 0x1E66EEE4, 0xB89CB8A4 }, // CryptSetHashParam
-        { 0xF1922AC5, 0x2E9C3BD2, 0xB231823C }, // CryptGetHashParam
-        { 0xDAB7BBAE, 0xC1394F7F, 0x42FF6BB3 }, // CryptHashData
-        { 0x2CBC1294, 0xB5E650E0, 0x18083A06 }, // CryptDestroyHash
-        { 0xA38B7321, 0x8F8DA970, 0xA3424AEA }, // CryptImportKey
-        { 0x9731631A, 0xCDCA3093, 0x66FC8B85 }, // CryptSetKeyParam
-        { 0x354457F3, 0xCDECFAC3, 0xC888E171 }, // CryptEncrypt
-        { 0xE9120B1B, 0xC25604AE, 0x9A769A74 }, // CryptDecrypt
-        { 0xE687A129, 0x338E62F6, 0xA7909B6F }, // CryptDestroyKey
-        { 0x364AECE6, 0xAA2C4959, 0xB21A3BC2 }, // CryptSignHashA
-        { 0x4E0660BB, 0xD985014B, 0xD924E471 }, // CryptVerifySignatureA
+        { 0x070B9EB5, 0xBEAFA370 }, // CryptAcquireContextA
+        { 0xE5E4A413, 0x046D26C1 }, // CryptReleaseContext
+        { 0x73CF8409, 0x830D3537 }, // CryptGenRandom
+        { 0xDDD40A08, 0x10874E83 }, // CryptGenKey
+        { 0x76DF4FAD, 0xA4762C49 }, // CryptExportKey
+        { 0xD9AD5D20, 0x5A153264 }, // CryptCreateHash
+        { 0x1E66EEE4, 0xB89CB8A4 }, // CryptSetHashParam
+        { 0x2E9C3BD2, 0xB231823C }, // CryptGetHashParam
+        { 0xC1394F7F, 0x42FF6BB3 }, // CryptHashData
+        { 0xB5E650E0, 0x18083A06 }, // CryptDestroyHash
+        { 0x8F8DA970, 0xA3424AEA }, // CryptImportKey
+        { 0xCDCA3093, 0x66FC8B85 }, // CryptSetKeyParam
+        { 0xCDECFAC3, 0xC888E171 }, // CryptEncrypt
+        { 0xC25604AE, 0x9A769A74 }, // CryptDecrypt
+        { 0x338E62F6, 0xA7909B6F }, // CryptDestroyKey
+        { 0xAA2C4959, 0xB21A3BC2 }, // CryptSignHashA
+        { 0xD985014B, 0xD924E471 }, // CryptVerifySignatureA
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = module->FindAPI(item.mHash, item.pHash, item.hKey);
+        void*  proc = module->FindAPI_MA(module->hAdvapi32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -407,16 +374,16 @@ static bool tryToFreeLibrary()
     bool success = false;
     for (;;)
     {
-        if (module->hModule == NULL)
+        if (module->hAdvapi32 == NULL)
         {
             success = true;
             break;
         }
-        if (!module->FreeLibrary(module->hModule))
+        if (!module->FreeLibrary(module->hAdvapi32))
         {
             break;
         }
-        module->hModule = NULL;
+        module->hAdvapi32 = NULL;
         success = true;
         break;
     }
@@ -1415,9 +1382,9 @@ errno WC_Uninstall()
     errno errno = NO_ERROR;
 
     // free advapi32.dll
-    if (module->hModule != NULL)
+    if (module->hAdvapi32 != NULL)
     {
-        if (!module->FreeLibrary(module->hModule) && errno == NO_ERROR)
+        if (!module->FreeLibrary(module->hAdvapi32) && errno == NO_ERROR)
         {
             errno = ERR_WIN_CRYPTO_FREE_LIBRARY;
         }
@@ -1427,15 +1394,6 @@ errno WC_Uninstall()
     if (!module->CloseHandle(module->hMutex) && errno == NO_ERROR)
     {
         errno = ERR_WIN_CRYPTO_CLOSE_MUTEX;
-    }
-
-    // recover instructions
-    if (module->NotEraseInstruction)
-    {
-        if (!recoverModulePointer(module) && errno == NO_ERROR)
-        {
-            errno = ERR_WIN_CRYPTO_RECOVER_INST;
-        }
     }
     return errno;
 }
