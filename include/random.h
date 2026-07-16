@@ -6,19 +6,19 @@
 // [reference]
 // https://en.wikipedia.org/wiki/xorshift
 
-// RandInt is used to generate random int.
+// RandInt is used to generate random int, it maybe return negative value.
 int RandInt(uint64 seed);
 
-// RandInt8 is used to generate random int8.
+// RandInt8 is used to generate random int8, it maybe return negative value.
 int8 RandInt8(uint64 seed);
 
-// RandInt16 is used to generate random int16.
+// RandInt16 is used to generate random int16, it maybe return negative value.
 int16 RandInt16(uint64 seed);
 
-// RandInt32 is used to generate random int32.
+// RandInt32 is used to generate random int32, it maybe return negative value.
 int32 RandInt32(uint64 seed);
 
-// RandInt64 is used to generate random int64.
+// RandInt64 is used to generate random int64, it maybe return negative value.
 int64 RandInt64(uint64 seed);
 
 // RandUint is used to generate random uint.
@@ -36,34 +36,34 @@ uint32 RandUint32(uint64 seed);
 // RandUint64 is used to generate random uint64.
 uint64 RandUint64(uint64 seed);
 
-// RandIntN is used to generate random int with range.
+// RandIntN is used to generate random int in [0, n).
 int RandIntN(uint64 seed, int n);
 
-// RandInt8N is used to generate random int8 with range.
+// RandInt8N is used to generate random int8 in [0, n).
 int8 RandInt8N(uint64 seed, int8 n);
 
-// RandInt16N is used to generate random int16 with range.
+// RandInt16N is used to generate random int16 in [0, n).
 int16 RandInt16N(uint64 seed, int16 n);
 
-// RandInt32N is used to generate random int32 with range.
+// RandInt32N is used to generate random int32 in [0, n).
 int32 RandInt32N(uint64 seed, int32 n);
 
-// RandInt64N is used to generate random int64 with range.
+// RandInt64N is used to generate random int64 in [0, n).
 int64 RandInt64N(uint64 seed, int64 n);
 
-// RandUintN is used to generate random uint with range.
+// RandUintN is used to generate random uint in [0, n).
 uint RandUintN(uint64 seed, uint n);
 
-// RandUint8N is used to generate random uint8 with range.
+// RandUint8N is used to generate random uint8 in [0, n).
 uint8 RandUint8N(uint64 seed, uint8 n);
 
-// RandUint16N is used to generate random uint16 with range.
+// RandUint16N is used to generate random uint16 in [0, n).
 uint16 RandUint16N(uint64 seed, uint16 n);
 
-// RandUint32N is used to generate random uint32 with range.
+// RandUint32N is used to generate random uint32 in [0, n).
 uint32 RandUint32N(uint64 seed, uint32 n);
 
-// RandUint64N is used to generate random uint64 with range.
+// RandUint64N is used to generate random uint64 in [0, n).
 uint64 RandUint64N(uint64 seed, uint64 n);
 
 // RandByte is used to generate random byte.
