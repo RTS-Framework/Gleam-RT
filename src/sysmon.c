@@ -1,13 +1,16 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "lib_memory.h"
-#include "rel_addr.h"
 #include "hash_api.h"
+#include "rel_addr.h"
 #include "random.h"
+#include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "sysmon.h"
 #include "debug.h"
 
@@ -16,10 +19,11 @@
 #define RESULT_STOP_EVENT 2
 
 typedef struct {
-    // store options
+    // store option
     bool DisableSysmon;
     bool NotEraseInstruction;
 
+    // API address
     SuspendThread_t          SuspendThread;
     ResumeThread_t           ResumeThread;
     GetThreadContext_t       GetThreadContext;
@@ -67,20 +71,13 @@ errno SM_Pause();
 errno SM_Continue();
 errno SM_Stop();
 
-// hard encoded address in getSysmonPointer for replacement
-#ifdef _WIN64
-    #define SYSMON_POINTER 0x7FABCDEF111111F1
-#elif _WIN32
-    #define SYSMON_POINTER 0x7FABCDF1
-#endif
 static Sysmon* getSysmonPointer();
 
 static bool initSysmonAPI(Sysmon* sysmon, Context* context);
-static bool updateSysmonPointer(Sysmon* sysmon);
-static bool recoverSysmonPointer(Sysmon* sysmon);
-static bool initSysmonEnvironment(Sysmon* sysmon, Context* context);
-static void eraseSysmonMethods(Context* context);
-static void cleanSysmon(Sysmon* sysmon);
+static bool initSysmonEnv(Sysmon* sysmon, Context* context);
+static void eraseSysmonMethod(Context* context);
+static void cleanSysmonResource(Sysmon* sysmon);
+static void setSysmonPointer(Sysmon* sysmon);
 
 static uint sm_watcher();
 static uint sm_watch();
@@ -113,25 +110,21 @@ Sysmon_M* InitSysmon(Context* context)
             errno = ERR_SYSMON_INIT_API;
             break;
         }
-        if (!updateSysmonPointer(sysmon))
-        {
-            errno = ERR_SYSMON_UPDATE_PTR;
-            break;
-        }
-        if (!initSysmonEnvironment(sysmon, context))
+        if (!initSysmonEnv(sysmon, context))
         {
             errno = ERR_SYSMON_INIT_ENV;
             break;
         }
         break;
     }
-    eraseSysmonMethods(context);
+    eraseSysmonMethod(context);
     if (errno != NO_ERROR)
     {
-        cleanSysmon(sysmon);
+        cleanSysmonResource(sysmon);
         SetLastErrno(errno);
         return NULL;
     }
+    setSysmonPointer(sysmon);
     // create thread for watcher
     if (!context->DisableSysmon)
     {
@@ -177,52 +170,8 @@ static bool initSysmonAPI(Sysmon* sysmon, Context* context)
     return true;
 }
 
-// CANNOT merge updateSysmonPointer and recoverSysmonPointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
 __declspec(noinline)
-static bool updateSysmonPointer(Sysmon* sysmon)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getSysmonPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != SYSMON_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)sysmon;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool recoverSysmonPointer(Sysmon* sysmon)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getSysmonPointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)sysmon)
-        {
-            target++;
-            continue;
-        }
-        *pointer = SYSMON_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-__declspec(noinline)
-static bool initSysmonEnvironment(Sysmon* sysmon, Context* context)
+static bool initSysmonEnv(Sysmon* sysmon, Context* context)
 {
     // create global mutex
     HANDLE hMutex = context->CreateMutexA(NULL, false, NAME_RT_SM_MUTEX_GLOBAL);
@@ -262,20 +211,20 @@ static bool initSysmonEnvironment(Sysmon* sysmon, Context* context)
 }
 
 __declspec(noinline)
-static void eraseSysmonMethods(Context* context)
+static void eraseSysmonMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initSysmonAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseSysmonMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseSysmonMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
-static void cleanSysmon(Sysmon* sysmon)
+static void cleanSysmonResource(Sysmon* sysmon)
 {
     if (sysmon->CloseHandle == NULL)
     {
@@ -295,15 +244,17 @@ static void cleanSysmon(Sysmon* sysmon)
     }
 }
 
-// updateSysmonPointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateSysmonPointer will fail.
-#pragma optimize("", off)
+__declspec(noinline)
+static void setSysmonPointer(Sysmon* module)
+{
+    *(Sysmon**)(POINTER_OFFSET_SYSMON) = module;
+}
+
+__declspec(noinline)
 static Sysmon* getSysmonPointer()
 {
-    uintptr pointer = SYSMON_POINTER;
-    return (Sysmon*)(pointer);
+    return *(Sysmon**)POINTER_OFFSET_SYSMON;
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 static uint sm_watcher()
@@ -334,7 +285,7 @@ static uint sm_watcher()
             break;
         case 1:
             // if timeout, try to recover threads first.
-            // In Go programs, threads are occasionally 
+            // In Go programs, threads are occasionally
             // suspended incorrectly, causing deadlocks.
             errno err = sysmon->TT_RecoverThreads();
             if (err != NO_ERROR)
@@ -368,7 +319,7 @@ static uint sm_watcher()
             sm_add_panic();
             break;
         default:
-            // if failed to reset program or watchdog 
+            // if failed to reset program or watchdog
             // is disabled, exit runtime.
             sysmon->RT_Stop(true, ERR_STOP_CODE_RESET_PROGRAM);
             break;
@@ -655,15 +606,6 @@ errno SM_Stop()
     if (!sysmon->CloseHandle(sysmon->statusMu) && errno == NO_ERROR)
     {
         errno = ERR_SYSMON_CLOSE_STATUS;
-    }
-
-    // recover instructions
-    if (sysmon->NotEraseInstruction)
-    {
-        if (!recoverSysmonPointer(sysmon) && errno == NO_ERROR)
-        {
-            errno = ERR_SYSMON_RECOVER_INST;
-        }
     }
     return errno;
 }
