@@ -54,6 +54,9 @@ typedef struct {
     PEB* PEB; // process environment block
     PML* PML; // process module list
 
+    // process exe image base
+    HMODULE ImageBase;
+
     // core dll address
     HMODULE hKernel32;
     HMODULE hNtdll;
@@ -209,15 +212,16 @@ static bool  checkOptionConflict(Runtime_Opts* opts);
 static bool  isValidArgumentStub();
 static PEB*  getPEBPointer();
 static PML*  buildProcessModuleList(PEB* peb);
+static void* getProcessImageBase(PEB* peb);
 static void* getKernel32Address(PML* pml);
 static void* getNtdllAddress(PML* pml);
 static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32);
 static void  buildRuntimeInformation(Runtime* runtime);
 static void* calculateEpilogue();
 static bool  initRuntimeAPI(Runtime* runtime);
+static bool  initRuntimeEnv(Runtime* runtime);
 static bool  adjustPageProtect(Runtime* runtime, DWORD* old);
 static bool  recoverPageProtect(Runtime* runtime, DWORD protect);
-static errno initRuntimeEnvironment(Runtime* runtime);
 static errno initSubmodules(Runtime* runtime);
 static errno initDetector(Runtime* runtime, Context* context);
 static errno initLibraryTracker(Runtime* runtime, Context* context);
@@ -234,14 +238,13 @@ static errno initWatchdog(Runtime* runtime, Context* context);
 static errno initSysmon(Runtime* runtime, Context* context);
 static errno initShield(Runtime* runtime, Context* context);
 static bool  initAPIRedirector(Runtime* runtime);
-static bool  flushInstructionCache(Runtime* runtime);
-static bool  updateRuntimePointer(Runtime* runtime);
 static void  eraseArgumentStub(Runtime* runtime);
-static void  eraseRuntimeMethods(Runtime* runtime);
-static void  recoverErrorMode(Runtime* runtime);
-static errno cleanRuntime(Runtime* runtime, bool init);
+static void  eraseRuntimeMethod(Runtime* runtime);
+static errno cleanRuntimeResource(Runtime* runtime, bool init);
 static errno closeHandles(Runtime* runtime);
 static void  interruptInit(Runtime* runtime);
+static void  recoverErrorMode(Runtime* runtime);
+static void  setRuntimePointer(Runtime* runtime);
 
 static bool rt_lock();
 static bool rt_unlock();
@@ -289,6 +292,8 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     // prepare runtime basic environment
     PEB* PEB = getPEBPointer();
     PML* PML = buildProcessModuleList(PEB);
+    // prepare process image base
+    HMODULE imageBase = getProcessImageBase(PEB);
     // get kernel32.dll and ntdll.dll address
     HMODULE hKernel32 = getKernel32Address(PML);
     if (hKernel32 == NULL)
@@ -323,6 +328,8 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     // store process environment
     runtime->PEB = PEB;
     runtime->PML = PML;
+    // store process image base
+    runtime->ImageBase = imageBase;
     // store core dll address
     runtime->hKernel32 = hKernel32;
     runtime->hNtdll    = hNtdll;
@@ -350,16 +357,17 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
             errno = ERR_RUNTIME_INIT_API;
             break;
         }
+        if (!initRuntimeEnv(runtime))
+        {
+            errno = ERR_RUNTIME_INIT_ENV;
+            break;
+        }
         if (!adjustPageProtect(runtime, &oldProtect))
         {
             errno = ERR_RUNTIME_ADJUST_PROTECT;
             break;
         }
-        errno = initRuntimeEnvironment(runtime);
-        if (errno != NO_ERROR)
-        {
-            break;
-        }
+        setRuntimePointer(runtime);
         errno = initSubmodules(runtime);
         if (errno != NO_ERROR)
         {
@@ -372,15 +380,14 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         }
         break;
     }
-    updateRuntimePointer(runtime);
-    // if failed to initialize runtime, erase argument stub if memory page can write.
+    // if failed to initialize runtime, erase argument stub.
     if (errno > ERR_RUNTIME_ADJUST_PROTECT || opts->NotAdjustProtect)
     {
         eraseArgumentStub(runtime);
     }
     if (errno == NO_ERROR || errno > ERR_RUNTIME_ADJUST_PROTECT)
     {
-        eraseRuntimeMethods(runtime);
+        eraseRuntimeMethod(runtime);
     }
     if (oldProtect != 0)
     {
@@ -388,10 +395,6 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         {
             errno = ERR_RUNTIME_RECOVER_PROTECT;
         }
-    }
-    if (errno == NO_ERROR && !flushInstructionCache(runtime))
-    {
-        errno = ERR_RUNTIME_FLUSH_INSTRUCTION;
     }
     // check initialize elapsed time is too long
     int32 tick = runtime->GetTickCount();
@@ -402,7 +405,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     if (errno != NO_ERROR)
     {
         interruptInit(runtime);
-        cleanRuntime(runtime, true);
+        cleanRuntimeResource(runtime, true);
         SetLastErrno(errno);
         return NULL;
     }
@@ -654,6 +657,7 @@ static bool checkOptionConflict(Runtime_Opts* opts)
     return true;
 }
 
+// TODO add argument magic for check is valid after erased (after init mod arg)
 static bool isValidArgumentStub()
 {
     uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
@@ -720,6 +724,11 @@ static PML* buildProcessModuleList(PEB* peb)
     PEB_LDR_DATA* ldr = peb->LDR;
     LIST_ENTRY* entry = ldr->InMemoryOrderModuleList.Flink;
     return (PML*)((uintptr)entry - offsetof(PML, Links));
+}
+
+static void* getProcessImageBase(PEB* peb)
+{
+    return peb->ImageBaseAddress;
 }
 
 static void* getKernel32Address(PML* pml)
@@ -876,7 +885,7 @@ static bool initRuntimeAPI(Runtime* runtime)
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = SC_FindAPI_MA(runtime->hKernel32, item.pHash, item.hKey);
+        void*  proc = SC_FindAPI_MAL(runtime->PML, runtime->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -916,7 +925,7 @@ static bool initRuntimeAPI(Runtime* runtime)
     return true;
 }
 
-static errno initRuntimeEnvironment(Runtime* runtime)
+static bool initRuntimeEnv(Runtime* runtime)
 {
     // get system information
     runtime->GetSystemInfo(&runtime->SysInfo);
@@ -928,10 +937,10 @@ static errno initRuntimeEnvironment(Runtime* runtime)
     HANDLE hMutex = runtime->CreateMutexA(NULL, false, NAME_RT_MUTEX_GLOBAL);
     if (hMutex == NULL)
     {
-        return ERR_RUNTIME_CREATE_GLOBAL_MUTEX;
+        return false;
     }
     runtime->hMutex = hMutex;
-    return NO_ERROR;
+    return true;
 }
 
 static errno initSubmodules(Runtime* runtime)
@@ -952,6 +961,8 @@ static errno initSubmodules(Runtime* runtime)
         .PEB = runtime->PEB,
         .PML = runtime->PML,
         .MPS = runtime->PageSize,
+
+        .ImageBase = runtime->ImageBase,
 
         .hKernel32 = runtime->hKernel32,
         .hNtdll    = runtime->hNtdll,
@@ -1039,9 +1050,12 @@ static errno initSubmodules(Runtime* runtime)
         GetFuncAddr(&initArgumentStore),
         GetFuncAddr(&initInMemoryStorage),
     };
-    for (int i = 0; i < arrlen(submodules); i++)
+    int seq1[arrlen(submodules)];
+    RandSequence(seq1, arrlen(seq1));
+    for (int i = 0; i < arrlen(seq1); i++)
     {
-        errno errno = submodules[i](runtime, &context);
+        int idx = seq1[i];
+        errno errno = submodules[idx](runtime, &context);
         if (errno != NO_ERROR)
         {
             return errno;
@@ -1064,9 +1078,12 @@ static errno initSubmodules(Runtime* runtime)
         GetFuncAddr(&initWinHTTP),
         GetFuncAddr(&initWinCrypto),
     };
-    for (int i = 0; i < arrlen(hl_modules); i++)
+    int seq2[arrlen(hl_modules)];
+    RandSequence(seq2, arrlen(seq2));
+    for (int i = 0; i < arrlen(seq2); i++)
     {
-        errno errno = hl_modules[i](runtime, &context);
+        int idx = seq2[i];
+        errno errno = hl_modules[idx](runtime, &context);
         if (errno != NO_ERROR)
         {
             return errno;
@@ -1465,11 +1482,6 @@ static bool initAPIRedirector(Runtime* runtime)
     return true;
 }
 
-static bool updateRuntimePointer(Runtime* runtime)
-{
-    *(Runtime**)(POINTER_OFFSET_RUNTIME) = runtime;
-}
-
 __declspec(noinline)
 static void eraseArgumentStub(Runtime* runtime)
 {
@@ -1488,19 +1500,19 @@ static void eraseArgumentStub(Runtime* runtime)
 }
 
 __declspec(noinline)
-static void eraseRuntimeMethods(Runtime* runtime)
+static void eraseRuntimeMethod(Runtime* runtime)
 {
     if (runtime->Options.NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&allocateMainMemoryPage));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseRuntimeMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseRuntimeMethod));
     uintptr size  = end - begin;
     EraseInstruction((void*)begin, size);
 }
 
-// ================ next instructions will not be erased after InitRuntime ================
+// ============ next instructions will not be erased after InitRuntime ============
 
 // change memory protect for dynamic update pointer that hard encode.
 __declspec(noinline)
@@ -1529,25 +1541,7 @@ static bool recoverPageProtect(Runtime* runtime, DWORD protect)
 }
 
 __declspec(noinline)
-static bool flushInstructionCache(Runtime* runtime)
-{
-    LPVOID addr = runtime->Prologue;
-    SIZE_T size = runtime->InstSize;
-    return runtime->FlushInstructionCache(CURRENT_PROCESS, addr, size);
-}
-
-__declspec(noinline)
-static void recoverErrorMode(Runtime* runtime)
-{
-    if (runtime->ErrorMode == (UINT)(-1))
-    {
-        return;
-    }
-    runtime->SetErrorMode(runtime->ErrorMode);
-}
-
-__declspec(noinline)
-static errno cleanRuntime(Runtime* runtime, bool init)
+static errno cleanRuntimeResource(Runtime* runtime, bool init)
 {
     errno err = NO_ERROR;
     // close all handles in runtime
@@ -1560,11 +1554,11 @@ static errno cleanRuntime(Runtime* runtime, bool init)
     {
         return err;
     }
-    // must copy variables in Runtime before call RandBuffer
+    // must copy variables in Runtime before call EraseBuffer
     VirtualFree_t virtualFree = runtime->VirtualFree;
     void* memPage = runtime->MainMemPage;
     // release main memory page
-    RandBuffer(memPage, MAIN_MEM_PAGE_SIZE);
+    EraseBuffer(memPage, MAIN_MEM_PAGE_SIZE);
     if (virtualFree != NULL)
     {
         if (!virtualFree(memPage, 0, MEM_RELEASE) && err == NO_ERROR)
@@ -1669,14 +1663,27 @@ static void interruptInit(Runtime* runtime)
     recoverPageProtect(runtime, oldProtect);
 }
 
-// updateRuntimePointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateRuntimePointer will fail.
-#pragma optimize("", off)
+__declspec(noinline)
+static void recoverErrorMode(Runtime* runtime)
+{
+    if (runtime->ErrorMode == (UINT)(-1))
+    {
+        return;
+    }
+    runtime->SetErrorMode(runtime->ErrorMode);
+}
+
+__declspec(noinline)
+static void setRuntimePointer(Runtime* runtime)
+{
+    *(Runtime**)(POINTER_OFFSET_RUNTIME) = runtime;
+}
+
+__declspec(noinline)
 static Runtime* getRuntimePointer()
 {
     return *(Runtime**)POINTER_OFFSET_RUNTIME;
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 static bool rt_lock()
@@ -2359,7 +2366,7 @@ static void* getLazyAPIRedirector(HMODULE hModule, LPCSTR lpProcName)
     // get dll base name for calculate module hash
     WCHAR dllName[MAX_PATH];
     mem_init(dllName, sizeof(dllName));
-    if (GetModuleBaseNameW(runtime->PML, hModule, dllName, MAX_PATH) == 0)
+    if (GetModuleBaseName(runtime->PML, hModule, dllName, MAX_PATH) == 0)
     {
         return NULL;
     }
@@ -2733,10 +2740,6 @@ static errno sleep(Runtime* runtime, uint32 milliseconds)
     {
         return errno;
     }
-    if (!flushInstructionCache(runtime))
-    {
-        return ERR_RUNTIME_FLUSH_INST_CACHE;
-    }
     return NO_ERROR;
 }
 
@@ -3050,7 +3053,7 @@ errno RT_stop(bool exitThread, uint32 code)
     mem_copy(&clone, runtime, sizeof(Runtime));
 
     // clean runtime resource
-    errno enclr = cleanRuntime(runtime, false);
+    errno enclr = cleanRuntimeResource(runtime, false);
     if (enclr != NO_ERROR && error == NO_ERROR)
     {
         error = enclr;
