@@ -1,14 +1,17 @@
+#include "build.h"
 #include "c_types.h"
 #include "win_types.h"
 #include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "lib_string.h"
-#include "rel_addr.h"
 #include "hash_api.h"
+#include "rel_addr.h"
 #include "random.h"
+#include "crypto.h"
 #include "errno.h"
 #include "context.h"
 #include "layout.h"
+#include "ptr_table.h"
 #include "win_base.h"
 #include "debug.h"
 
@@ -36,19 +39,12 @@ ANSI  WB_UTF16ToANSIN(UTF16 s, int n);
 // methods for runtime
 errno WB_Uninstall();
 
-// hard encoded address in getModulePointer for replacement
-#ifdef _WIN64
-    #define MODULE_POINTER 0x7FABCDEF111111E1
-#elif _WIN32
-    #define MODULE_POINTER 0x7FABCDE1
-#endif
 static WinBase* getModulePointer();
 
 static bool initModuleAPI(WinBase* module, Context* context);
-static bool updateModulePointer(WinBase* module);
-static bool recoverModulePointer(WinBase* module);
-static bool initModuleEnvironment(WinBase* module, Context* context);
-static void eraseModuleMethods(Context* context);
+static bool initModuleEnv(WinBase* module, Context* context);
+static void eraseModuleMethod(Context* context);
+static void setModulePointer(WinBase* module);
 
 WinBase_M* InitWinBase(Context* context)
 {
@@ -70,24 +66,20 @@ WinBase_M* InitWinBase(Context* context)
             errno = ERR_WIN_BASE_INIT_API;
             break;
         }
-        if (!updateModulePointer(module))
-        {
-            errno = ERR_WIN_BASE_UPDATE_PTR;
-            break;
-        }
-        if (!initModuleEnvironment(module, context))
+        if (!initModuleEnv(module, context))
         {
             errno = ERR_WIN_BASE_INIT_ENV;
             break;
         }
         break;
     }
-    eraseModuleMethods(context);
+    eraseModuleMethod(context);
     if (errno != NO_ERROR)
     {
         SetLastErrno(errno);
         return NULL;
     }
+    setModulePointer(module);
     // create method set
     WinBase_M* method = (WinBase_M*)methodAddr;
     method->ANSIToUTF16  = GetFuncAddr(&WB_ANSIToUTF16);
@@ -100,25 +92,25 @@ WinBase_M* InitWinBase(Context* context)
 
 static bool initModuleAPI(WinBase* module, Context* context)
 {
-    typedef struct { 
-        uint mHash; uint pHash; uint hKey; void* proc;
+    typedef struct {
+        uint pHash; uint hKey; void* proc;
     } winapi;
     winapi list[] =
 #ifdef _WIN64
     {
-        { 0xA9013BF7425F8D08, 0x5A0BBE5359A272F2, 0xF434E337059CB0C7 }, // MultiByteToWideChar
-        { 0x28BE5F33B4C6ABE1, 0x080448D6DB38EC1B, 0x3E5B3174E09112AB }, // WideCharToMultiByte
+        { 0x5A0BBE5359A272F2, 0xF434E337059CB0C7 }, // MultiByteToWideChar
+        { 0x080448D6DB38EC1B, 0x3E5B3174E09112AB }, // WideCharToMultiByte
     };
 #elif _WIN32
     {
-        { 0x0A065F56, 0xD20CFB1A, 0x7C7609D6 }, // MultiByteToWideChar
-        { 0xDC731EA7, 0xD3DCEEA4, 0x7F287F6B }, // WideCharToMultiByte
+        { 0xD20CFB1A, 0x7C7609D6 }, // MultiByteToWideChar
+        { 0xD3DCEEA4, 0x7F287F6B }, // WideCharToMultiByte
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
     {
         winapi item = list[i];
-        void*  proc = context->FindAPI(item.mHash, item.pHash, item.hKey);
+        void*  proc = context->FindAPI_MA(context->hKernel32, item.pHash, item.hKey);
         if (proc == NULL)
         {
             return false;
@@ -127,54 +119,10 @@ static bool initModuleAPI(WinBase* module, Context* context)
     }
     module->MultiByteToWideChar = list[0].proc;
     module->WideCharToMultiByte = list[1].proc;
-    // skip warning
-    context = NULL;
     return true;
 }
 
-// CANNOT merge updateModulePointer and recoverModulePointer
-// to one function with two arguments, otherwise the compiler
-// will generate the incorrect instructions.
-
-static bool updateModulePointer(WinBase* module)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getModulePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != MODULE_POINTER)
-        {
-            target++;
-            continue;
-        }
-        *pointer = (uintptr)module;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool recoverModulePointer(WinBase* module)
-{
-    bool success = false;
-    uintptr target = (uintptr)(GetFuncAddr(&getModulePointer));
-    for (uintptr i = 0; i < 64; i++)
-    {
-        uintptr* pointer = (uintptr*)(target);
-        if (*pointer != (uintptr)module)
-        {
-            target++;
-            continue;
-        }
-        *pointer = MODULE_POINTER;
-        success = true;
-        break;
-    }
-    return success;
-}
-
-static bool initModuleEnvironment(WinBase* module, Context* context)
+static bool initModuleEnv(WinBase* module, Context* context)
 {
     module->malloc  = context->mt_malloc;
     module->calloc  = context->mt_calloc;
@@ -183,25 +131,27 @@ static bool initModuleEnvironment(WinBase* module, Context* context)
     return true;
 }
 
-static void eraseModuleMethods(Context* context)
+static void eraseModuleMethod(Context* context)
 {
     if (context->NotEraseInstruction)
     {
         return;
     }
     uintptr begin = (uintptr)(GetFuncAddr(&initModuleAPI));
-    uintptr end   = (uintptr)(GetFuncAddr(&eraseModuleMethods));
+    uintptr end   = (uintptr)(GetFuncAddr(&eraseModuleMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
-// updateModulePointer will replace hard encode address to the actual address.
-// Must disable compiler optimize, otherwise updateModulePointer will fail.
+static void setModulePointer(WinBase* module)
+{
+    *(WinBase**)(POINTER_OFFSET_WIN_BASE) = module;
+}
+
 #pragma optimize("", off)
 static WinBase* getModulePointer()
 {
-    uintptr pointer = MODULE_POINTER;
-    return (WinBase*)(pointer);
+    return *(WinBase**)POINTER_OFFSET_WIN_BASE;
 }
 #pragma optimize("", on)
 
@@ -268,17 +218,5 @@ ANSI WB_UTF16ToANSIN(UTF16 s, int n)
 __declspec(noinline)
 errno WB_Uninstall()
 {
-    WinBase* module = getModulePointer();
-
-    errno errno = NO_ERROR;
-
-    // recover instructions
-    if (module->NotEraseInstruction)
-    {
-        if (!recoverModulePointer(module) && errno == NO_ERROR)
-        {
-            errno = ERR_WIN_BASE_RECOVER_INST;
-        }
-    }
-    return errno;
+    return NO_ERROR;
 }
