@@ -567,7 +567,7 @@ static byte rol(byte value, uint8 bits)
 
 #pragma optimize("t", off)
 
-#pragma optimize("", off)
+#pragma optimize("t", on)
 void XORBuffer(void* buf, uint bufSize, void* key, uint keySize)
 {
     if (bufSize == 0 || keySize == 0)
@@ -581,7 +581,52 @@ void XORBuffer(void* buf, uint bufSize, void* key, uint keySize)
         b[i] ^= k[i%keySize];
     }
 }
-#pragma optimize("", on)
+#pragma optimize("t", off)
+
+#pragma optimize("t", on)
+void SubstituteBuffer(void* buf, uint size)
+{
+    if (size == 0)
+    {
+        return;
+    }
+    byte* buffer = buf;
+    // generate a random S-box.
+    byte sbox[256];
+    mem_init(sbox, sizeof(sbox));
+    for (uint i = 0; i < 256; i++)
+    {
+        sbox[i] = (byte)i;
+    }
+    ShuffleBuffer(sbox, sizeof(sbox));
+    // substitute buffer.
+    for (uint i = 0; i < size; i++)
+    {
+        buffer[i] = sbox[buffer[i]];
+    }
+}
+#pragma optimize("t", off)
+
+#pragma optimize("t", on)
+void ShuffleBuffer(void* buf, uint size)
+{
+    if (size <= 1)
+    {
+        return;
+    }
+    byte* buffer = buf;
+    uint64  seed = GenerateSeed();
+    for (uint i = size - 1; i > 0; i--)
+    {
+        uint j = RandUintN(seed, i + 1);
+        byte tmp  = buffer[i];
+        buffer[i] = buffer[j];
+        buffer[j] = tmp;
+        // update seed
+        seed = XORShift64(seed);
+    }
+}
+#pragma optimize("t", off)
 
 #pragma optimize("", off)
 void EraseBuffer(void* buf, uint size)
@@ -666,22 +711,13 @@ void EraseInstruction(void* buf, uint size)
         // mov/xor/test/add/sub/cmp
         if (size >= 2)
         {
-            byte op;
-            switch (RandUint8N(seed, 10))
-            {
-                case 0: op = 0x89; break;
-                case 1: op = 0x8B; break;
-                case 2: op = 0x31; break;
-                case 3: op = 0x33; break;
-                case 4: op = 0x85; break;
-                case 5: op = 0x39; break;
-                case 6: op = 0x3B; break;
-                case 7: op = 0x01; break;
-                case 8: op = 0x03; break;
-                default: op = 0x29; break;
-            }
+            byte ops[] = {
+                0x89, 0x8B, 0x31, 0x33,
+                0x85, 0x39, 0x3B, 0x01,
+                0x03, 0x29,
+            };
             // ModRM = register-direct.
-            inst[0] = op;
+            inst[0] = ops[RandUint8N(seed, arrlen(ops))];
             inst[1] = 0xC0 | (RandUint8N(seed, 8) << 3) | RandUint8N(seed, 8);
 
             inst += 2;
@@ -693,51 +729,6 @@ void EraseInstruction(void* buf, uint size)
 
         inst++;
         size--;
-    }
-}
-#pragma optimize("t", off)
-
-#pragma optimize("t", on)
-void ShuffleBuffer(void* buf, uint size)
-{
-    if (size <= 1)
-    {
-        return;
-    }
-    byte* buffer = buf;
-    uint64  seed = GenerateSeed();
-    for (uint i = size - 1; i > 0; i--)
-    {
-        uint j = RandUintN(seed, i + 1);
-        byte tmp  = buffer[i];
-        buffer[i] = buffer[j];
-        buffer[j] = tmp;
-        // update seed
-        seed = XORShift64(seed);
-    }
-}
-#pragma optimize("t", off)
-
-#pragma optimize("t", on)
-void SubstituteBuffer(void* buf, uint size)
-{
-    if (size == 0)
-    {
-        return;
-    }
-    byte* buffer = buf;
-    // generate a random S-box.
-    byte sbox[256];
-    mem_init(sbox, sizeof(sbox));
-    for (uint i = 0; i < 256; i++)
-    {
-        sbox[i] = (byte)i;
-    }
-    ShuffleBuffer(sbox, sizeof(sbox));
-    // substitute buffer.
-    for (uint i = 0; i < size; i++)
-    {
-        buffer[i] = sbox[buffer[i]];
     }
 }
 #pragma optimize("t", off)
