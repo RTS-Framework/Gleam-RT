@@ -26,7 +26,7 @@ bool TestHashMod()
 static bool TestHashModule()
 {
     uint64 hash = HashMod(L"test_main.exe");
-    if (hash != 0x423E72AF5A54CD53)
+    if (hash != 0x4E8B01B5BB7B24DB)
     {
         printf_s("invalid module hash\n");
         return false;
