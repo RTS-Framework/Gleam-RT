@@ -25,7 +25,7 @@ BOOL IsValidModuleHandle(PML* pml, HMODULE hModule)
     return false;
 }
 
-DWORD GetModuleBaseNameW(PML* pml, HMODULE hModule, LPWSTR lpBasename, DWORD nSize)
+DWORD GetModuleBaseName(PML* pml, HMODULE hModule, LPWSTR lpBasename, DWORD nSize)
 {
     if (hModule == NULL || lpBasename == NULL || nSize == 0)
     {
@@ -52,7 +52,7 @@ DWORD GetModuleBaseNameW(PML* pml, HMODULE hModule, LPWSTR lpBasename, DWORD nSi
     return 0;
 }
 
-HMODULE GetModuleHandleW(PML* pml, LPWSTR lpBasename)
+HMODULE GetModuleHandle(PML* pml, LPWSTR lpBasename)
 {
     if (lpBasename == NULL)
     {
@@ -75,9 +75,4 @@ HMODULE GetModuleHandleW(PML* pml, LPWSTR lpBasename)
         }
     }
     return NULL;
-}
-
-BOOL IsDebuggerPresent(PEB* peb)
-{
-    return peb->BeingDebugged;
 }
