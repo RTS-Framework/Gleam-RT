@@ -23,7 +23,6 @@ static byte ror(byte value, uint8 bits);
 static byte rol(byte value, uint8 bits);
 
 #pragma optimize("t", on)
-
 void EncryptBuffer(void* buf, uint size, byte* key, byte* iv)
 {
     if (size == 0)
@@ -37,10 +36,12 @@ void EncryptBuffer(void* buf, uint size, byte* key, byte* iv)
 
 static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 {
-    // just generate from random data
+    // prepare seed from key
     uint32 seeds[8] = {
-        0xFA1C345C, 0xAF16C47C, 0x1C553A02, 0x9EDAC545,
-        0xC942A49C, 0x5FE323EC, 0x9A1934AC, 0x2CB443C1,
+        *(uint32*)(key+0x00), *(uint32*)(key+0x04),
+        *(uint32*)(key+0x08), *(uint32*)(key+0x0C),
+        *(uint32*)(key+0x10), *(uint32*)(key+0x14),
+        *(uint32*)(key+0x18), *(uint32*)(key+0x1C),
     };
     // initialize random seeds
     for (int i = 0; i < 8; i++)
@@ -73,7 +74,7 @@ static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
     register uint32 seed6 = seeds[6];
     register uint32 seed7 = seeds[7];
 
-    byte last  = 170;
+    byte last  = key[0] + iv[0];
     uint limit = size - (size % PARALLEL_LEVEL);
     for (uint i = 0; i < limit; i += PARALLEL_LEVEL)
     {
@@ -244,12 +245,12 @@ static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 
         // xor and ror
         b ^= seed;
-        b = ror(b, (seed >> 8) % 8);
+        b = ror(b, (seed >> 8 ) % 8);
         b ^= seed >> 8;
         b = ror(b, (seed >> 16) % 8);
-        b ^= (seed >> 16);
+        b ^= seed >> 16;
         b = ror(b, (seed >> 24) % 8);
-        b ^= (seed >> 24);
+        b ^= seed >> 24;
 
         // substitution
         b = sbox[b];
@@ -279,10 +280,12 @@ void DecryptBuffer(void* buf, uint size, byte* key, byte* iv)
 
 static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 {
-    // just generate from random data
+    // prepare seed from key
     uint32 seeds[8] = {
-        0xFA1C345C, 0xAF16C47C, 0x1C553A02, 0x9EDAC545,
-        0xC942A49C, 0x5FE323EC, 0x9A1934AC, 0x2CB443C1,
+        *(uint32*)(key+0x00), *(uint32*)(key+0x04),
+        *(uint32*)(key+0x08), *(uint32*)(key+0x0C),
+        *(uint32*)(key+0x10), *(uint32*)(key+0x14),
+        *(uint32*)(key+0x18), *(uint32*)(key+0x1C),
     };
     // initialize random seeds
     for (int i = 0; i < 8; i++)
@@ -315,7 +318,7 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
     register uint32 seed6 = seeds[6];
     register uint32 seed7 = seeds[7];
 
-    byte last  = 170;
+    byte last  = key[0] + iv[0];
     uint limit = size - (size % PARALLEL_LEVEL);
     for (uint i = 0; i < limit; i += PARALLEL_LEVEL)
     {
@@ -497,12 +500,12 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
         b = sbox[b];
 
        // xor and rol
-        b ^= (seed >> 24);
+        b ^= seed >> 24;
         b = rol(b, (seed >> 24) % 8);
-        b ^= (seed >> 16);
+        b ^= seed >> 16;
         b = rol(b, (seed >> 16) % 8);
         b ^= seed >> 8;
-        b = rol(b, (seed >> 8) % 8);
+        b = rol(b, (seed >> 8 ) % 8);
         b ^= seed;
 
         // substitution
@@ -516,32 +519,30 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 static void initSBox(byte* sbox, byte* key, byte* iv)
 {
     // initialize S-Box byte array
-    for (int i = 0; i < 256; i++)
+    mem_init(sbox, 256);
+    for (uint i = 0; i < 256; i++)
     {
-        // + key[0] is used to prevent
-        // incorrect compiler optimization
-        sbox[i] = (byte)i + key[0];
+        sbox[i] = (byte)i;
     }
     // initialize seed for XOR Shift;
-    uint32 seed = 0x2294FD61;
+    uint64 seed = *(uint64*)key;
     for (int i = 0; i < CRYPTO_KEY_SIZE; i++)
     {
         seed += *(key + i);
     }
     for (int i = 0; i < CRYPTO_IV_SIZE; i++)
     {
-        seed *= *(iv + i);
+        seed ^= *(iv + i);
     }
-    // generate S-Box from random index
-    for (int i = 0; i < 128; i++)
+    // generate S-Box from seed
+    for (uint i = 255; i > 0; i--)
     {
-        // swap array item
-        seed = XORShift32(seed);
-        byte idx0 = (byte)(seed+32);
-        byte idx1 = (byte)(seed+64);
-        byte swap = sbox[idx0];
-        sbox[idx0] = sbox[idx1];
-        sbox[idx1] = swap;
+        uint j = RandUintN(seed, i + 1);
+        byte t = sbox[i];
+        sbox[i] = sbox[j];
+        sbox[j] = t;
+        // update seed
+        seed = XORShift64(seed);
     }
 }
 
@@ -557,14 +558,21 @@ static void reverseSBox(byte* sbox)
 
 static byte ror(byte value, uint8 bits)
 {
+    if (bits == 0)
+    {
+        return value;
+    }
     return value >> bits | value << (8 - bits);
 }
 
 static byte rol(byte value, uint8 bits)
 {
+    if (bits == 0)
+    {
+        return value;
+    }
     return value << bits | value >> (8 - bits);
 }
-
 #pragma optimize("t", off)
 
 #pragma optimize("t", on)
@@ -619,9 +627,9 @@ void ShuffleBuffer(void* buf, uint size)
     for (uint i = size - 1; i > 0; i--)
     {
         uint j = RandUintN(seed, i + 1);
-        byte tmp  = buffer[i];
+        byte t = buffer[i];
         buffer[i] = buffer[j];
-        buffer[j] = tmp;
+        buffer[j] = t;
         // update seed
         seed = XORShift64(seed);
     }
