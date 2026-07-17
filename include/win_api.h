@@ -7,16 +7,16 @@
 #include "dll_kernel32.h"
 #include "hash_api.h"
 
+// some function names have been slightly modified
+// to avoid conflicts with kernel32.lib.
+
 // IsValidModuleHandle is used to check module handle is valid.
 BOOL IsValidModuleHandle(PML* pml, HMODULE hModule);
 
-// GetModuleBaseNameW is used to get module base name by handle.
-DWORD GetModuleBaseNameW(PML* pml, HMODULE hModule, LPWSTR lpBasename, DWORD nSize);
+// GetModuleBaseName is used to get module base name by handle.
+DWORD GetModuleBaseName(PML* pml, HMODULE hModule, LPWSTR lpBasename, DWORD nSize);
 
-// GetModuleHandleW is used to get module handle by base name.
-HMODULE GetModuleHandleW(PML* pml, LPWSTR lpBasename);
-
-// IsDebuggerPresent is used to check current process is being debugged.
-BOOL IsDebuggerPresent(PEB* peb);
+// GetModuleHandle is used to get module handle by base name.
+HMODULE GetModuleHandle(PML* pml, LPWSTR lpBasename);
 
 #endif // WIN_API_H
