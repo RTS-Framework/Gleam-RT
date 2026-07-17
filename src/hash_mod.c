@@ -5,7 +5,7 @@ static uint64 ror64(uint64 value, uint64 bits);
 
 uint64 HashMod(uint16* module)
 {
-    uint64 hash = 0xE3C817DEA9BFE921;
+    uint64 hash = 0xFFFFFFFF;
     for (;;)
     {
         uint16 c = *module;
@@ -17,9 +17,9 @@ uint64 HashMod(uint16* module)
         {
             c -= 0x20;
         }
-        hash = ror64(hash, 7);
+        hash *= ror64(hash|1, 11);
         hash += c;
-        hash = ror64(hash, 3);
+        hash ^= ror64(hash|1, 17);
         module++;
     }
     return hash;
