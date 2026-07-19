@@ -34,6 +34,7 @@
 #include "watchdog.h"
 #include "sysmon.h"
 #include "shield.h"
+#include "option.h"
 #include "runtime.h"
 #include "debug.h"
 
@@ -44,10 +45,8 @@ typedef struct {
 } API_RDR;
 
 typedef struct {
-    // store options from InitRuntime argument
+    // store options and information
     Runtime_Opts Options;
-
-    // record runtime information
     Runtime_Info Info;
 
     // process environment
@@ -61,7 +60,7 @@ typedef struct {
     HMODULE hKernel32;
     HMODULE hNtdll;
 
-    // API addresses
+    // API address
     GetSystemInfo_t          GetSystemInfo;
     GetTickCount_t           GetTickCount;
     LoadLibraryA_t           LoadLibraryA;
@@ -109,14 +108,14 @@ typedef struct {
     API_RDR Kernel32RDR[63];
     API_RDR NtdllRDR   [05];
 
-    // try to lock submodules mutex
+    // try to lock submodule mutex
     HANDLE ModMutexHandle[9];
     bool   ModMutexStatus[9];
 
-    // runtime security modules
+    // security module
     Detector_M* Detector;
 
-    // runtime submodules
+    // runtime submodule
     LibraryTracker_M*  LibraryTracker;
     MemoryTracker_M*   MemoryTracker;
     ThreadTracker_M*   ThreadTracker;
@@ -124,17 +123,17 @@ typedef struct {
     ArgumentStore_M*   ArgumentStore;
     InMemoryStorage_M* InMemoryStorage;
 
-    // high-level modules
+    // high-level module
     WinBase_M*   WinBase;
     WinFile_M*   WinFile;
     WinHTTP_M*   WinHTTP;
     WinCrypto_M* WinCrypto;
 
-    // reliability modules
+    // reliability module
     Watchdog_M* Watchdog;
     Sysmon_M*   Sysmon;
 
-    // suffix modules
+    // suffix module
     Shield_M* Shield;
 
     // RuntimeM (module/method)
@@ -201,7 +200,15 @@ void* SC_FindAPI_MH(uint  module, uint procedure, uint key);
 void* SC_FindAPI_MAL(PML* pml, void* module, uint procedure, uint key);
 void* SC_FindAPI_MHL(PML* pml, uint  module, uint procedure, uint key);
 
-// method wrapper for user and Runtime submodules
+// method wrapper for user and runtime submodules
+SHA256* MW_SHA256New();
+void    MW_SHA256Hash(void* data, uint len, byte (*hash)[32]);
+
+void MW_SHA256_Write(SHA256* obj, void* data, uint len);
+void MW_SHA256_Sum(SHA256* obj, byte (*hash)[32]);
+void MW_SHA256_Reset(SHA256* obj);
+void MW_SHA256_Free(SHA256* obj);
+
 uint MW_MemScanByValue(void* value, uint size, uintptr* results, uint maxItem);
 uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem);
 
@@ -415,10 +422,11 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         // store the old hash before rebuild info
         byte hash[32];
         mem_copy(hash, runtime->Info.Hash, sizeof(hash));
+        // calculate new hash and compare them
         buildRuntimeInformation(runtime);
         if (!mem_equal(hash, runtime->Info.Hash, sizeof(hash)))
         {
-            // TODO panic(PANIC_UNREACHABLE_CODE);
+            panic(PANIC_UNREACHABLE_CODE);
         }
     }
     // create methods for runtime
@@ -544,6 +552,14 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Random.BOOL     = GetFuncAddr(&RandBOOL);
     module->Random.Buffer   = GetFuncAddr(&RandBuffer);
     module->Random.Sequence = GetFuncAddr(&RandSequence);
+    // encoding module
+    module->Encoding.Hex.Encode = GetFuncAddr(&Hex_Encode);
+    module->Encoding.Hex.Decode = GetFuncAddr(&Hex_Decode);
+    module->Encoding.Base64.Encode = GetFuncAddr(&Base64_Encode);
+    module->Encoding.Base64.Decode = GetFuncAddr(&Base64_Decode);
+    // hash module
+    module->Hash.SHA256.New  = GetFuncAddr(&MW_SHA256New);
+    module->Hash.SHA256.Hash = GetFuncAddr(&MW_SHA256Hash);
     // crypto module
     module->Crypto.XORBuffer        = GetFuncAddr(&XORBuffer);
     module->Crypto.SubstituteBuffer = GetFuncAddr(&SubstituteBuffer);
@@ -2009,6 +2025,60 @@ void* SC_FindAPI_MHL(PML* pml, uint module, uint procedure, uint key)
 }
 
 __declspec(noinline)
+SHA256* MW_SHA256New()
+{
+    Runtime* runtime = getRuntimePointer();
+
+    SHA256* obj = runtime->MemoryTracker->Alloc(sizeof(SHA256));
+    // prepare data
+    SHA256_Init((SHA256_Ctx*)obj);
+    // set method table
+    obj->Write = GetFuncAddr(&MW_SHA256_Write);
+    obj->Sum   = GetFuncAddr(&MW_SHA256_Sum);
+    obj->Reset = GetFuncAddr(&MW_SHA256_Reset);
+    obj->Free  = GetFuncAddr(&MW_SHA256_Free);
+    return obj;
+}
+
+__declspec(noinline)
+void MW_SHA256Hash(void* data, uint len, byte (*hash)[32])
+{
+    SHA256_Ctx ctx;
+    SHA256_Init(&ctx);
+    SHA256_Write(&ctx, data, len);
+    SHA256_Sum(&ctx, hash);
+}
+
+__declspec(noinline)
+void MW_SHA256_Write(SHA256* obj, void* data, uint len)
+{
+    SHA256_Ctx* ctx = (SHA256_Ctx*)obj;
+    SHA256_Write(ctx, data, len);
+}
+
+__declspec(noinline)
+void MW_SHA256_Sum(SHA256* obj, byte (*hash)[32])
+{
+    SHA256_Ctx* ctx = (SHA256_Ctx*)obj;
+    SHA256_Sum(ctx, hash);
+}
+
+__declspec(noinline)
+void MW_SHA256_Reset(SHA256* obj)
+{
+    SHA256_Ctx* ctx = (SHA256_Ctx*)obj;
+    SHA256_Init(ctx);
+}
+
+__declspec(noinline)
+void MW_SHA256_Free(SHA256* obj)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    runtime->MemoryTracker->Free(obj);
+}
+
+__declspec(noinline)
 uint MW_MemScanByValue(void* value, uint size, uintptr* results, uint maxItem)
 {
     Runtime* runtime = getRuntimePointer();
@@ -2246,12 +2316,12 @@ static void* getRuntimeMethods(LPCSTR lpProcName)
     method list[] =
 #ifdef _WIN64
     {
-        { 0x4BBCE1822B520801, 0xA55992702A7F7347, GetFuncAddr(&RT_GetProcAddress)    },
-        { 0xB6541A994E1BD9C9, 0x9674D54BD95FD0C4, GetFuncAddr(&RT_GetProcAddressEx)  },
-        { 0x733B11BFF5D380BD, 0xF9EEB584A92B88B3, GetFuncAddr(&RT_GetProcAddressRaw) },
-        { 0x286F34B40136641A, 0xDA4C40DA3D7DAE2C, GetFuncAddr(&RT_GetTEB)            },
-        { 0x5C453B47673B57CC, 0x93836F9B160A8469, GetFuncAddr(&RT_GetPEB)            },
-        { 0x7514DD4C11FC145C, 0x85FC32B8E08BBBC0, GetFuncAddr(&RT_GetPML)            },
+        { 0x72C26DF267FE1069, 0xD94A0E42AFF3B6CD, GetFuncAddr(&RT_GetProcAddress)    },
+        { 0x4F79DF54767444CD, 0xBE758EA0FC623CD6, GetFuncAddr(&RT_GetProcAddressEx)  },
+        { 0xC994C51517B5C020, 0x0ABEB36B4EAB5E6C, GetFuncAddr(&RT_GetProcAddressRaw) },
+        { 0x0D410397E2792C0E, 0xEF459E62096BA842, GetFuncAddr(&RT_GetTEB)            },
+        { 0x89235863FC018896, 0xBCD5BD20A29EB319, GetFuncAddr(&RT_GetPEB)            },
+        { 0xA71117B2CCE20660, 0x085CE2B423FB8F83, GetFuncAddr(&RT_GetPML)            },
         { 0xB1FA77826E174621, 0xE8CE6F7431D20C90, GetFuncAddr(&RT_GetOptions)        },
         { 0x618F963CAA5EE348, 0x20EE2A5363818605, GetFuncAddr(&RT_GetRuntimeM)       },
         { 0xA83FF55FECA4B2D5, 0xC9C001C805631D08, GetFuncAddr(&RT_GetInfo)           },
@@ -2282,12 +2352,12 @@ static void* getRuntimeMethods(LPCSTR lpProcName)
     };
 #elif _WIN32
     {
-        { 0x7D694658, 0xC93F4122, GetFuncAddr(&RT_GetProcAddress)    },
-        { 0xECD00780, 0x7B64F177, GetFuncAddr(&RT_GetProcAddressEx)  },
-        { 0xB033EAFB, 0xA5A5546E, GetFuncAddr(&RT_GetProcAddressRaw) },
-        { 0x87C8028B, 0xD697CA60, GetFuncAddr(&RT_GetTEB)            },
-        { 0xC04FB496, 0x7EE9DDE8, GetFuncAddr(&RT_GetPEB)            },
-        { 0x03C40D02, 0x86625805, GetFuncAddr(&RT_GetPML)            },
+        { 0xF8A848AD, 0x6533FEA7, GetFuncAddr(&RT_GetProcAddress)    },
+        { 0x4292920A, 0x45AFC98F, GetFuncAddr(&RT_GetProcAddressEx)  },
+        { 0x52FC5757, 0x5737AAE4, GetFuncAddr(&RT_GetProcAddressRaw) },
+        { 0xB5B44B90, 0xB7C4AFC0, GetFuncAddr(&RT_GetTEB)            },
+        { 0xB6DA1A98, 0x48E18193, GetFuncAddr(&RT_GetPEB)            },
+        { 0x0353F556, 0x8A5CF1BA, GetFuncAddr(&RT_GetPML)            },
         { 0xD4D119FF, 0x8CD7C9D0, GetFuncAddr(&RT_GetOptions)        },
         { 0x2414448A, 0x2E37B5DF, GetFuncAddr(&RT_GetRuntimeM)       },
         { 0x41205F31, 0x2E96AC51, GetFuncAddr(&RT_GetInfo)           },
