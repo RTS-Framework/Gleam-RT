@@ -15,7 +15,7 @@ import (
 )
 
 // Handle is the pseudo handle for GleamRT.
-const Handle = uintptr(0x00001234)
+const Handle = windows.Handle(0x00001234)
 
 var (
 	modGleamRT = windows.NewLazyDLL("GleamRT.dll")
@@ -23,14 +23,13 @@ var (
 	procInitialize   = modGleamRT.NewProc("RT_Initialize")
 	procUninitialize = modGleamRT.NewProc("RT_Uninitialize")
 
-	procGetProcAddressByName   = modGleamRT.NewProc("RT_GetProcAddressByName")
-	procGetProcAddressByHash   = modGleamRT.NewProc("RT_GetProcAddressByHash")
-	procGetProcAddressByHashML = modGleamRT.NewProc("RT_GetProcAddressByHashML")
-	procGetProcAddressOriginal = modGleamRT.NewProc("RT_GetProcAddressOriginal")
+	procGetProcAddress    = modGleamRT.NewProc("RT_GetProcAddress")
+	procGetProcAddressEx  = modGleamRT.NewProc("RT_GetProcAddressEx")
+	procGetProcAddressRaw = modGleamRT.NewProc("RT_GetProcAddressRaw")
 
-	procGetPEB   = modGleamRT.NewProc("RT_GetPEB")
-	procGetTEB   = modGleamRT.NewProc("RT_GetTEB")
-	procGetIMOML = modGleamRT.NewProc("RT_GetIMOML")
+	procGetTEB = modGleamRT.NewProc("RT_GetTEB")
+	procGetPEB = modGleamRT.NewProc("RT_GetPEB")
+	procGetPML = modGleamRT.NewProc("RT_GetPML")
 
 	procGetOptions  = modGleamRT.NewProc("RT_GetOptions")
 	procGetRuntimeM = modGleamRT.NewProc("RT_GetRuntimeM")
@@ -63,66 +62,52 @@ func Uninitialize() error {
 	return nil
 }
 
-// GetProcAddressByName is used to get procedure address by name.
-func GetProcAddressByName(hModule uintptr, name string, redirect bool) (uintptr, error) {
+// GetProcAddress is used to get procedure address.
+func GetProcAddress(module windows.Handle, name string) (uintptr, error) {
 	namePtr, err := syscall.BytePtrFromString(name)
 	if err != nil {
 		return 0, err
 	}
-	ret, _, err := procGetProcAddressByName.Call(
-		hModule, uintptr(unsafe.Pointer(namePtr)), boolToUintptr(redirect),
+	ret, _, err := procGetProcAddress.Call(
+		uintptr(module), uintptr(unsafe.Pointer(namePtr)),
 	) // #nosec
 	if ret == 0 {
 		en := uintptr(err.(syscall.Errno))
-		return 0, fmt.Errorf("failed to call GetProcAddressByName: 0x%08X", en)
+		return 0, fmt.Errorf("failed to call GetProcAddress: 0x%08X", en)
 	}
 	return ret, nil
 }
 
-// GetProcAddressByHash is used to get procedure address by hash.
-func GetProcAddressByHash(mHash, pHash, hKey uint, redirect bool) (uintptr, error) {
-	ret, _, err := procGetProcAddressByHash.Call(
-		uintptr(mHash), uintptr(pHash), uintptr(hKey), boolToUintptr(redirect),
-	) // #nosec
-	if ret == 0 {
-		en := uintptr(err.(syscall.Errno))
-		return 0, fmt.Errorf("failed to call GetProcAddressByHash: 0x%08X", en)
-	}
-	return ret, nil
-}
-
-// GetProcAddressByHashML is used to get procedure address by hash with list.
-func GetProcAddressByHashML(list uintptr, mHash, pHash, hKey uint, redirect bool) (uintptr, error) {
-	ret, _, err := procGetProcAddressByHashML.Call(
-		list, uintptr(mHash), uintptr(pHash), uintptr(hKey), boolToUintptr(redirect),
-	) // #nosec
-	if ret == 0 {
-		en := uintptr(err.(syscall.Errno))
-		return 0, fmt.Errorf("failed to call GetProcAddressByHashML: 0x%08X", en)
-	}
-	return ret, nil
-}
-
-// GetProcAddressOriginal is used to call original GetProcAddress.
-func GetProcAddressOriginal(hModule uintptr, name string) (uintptr, error) {
+// GetProcAddressEx is used to get procedure address with control redirect.
+func GetProcAddressEx(module windows.Handle, name string, redirect bool) (uintptr, error) {
 	namePtr, err := syscall.BytePtrFromString(name)
 	if err != nil {
 		return 0, err
 	}
-	ret, _, err := procGetProcAddressOriginal.Call(
+	ret, _, err := procGetProcAddressEx.Call(
+		uintptr(module), uintptr(unsafe.Pointer(namePtr)), boolToUintptr(redirect),
+	) // #nosec
+	if ret == 0 {
+		en := uintptr(err.(syscall.Errno))
+		return 0, fmt.Errorf("failed to call GetProcAddressEx: 0x%08X", en)
+	}
+	return ret, nil
+}
+
+// GetProcAddressRaw is used to call original GetProcAddress.
+func GetProcAddressRaw(hModule uintptr, name string) (uintptr, error) {
+	namePtr, err := syscall.BytePtrFromString(name)
+	if err != nil {
+		return 0, err
+	}
+	ret, _, err := procGetProcAddressRaw.Call(
 		hModule, uintptr(unsafe.Pointer(namePtr)),
 	) // #nosec
 	if ret == 0 {
 		en := uintptr(err.(syscall.Errno))
-		return 0, fmt.Errorf("failed to call GetProcAddressOriginal: 0x%08X", en)
+		return 0, fmt.Errorf("failed to call GetProcAddressRaw: 0x%08X", en)
 	}
 	return ret, nil
-}
-
-// GetPEB is used to get process environment block.
-func GetPEB() uintptr {
-	ret, _, _ := procGetPEB.Call()
-	return ret
 }
 
 // GetTEB is used to get thread environment block.
@@ -131,9 +116,15 @@ func GetTEB() uintptr {
 	return ret
 }
 
-// GetIMOML is used to get in-memory order module list.
-func GetIMOML() uintptr {
-	ret, _, _ := procGetIMOML.Call()
+// GetPEB is used to get process environment block.
+func GetPEB() uintptr {
+	ret, _, _ := procGetPEB.Call()
+	return ret
+}
+
+// GetPML is used to get process module list.
+func GetPML() uintptr {
+	ret, _, _ := procGetPML.Call()
 	return ret
 }
 
