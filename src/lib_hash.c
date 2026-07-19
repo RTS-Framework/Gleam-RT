@@ -17,6 +17,8 @@ void SHA256_transform(SHA256_Ctx* ctx, byte* data);
 __declspec(noinline)
 void SHA256_Init(SHA256_Ctx *ctx)
 {
+    mem_init(ctx, sizeof(SHA256_Ctx));
+
     ctx->bitlen  = 0;
     ctx->datalen = 0;
 
@@ -51,7 +53,6 @@ __declspec(noinline)
 void SHA256_Sum(SHA256_Ctx* ctx, byte (*hash)[32])
 {
     uint8 i = ctx->datalen;
-
     if (ctx->datalen < 56) {
         ctx->data[i++] = 0x80;
         mem_init(ctx->data + i, (uint)56 - i);
@@ -64,7 +65,6 @@ void SHA256_Sum(SHA256_Ctx* ctx, byte (*hash)[32])
     }
 
     ctx->bitlen += (uint64)(ctx->datalen) * 8;
-
     ctx->data[63] = (byte)(ctx->bitlen >> 0);
     ctx->data[62] = (byte)(ctx->bitlen >> 8);
     ctx->data[61] = (byte)(ctx->bitlen >> 16);
@@ -73,7 +73,6 @@ void SHA256_Sum(SHA256_Ctx* ctx, byte (*hash)[32])
     ctx->data[58] = (byte)(ctx->bitlen >> 40);
     ctx->data[57] = (byte)(ctx->bitlen >> 48);
     ctx->data[56] = (byte)(ctx->bitlen >> 56);
-
     SHA256_transform(ctx, ctx->data);
 
     for (i = 0; i < 4; i++) {
@@ -106,18 +105,15 @@ void SHA256_transform(SHA256_Ctx* ctx, byte* data)
     };
 
     uint32 m[64];
-    uint32 a, b, c, d, e, f, g, h;
-
     mem_init(m, sizeof(m));
-
     for (int i = 0; i < 16; i++) {
         m[i] = (data[i*4]<<24)|(data[i*4+1]<<16)|(data[i*4+2]<<8)|(data[i*4+3]);
     }
-
     for (int i = 16; i < 64; i++) {
         m[i] = SIG1(m[i-2]) + m[i-7] + SIG0(m[i-15]) + m[i-16];
     }
 
+    uint32 a, b, c, d, e, f, g, h;
     a = ctx->state[0];
     b = ctx->state[1];
     c = ctx->state[2];
@@ -130,7 +126,6 @@ void SHA256_transform(SHA256_Ctx* ctx, byte* data)
     for (int i = 0; i < 64; i++) {
         uint32 t1 = h + EP1(e) + CH(e,f,g) + k[i] + m[i];
         uint32 t2 = EP0(a) + MAJ(a,b,c);
-
         h = g;
         g = f;
         f = e;
