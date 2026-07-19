@@ -1,4 +1,5 @@
 #include "c_types.h"
+#include "lib_memory.h"
 #include "lib_encode.h"
 
 static byte Hex_byte(byte b);
@@ -82,6 +83,8 @@ uint Base64_Encode(void* src, uint len, byte* dst)
 
     byte enc[64];
     byte dec[256];
+    mem_init(enc, sizeof(enc));
+    mem_init(dec, sizeof(dec));
     Base64_generateTable(enc, dec);
 
     byte* in = (byte*)src;
@@ -147,6 +150,8 @@ uint Base64_Decode(byte* src, uint len, void* dst)
 
     byte enc[64];
     byte dec[256];
+    mem_init(enc, sizeof(enc));
+    mem_init(dec, sizeof(dec));
     Base64_generateTable(enc, dec);
 
     byte* out = (byte*)dst;
@@ -212,6 +217,7 @@ uint Base64_Decode(byte* src, uint len, void* dst)
 }
 
 // merge two tables to one function for reduce code size.
+#pragma optimize("", off)
 static void Base64_generateTable(byte enc[64], byte dec[256])
 {
     for (uint i = 0; i < 256; i++)
@@ -237,3 +243,4 @@ static void Base64_generateTable(byte enc[64], byte dec[256])
         dec[c] = (byte)i;
     }
 }
+#pragma optimize("", on)
