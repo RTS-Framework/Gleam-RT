@@ -289,6 +289,7 @@ void RandBuffer(void* buf, int64 size)
     }
 }
 
+#pragma optimize("t", off)
 void RandSequence(int* array, int n)
 {
     // initialize input array
@@ -309,6 +310,7 @@ void RandSequence(int* array, int n)
         seed = XORShift64(seed);
     }
 }
+#pragma optimize("t", on)
 
 __declspec(noinline)
 static uint64 generateSeed()
