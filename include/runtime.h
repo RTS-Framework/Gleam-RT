@@ -12,37 +12,6 @@
 // 0x010A02 means v1.10.2
 #define RUNTIME_VERSION 0x000901
 
-// about runtime options at the template tail.
-//
-// +------------+---------+---------+---------+---------+
-// | magic mark | xor key | option1 | option2 | optionN |
-// +------------+---------+---------+---------+---------+
-// |    0xFC    | 32 byte |   var   |   var   |   var   |
-// +------------+---------+---------+---------+---------+
-
-#define OPTION_STUB_MAGIC 0xFC
-#define OPTION_STUB_SIZE  128
-#define OPTION_KEY_SIZE   32
-
-#define OPT_OFFSET_BASE                  (1 + OPTION_KEY_SIZE)
-#define OPT_OFFSET_IMAGE_PINNING_HASH    (OPT_OFFSET_BASE + 0)
-#define OPT_OFFSET_SHIELD_MODULE_HASH    (OPT_OFFSET_BASE + 8)
-#define OPT_OFFSET_SHIELD_ENTRY_POINT    (OPT_OFFSET_BASE + 16)
-#define OPT_OFFSET_SHIELD_MEM_ADDRESS    (OPT_OFFSET_BASE + 24)
-#define OPT_OFFSET_ENABLE_SECURITY_MODE  (OPT_OFFSET_BASE + 32)
-#define OPT_OFFSET_DISABLE_DETECTOR      (OPT_OFFSET_BASE + 33)
-#define OPT_OFFSET_DISABLE_WATCHDOG      (OPT_OFFSET_BASE + 34)
-#define OPT_OFFSET_DISABLE_SYSMON        (OPT_OFFSET_BASE + 35)
-#define OPT_OFFSET_NOT_ERASE_INSTRUCTION (OPT_OFFSET_BASE + 36)
-#define OPT_OFFSET_NOT_ADJUST_PROTECT    (OPT_OFFSET_BASE + 37)
-#define OPT_OFFSET_TRACK_CURRENT_THREAD  (OPT_OFFSET_BASE + 38)
-
-// for generic module development.
-
-#ifndef DLL_ADVAPI32_H
-typedef DWORD ALG_ID;
-#endif // DLL_ADVAPI32_H
-
 // about library tracker
 #ifndef MOD_LIBRARY_H
 #define HMODULE_GLEAM_RT ((HMODULE)(0x00001234))
@@ -224,6 +193,10 @@ typedef errno (*HTTPFreeDLL_t)();
 
 #endif // WIN_CRYPTO_H
 
+#ifndef DLL_ADVAPI32_H
+typedef DWORD ALG_ID;
+#endif // DLL_ADVAPI32_H
+
 typedef errno (*CryptoRandBuffer_t)(databuf* data);
 typedef errno (*CryptoHash_t)(ALG_ID aid, databuf* data, databuf* hash);
 typedef errno (*CryptoHMAC_t)(ALG_ID aid, databuf* data, databuf* key, databuf* hash);
@@ -240,6 +213,13 @@ typedef errno (*CryptoFreeDLL_t)();
 // =================================Runtime=================================
 
 // about random module
+// 
+// RandIntX maybe return negative value.
+// RandXxxN is used to generate random value in [0, n).
+// 
+// RandSequence is used to generate random sequence with range.
+// example: RandSequence(array, 4) will set array like [0, 3, 1, 2]
+
 typedef uint64 (*RandSeed_t)();
 typedef int    (*RandInt_t)(uint64 seed);
 typedef int8   (*RandInt8_t)(uint64 seed);
@@ -267,9 +247,46 @@ typedef BOOL   (*RandBOOL_t)(uint64 seed);
 typedef void   (*RandBuffer_t)(void* buf, int64 size);
 typedef void   (*RandSequence_t)(int* array, int n);
 
+// about encoding module
+// 
+// if dst is NULL, it only calculate the output length.
+// it will return -1 when call Decode with invalid data.
+typedef uint (*HexEncode_t)(void* src, uint len, byte* dst);
+typedef uint (*HexDecode_t)(byte* src, uint len, void* dst);
+typedef uint (*Base64Encode_t)(void* src, uint len, byte* dst);
+typedef uint (*Base64Decode_t)(byte* src, uint len, void* dst);
+
+// about hash module
+typedef struct SHA256 SHA256;
+
+typedef void (*SHA256_Write_t)(SHA256* obj, void* data, uint len);
+typedef void (*SHA256_Sum_t)(SHA256* obj, byte (*hash)[32]);
+typedef void (*SHA256_Reset_t)(SHA256* obj);
+typedef void (*SHA256_Free_t)(SHA256* obj);
+
+struct SHA256 {
+    // internal data
+    uint32 reserved0[8];
+    uint64 reserved1;
+    uint8  reserved2[64];
+    uint8  reserved3;
+
+    // method table
+    SHA256_Write_t Write;
+    SHA256_Sum_t   Sum;
+    SHA256_Reset_t Reset;
+    SHA256_Free_t  Free;
+};
+
+typedef SHA256* (*SHA256New_t)();
+typedef void    (*SHA256Hash_t)(void* data, uint len, byte (*hash)[32]);
+
 // about crypto module
 typedef void (*XORBuffer_t)(void* buf, uint bufSize, void* key, uint keySize);
+typedef void (*SubstituteBuffer_t)(void* buf, uint size);
+typedef void (*ShuffleBuffer_t)(void* buf, uint size);
 typedef void (*EraseBuffer_t)(void* buf, uint size);
+typedef void (*EraseInstruction_t)(void* buf, uint size);
 
 // about compress module
 //
@@ -309,14 +326,10 @@ typedef uint (*Decompress_t)(void* dst, void* src, uint len);
 
 #ifndef SERIALIZE_H
 
-#define SERIALIZE_MAGIC        0xACFFFFEE
-#define SERIALIZE_ITEM_END     0x00000000
-
-#define SERIALIZE_MASK_TYPE    0x80000000
-#define SERIALIZE_MASK_LENGTH  0x7FFFFFFF
-
 #define SERIALIZE_TYPE_VALUE   0x00000000
 #define SERIALIZE_TYPE_POINTER 0x80000000
+
+#define SERIALIZE_ITEM_END 0x00000000
 
 #endif // SERIALIZE_H
 
@@ -455,48 +468,8 @@ typedef PML* (*GetPML_t)(); // get stored process module list
 // Stop is same as Exit, but it will exit current thread after exit,
 // it can erase the instruction from boot address to runtime epilogue.
 
-typedef struct {
-	// runtime will not initialize when the exe name is not expected.
-    // if zero, runtime will skip this detection.
-    uint64 ImagePinningHash;
-
-	// the module hash of the pre-injected shield in,
-    // if 0x0000, runtime will deploy a shield from the built-in shield stub.
-    // if 0x0001, the module is the main exe.
-    // if others, the module is the target dll.
-    uint64 ShieldModuleHash;
-
-	// the RVA of the pre-injected shield in the module.
-    // if ShieldModuleHash is not zero, it must be set.
-    uint64 ShieldEntryPoint;
-
-    // the shield memory address that external program provide.
-    uint64 ShieldMemAddress;
-
-    // detect environment when initialize runtime, if not safe,
-    // stop initialization and exit runtime at once.
-    BOOL EnableSecurityMode;
-
-    // disable detector for test or debug.
-    BOOL DisableDetector;
-
-    // disable watchdog for implement single thread model.
-    // it will overwrite the control from upper module.
-    BOOL DisableWatchdog;
-
-    // disable sysmon for implement single thread model.
-    BOOL DisableSysmon;
-
-    // not erase runtime instructions after call Runtime_M.Exit.
-    BOOL NotEraseInstruction;
-
-    // not adjust current memory page protect for initialize runtime.
-    BOOL NotAdjustProtect;
-
-    // track current thread for test or debug mode.
-    // it maybe improved the single thread model.
-    BOOL TrackCurrentThread;
-} Runtime_Opts;
+// for improve code layout
+typedef struct Runtime_Opts Runtime_Opts;
 
 typedef struct {
     uint64 Version;
@@ -680,8 +653,30 @@ typedef struct {
     } Random;
 
     struct {
-        XORBuffer_t   XOR;
-        EraseBuffer_t Erase;
+        struct {
+            HexEncode_t Encode;
+            HexDecode_t Decode;
+        } Hex;
+
+        struct {
+            Base64Encode_t Encode;
+            Base64Decode_t Decode;
+        } Base64;
+    } Encoding;
+
+    struct {
+        struct {
+            SHA256New_t  New;
+            SHA256Hash_t Hash;
+        } SHA256;
+    } Hash;
+
+    struct {
+        XORBuffer_t        XORBuffer;
+        SubstituteBuffer_t SubstituteBuffer;
+        ShuffleBuffer_t    ShuffleBuffer;
+        EraseBuffer_t      EraseBuffer;
+        EraseInstruction_t EraseInstruction;
     } Crypto;
 
     struct {
@@ -763,17 +758,54 @@ typedef struct {
     } Data;
 } Runtime_M;
 
+struct Runtime_Opts {
+	// runtime will not initialize when the exe name is not expected.
+    // if zero, runtime will skip this detection.
+    uint64 ImagePinningHash;
+
+	// the module hash of the pre-injected shield in,
+    // if 0x0000, runtime will deploy a shield from the built-in shield stub.
+    // if 0x0001, the module is the main exe.
+    // if others, the module is the target dll.
+    uint64 ShieldModuleHash;
+
+	// the RVA of the pre-injected shield in the module.
+    // if ShieldModuleHash is not zero, it must be set.
+    uint64 ShieldEntryPoint;
+
+    // the shield memory address that external program provide.
+    uint64 ShieldMemAddress;
+
+    // detect environment when initialize runtime, if not safe,
+    // stop initialization and exit runtime at once.
+    BOOL EnableSecurityMode;
+
+    // disable detector for test or debug.
+    BOOL DisableDetector;
+
+    // disable watchdog for implement single thread model.
+    // it will overwrite the control from upper module.
+    BOOL DisableWatchdog;
+
+    // disable sysmon for implement single thread model.
+    BOOL DisableSysmon;
+
+    // not erase runtime instructions after call Runtime_M.Exit.
+    BOOL NotEraseInstruction;
+
+    // not adjust current memory page protect for initialize runtime.
+    BOOL NotAdjustProtect;
+
+    // track current thread for test or debug mode.
+    // it maybe improved the single thread model.
+    BOOL TrackCurrentThread;
+};
+
 // InitRuntime is used to initialize runtime and return module methods.
 // If failed to initialize, use GetLastError to get error code.
 // boot is used to protect instructions like Boot before Runtime,
 // if it is NULL, Runtime will only protect self.
 // if opts is NULL, runtime will load options from stub.
 Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts);
-
-// reserve stub for store runtime options.
-#pragma warning(push)
-#pragma warning(disable: 4276)
-extern void Option_Stub();
-#pragma warning(pop)
 
 #endif // RUNTIME_H
