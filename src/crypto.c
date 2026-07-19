@@ -522,10 +522,11 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 static void initSBox(byte* sbox, byte* key, byte* iv)
 {
     // initialize S-Box byte array
-    mem_init(sbox, 256);
-    for (uint i = 0; i < 256; i++)
+    for (int i = 0; i < 256; i++)
     {
-        sbox[i] = (byte)i;
+        // (i + key[0]) is used to prevent
+        // incorrect compiler optimization
+        sbox[i] = (byte)(i + key[0]);
     }
     // initialize seed for XOR Shift;
     uint64 seed = *(uint64*)key;
@@ -647,9 +648,12 @@ void IlluminateBuffer(void* buf, uint size, uint64 key)
 __declspec(noinline)
 static void initObfuscateSBox(byte* sbox, uint64 seed)
 {
-    for (uint i = 0; i < 256; i++)
+    // initialize S-Box byte array
+    for (int i = 0; i < 256; i++)
     {
-        sbox[i] = (byte)i;
+        // (i + seed) is used to prevent
+        // incorrect compiler optimization
+        sbox[i] = (byte)(i + seed);
     }
     for (uint i = 255; i > 0; i--)
     {
@@ -710,7 +714,9 @@ void SubstituteBuffer(void* buf, uint size)
     mem_init(sbox, sizeof(sbox));
     for (uint i = 0; i < 256; i++)
     {
-        sbox[i] = (byte)i;
+        // (i + size) is used to prevent
+        // incorrect compiler optimization
+        sbox[i] = (byte)(i + size);
     }
     ShuffleBuffer(sbox, sizeof(sbox));
     // substitute buffer.
