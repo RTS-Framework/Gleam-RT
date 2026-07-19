@@ -3,6 +3,7 @@
 #include "lib_memory.h"
 #include "lib_string.h"
 #include "lib_hash.h"
+#include "runtime.h"
 #include "test.h"
 
 static bool TestLibHash_SHA256();
@@ -28,9 +29,9 @@ bool TestLibHash()
 static bool TestLibHash_SHA256()
 {
     byte data[] = { 1, 2, 3, 4 };
+    byte hash[32];
 
     SHA256_Ctx ctx;
-    byte  hash[32];
     SHA256_Init(&ctx);
     for (int i = 0; i < 1000; i++)
     {
@@ -49,6 +50,23 @@ static bool TestLibHash_SHA256()
         printf_s("invalid SHA256 digest\n");
         return false;
     }
+
+    // runtime object
+    mem_init(hash, sizeof(hash));
+
+    SHA256* obj = runtime->Hash.SHA256.New();
+    for (int i = 0; i < 1000; i++)
+    {
+        obj->Write(obj, data, sizeof(data));
+    }
+    obj->Sum(obj, &hash);
+    if (!mem_equal(expected, hash, sizeof(hash)))
+    {
+        printf_s("invalid SHA256 digest from runtime object\n");
+        return false;
+    }
+    obj->Reset(obj);
+    obj->Free(obj);
 
     printf_s("test SHA256 passed\n");
     return true;
