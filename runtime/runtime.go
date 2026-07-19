@@ -47,10 +47,16 @@ type Options struct {
 // RuntimeM contains exported methods of runtime.
 type RuntimeM struct {
 	HashAPI struct {
-		FindAPI   uintptr
-		FindAPIML uintptr
-		FindAPIA  uintptr
-		FindAPIW  uintptr
+		FindModMH  uintptr
+		FindAPIMA  uintptr
+		FindAPIMH  uintptr
+		FindModMHL uintptr
+		FindAPIMAL uintptr
+		FindAPIMHL uintptr
+		FindModA   uintptr
+		FindModW   uintptr
+		FindAPIA   uintptr
+		FindAPIW   uintptr
 	}
 
 	Library struct {
@@ -191,9 +197,31 @@ type RuntimeM struct {
 		Sequence uintptr
 	}
 
+	Encoding struct {
+		Hex struct {
+			Encode uintptr
+			Decode uintptr
+		}
+
+		Base64 struct {
+			Encode uintptr
+			Decode uintptr
+		}
+	}
+
+	Hash struct {
+		SHA256 struct {
+			New  uintptr
+			Hash uintptr
+		}
+	}
+
 	Crypto struct {
-		XOR   uintptr
-		Erase uintptr
+		XORBuffer        uintptr
+		SubstituteBuffer uintptr
+		ShuffleBuffer    uintptr
+		EraseBuffer      uintptr
+		EraseInstruction uintptr
 	}
 
 	Compressor struct {
@@ -210,12 +238,6 @@ type RuntimeM struct {
 		ScanByValue  uintptr
 		ScanByConfig uintptr
 		BinToPattern uintptr
-	}
-
-	Procedure struct {
-		GetProcByName   uintptr
-		GetProcByHash   uintptr
-		GetProcByHashML uintptr
 	}
 
 	Detector struct {
@@ -251,9 +273,9 @@ type RuntimeM struct {
 	}
 
 	Env struct {
-		GetPEB   uintptr
-		GetTEB   uintptr
-		GetIMOML uintptr
+		GetTEB uintptr
+		GetPEB uintptr
+		GetPML uintptr
 	}
 
 	Raw struct {
