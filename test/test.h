@@ -8,6 +8,8 @@
 Runtime_M* runtime;
 
 // define unit tests
+#pragma warning(push)
+#pragma warning(disable: 4276)
 bool TestLibMemory();
 bool TestLibString();
 bool TestLibMatch();
@@ -34,6 +36,7 @@ bool TestRuntime_Watchdog();
 bool TestRuntime_Sysmon();
 bool TestRuntime_Exit();
 bool TestRuntime_Options();
+#pragma warning(pop)
 
 typedef bool (*test_t)();
 typedef struct { byte* Name; test_t Test; } unit;
