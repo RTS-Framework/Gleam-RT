@@ -328,8 +328,7 @@ typedef uint (*Decompress_t)(void* dst, void* src, uint len);
 
 #define SERIALIZE_TYPE_VALUE   0x00000000
 #define SERIALIZE_TYPE_POINTER 0x80000000
-
-#define SERIALIZE_ITEM_END 0x00000000
+#define SERIALIZE_ITEM_END     0x00000000
 
 #endif // SERIALIZE_H
 
@@ -451,6 +450,9 @@ typedef void  (*SDStop_t)();
 typedef TEB* (*GetTEB_t)(); // only a shortcut of read gs or fs
 typedef PEB* (*GetPEB_t)(); // get stored PEB address
 typedef PML* (*GetPML_t)(); // get stored process module list
+
+// get immutable module handle like "kernel32.dll".
+typedef HMODULE (*GetDLL_t)(); 
 
 // about runtime core methods
 //
@@ -737,6 +739,12 @@ typedef struct {
     } Env;
 
     struct {
+        GetDLL_t GetMainEXE;
+        GetDLL_t GetKernel32;
+        GetDLL_t GetNtdll;
+    } DLL;
+
+    struct {
         GetProcAddress_t GetProcAddress;
         ExitProcess_t    ExitProcess;
     } Raw;
@@ -759,17 +767,17 @@ typedef struct {
 } Runtime_M;
 
 struct Runtime_Opts {
-	// runtime will not initialize when the exe name is not expected.
+    // runtime will not initialize when the exe name is not expected.
     // if zero, runtime will skip this detection.
     uint64 ImagePinningHash;
 
-	// the module hash of the pre-injected shield in,
+    // the module hash of the pre-injected shield in,
     // if 0x0000, runtime will deploy a shield from the built-in shield stub.
     // if 0x0001, the module is the main exe.
     // if others, the module is the target dll.
     uint64 ShieldModuleHash;
 
-	// the RVA of the pre-injected shield in the module.
+    // the RVA of the pre-injected shield in the module.
     // if ShieldModuleHash is not zero, it must be set.
     uint64 ShieldEntryPoint;
 
