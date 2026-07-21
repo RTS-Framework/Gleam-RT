@@ -336,7 +336,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     Runtime* runtime = (Runtime*)runtimeAddr;
     mem_init(runtime, sizeof(Runtime));
     // copy runtime option
-    runtime->Options = *opts;
+    mem_copy(&runtime->Options, opts, sizeof(Runtime_Opts));
     // build runtime information
     buildRuntimeInformation(runtime);
     // store process environment
@@ -2919,7 +2919,8 @@ errno RT_GetOptions(Runtime_Opts* opts)
         return ERR_RUNTIME_LOCK;
     }
 
-    *opts = runtime->Options;
+    // MUST use mem_copy for prevent link to memcpy
+    mem_copy(opts, &runtime->Options, sizeof(Runtime_Opts));
 
     if (!rt_unlock())
     {
@@ -2938,7 +2939,9 @@ errno RT_GetRuntimeM(Runtime_M* rtm)
         return ERR_RUNTIME_LOCK;
     }
 
-    *rtm = *runtime->RuntimeM;
+    // MUST use mem_copy for prevent link to the memcpy
+    // "*rtm = *runtime->RuntimeM;" will failed to compile
+    mem_copy(rtm, runtime->RuntimeM, sizeof(Runtime_M));
 
     if (!rt_unlock())
     {
@@ -2957,7 +2960,8 @@ errno RT_GetInfo(Runtime_Info* info)
         return ERR_RUNTIME_LOCK;
     }
 
-    *info = runtime->Info;
+    // MUST use mem_copy for prevent link to memcpy
+    mem_copy(info, &runtime->Info, sizeof(Runtime_Info));
 
     if (!rt_unlock())
     {
