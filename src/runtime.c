@@ -51,7 +51,7 @@ typedef struct {
 
     // process environment
     PEB* PEB; // process environment block
-    PML* PML; // process module list
+    PML* PML; // process module list (snapshot)
 
     // process exe image base
     HMODULE ImageBase;
@@ -160,6 +160,10 @@ TEB* RT_GetTEB();
 PEB* RT_GetPEB();
 PML* RT_GetPML();
 
+HMODULE RT_GetMainEXE();
+HMODULE RT_GetKernel32();
+HMODULE RT_GetNtdll();
+
 BOOL  RT_SetCurrentDirectoryA(LPSTR lpPathName);
 BOOL  RT_SetCurrentDirectoryW(LPWSTR lpPathName);
 UINT  RT_SetErrorMode(UINT uMode);
@@ -214,12 +218,13 @@ uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem);
 
 static Runtime* getRuntimePointer();
 
-static bool  loadOptionFromStub(Runtime_Opts* opts);
+static void  loadOptionFromStub(Runtime_Opts* opts);
 static bool  checkOptionConflict(Runtime_Opts* opts);
 static bool  isValidArgumentStub();
 static PEB*  getPEBPointer();
 static PML*  buildProcessModuleList(PEB* peb);
 static void* getProcessImageBase(PEB* peb);
+static bool  processImagePinning(PML* pml, HMODULE image, uint64 hash);
 static void* getKernel32Address(PML* pml);
 static void* getNtdllAddress(PML* pml);
 static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32);
@@ -278,11 +283,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     if (opts == NULL)
     {
         Runtime_Opts opt;
-        if (!loadOptionFromStub(&opt))
-        {
-            SetLastErrno(ERR_RUNTIME_INVALID_OPTION_STUB);
-            return NULL;
-        }
+        loadOptionFromStub(&opt);
         opts = &opt;
     }
     if (!checkOptionConflict(opts))
@@ -301,6 +302,12 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     PML* PML = buildProcessModuleList(PEB);
     // prepare process image base
     HMODULE imageBase = getProcessImageBase(PEB);
+    // check image pinning hash
+    if (!processImagePinning(PML, imageBase, opts->ImagePinningHash))
+    {
+        SetLastErrno(ERR_RUNTIME_IMAGE_PINNING);
+        return NULL;
+    }
     // get kernel32.dll and ntdll.dll address
     HMODULE hKernel32 = getKernel32Address(PML);
     if (hKernel32 == NULL)
@@ -601,6 +608,10 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Env.GetTEB = GetFuncAddr(&RT_GetTEB);
     module->Env.GetPEB = GetFuncAddr(&RT_GetPEB);
     module->Env.GetPML = GetFuncAddr(&RT_GetPML);
+    // about immutable module handle
+    module->DLL.GetMainEXE  = GetFuncAddr(&RT_GetMainEXE);
+    module->DLL.GetKernel32 = GetFuncAddr(&RT_GetKernel32);
+    module->DLL.GetNtdll    = GetFuncAddr(&RT_GetNtdll);
     // {THE TRUTH OF THE WORLD} && [THE END OF THE WORLD] :(
     module->Raw.GetProcAddress = GetFuncAddr(&RT_GetProcAddressRaw);
     module->Raw.ExitProcess    = GetFuncAddr(&RT_ExitProcess);
@@ -621,14 +632,10 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     return module;
 }
 
-static bool loadOptionFromStub(Runtime_Opts* opts)
+static void loadOptionFromStub(Runtime_Opts* opts)
 {
+    // get option stub address
     uintptr stub = (uintptr)(GetFuncAddr(&Option_Stub));
-    // check runtime option stub is valid
-    if (*(byte*)stub != OPTION_STUB_MAGIC)
-    {
-        return false;
-    }
     // copy runtime options from stub
     byte data[OPTION_STUB_SIZE];
     mem_copy(data, (byte*)stub, sizeof(data));
@@ -650,7 +657,6 @@ static bool loadOptionFromStub(Runtime_Opts* opts)
     opts->NotEraseInstruction = *(byte*)(data + OPT_OFFSET_NOT_ERASE_INSTRUCTION) == 0;
     opts->NotAdjustProtect    = *(byte*)(data + OPT_OFFSET_NOT_ADJUST_PROTECT) == 0;
     opts->TrackCurrentThread  = *(byte*)(data + OPT_OFFSET_TRACK_CURRENT_THREAD) == 0;
-    return true;
 }
 
 static bool checkOptionConflict(Runtime_Opts* opts)
@@ -703,11 +709,11 @@ static bool isValidArgumentStub()
             if ((crc & 1) != 0)
             {
                 crc = (crc >> 1) ^ 0xEDB88320;
-			} else {
+            } else {
                 crc >>= 1;
-			}
-		}
-	}
+            }
+        }
+    }
     crc ^= 0xFFFFFFFF;
     return crc == checksum;
 }
@@ -738,13 +744,33 @@ static PEB* getPEBPointer()
 static PML* buildProcessModuleList(PEB* peb)
 {
     PEB_LDR_DATA* ldr = peb->LDR;
-    LIST_ENTRY* entry = ldr->InMemoryOrderModuleList.Flink;
+    LIST_ENTRY* entry = &ldr->InMemoryOrderModuleList;
     return (PML*)((uintptr)entry - offsetof(PML, Links));
 }
 
 static void* getProcessImageBase(PEB* peb)
 {
     return peb->ImageBaseAddress;
+}
+
+static bool processImagePinning(PML* pml, HMODULE image, uint64 hash)
+{
+    if (hash == 0)
+    {
+        return true;
+    }
+    LIST_ENTRY* head = &pml->Links;
+    for (LIST_ENTRY* link = head->Flink; link != head; link = link->Flink)
+    {
+        PML* entry = (PML*)((uintptr)(link)-offsetof(PML, Links));
+        if (entry->ImageBase != image)
+        {
+            continue;
+        }
+        UNICODE_STRING name = entry->BaseName;
+        return HashMod(name.Buffer, name.Length) == hash;
+    }
+    return false;
 }
 
 static void* getKernel32Address(PML* pml)
@@ -1012,6 +1038,8 @@ static errno initSubmodules(Runtime* runtime)
         .Prologue    = (uintptr)(runtime->Prologue),
         .Epilogue    = (uintptr)(runtime->Epilogue),
         .InstSize    = runtime->InstSize,
+
+        .GetPML = GetFuncAddr(&RT_GetPML),
 
         .FindAPI_MA = GetFuncAddr(&SC_FindAPI_MA),
         .FindAPI_MH = GetFuncAddr(&SC_FindAPI_MH),
@@ -1987,17 +2015,13 @@ bool RT_flush_api_cache()
 __declspec(noinline)
 void* SC_FindAPI_MA(void* module, uint procedure, uint key)
 {
-    Runtime* runtime = getRuntimePointer();
-
-    return SC_FindAPI_MAL(runtime->PML, module, procedure, key);
+    return SC_FindAPI_MAL(RT_GetPML(), module, procedure, key);
 }
 
 __declspec(noinline)
 void* SC_FindAPI_MH(uint module, uint procedure, uint key)
 {
-    Runtime* runtime = getRuntimePointer();
-
-    return SC_FindAPI_MHL(runtime->PML, module, procedure, key);
+    return SC_FindAPI_MHL(RT_GetPML(), module, procedure, key);
 }
 
 __declspec(noinline)
@@ -2109,25 +2133,19 @@ uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem)
 __declspec(noinline)
 void* RT_FindMod_MH(uint module, uint key)
 {
-    Runtime* runtime = getRuntimePointer();
-
-    return RT_FindMod_MHL(runtime->PML, module, key);
+    return RT_FindMod_MHL(RT_GetPML(), module, key);
 }
 
 __declspec(noinline)
 void* RT_FindAPI_MA(void* module, uint procedure, uint key)
 {
-    Runtime* runtime = getRuntimePointer();
-
-    return RT_FindAPI_MAL(runtime->PML, module, procedure, key);
+    return RT_FindAPI_MAL(RT_GetPML(), module, procedure, key);
 }
 
 __declspec(noinline)
 void* RT_FindAPI_MH(uint module, uint procedure, uint key)
 {
-    Runtime* runtime = getRuntimePointer();
-
-    return RT_FindAPI_MHL(runtime->PML, module, procedure, key);
+    return RT_FindAPI_MHL(RT_GetPML(), module, procedure, key);
 }
 
 __declspec(noinline)
@@ -2193,22 +2211,18 @@ void* RT_FindMod_W(uint16* module)
 __declspec(noinline)
 void* RT_FindAPI_A(byte* module, byte* procedure)
 {
-    Runtime* runtime = getRuntimePointer();
-
     uint key = 0xFFFFFFFF;
     uint mod = CalcModHash_A(module, key);
-    HMODULE hModule = FindMod_MHL(runtime->PML, mod, key);
+    HMODULE hModule = FindMod_MHL(RT_GetPML(), mod, key);
     return RT_GetProcAddress(hModule, procedure);
 }
 
 __declspec(noinline)
 void* RT_FindAPI_W(uint16* module, byte* procedure)
 {
-    Runtime* runtime = getRuntimePointer();
-
     uint key = 0xFFFFFFFF;
     uint mod = CalcModHash_W(module, key);
-    HMODULE hModule = FindMod_MHL(runtime->PML, mod, key);
+    HMODULE hModule = FindMod_MHL(RT_GetPML(), mod, key);
     return RT_GetProcAddress(hModule, procedure);
 }
 
@@ -2240,7 +2254,7 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
         return method;
     }
     // check the module is exists
-    if (!IsValidModuleHandle(runtime->PML, hModule))
+    if (!IsValidModuleHandle(RT_GetPML(), hModule))
     {
         SetLastErrno(ERR_RUNTIME_MODULE_NOT_FOUND);
         return NULL;
@@ -2436,7 +2450,7 @@ static void* getLazyAPIRedirector(HMODULE hModule, LPCSTR lpProcName)
     // get dll base name for calculate module hash
     WCHAR dllName[MAX_PATH];
     mem_init(dllName, sizeof(dllName));
-    if (GetModuleBaseName(runtime->PML, hModule, dllName, MAX_PATH) == 0)
+    if (GetModuleBaseName(RT_GetPML(), hModule, dllName, MAX_PATH) == 0)
     {
         return NULL;
     }
@@ -2549,6 +2563,30 @@ PML* RT_GetPML()
     Runtime* runtime = getRuntimePointer();
 
     return runtime->PML;
+}
+
+__declspec(noinline)
+HMODULE RT_GetMainEXE()
+{
+    Runtime* runtime = getRuntimePointer();
+
+    return runtime->ImageBase;
+}
+
+__declspec(noinline)
+HMODULE RT_GetKernel32()
+{
+    Runtime* runtime = getRuntimePointer();
+
+    return runtime->hKernel32;
+}
+
+__declspec(noinline)
+HMODULE RT_GetNtdll()
+{
+    Runtime* runtime = getRuntimePointer();
+
+    return runtime->hNtdll;
 }
 
 __declspec(noinline)
