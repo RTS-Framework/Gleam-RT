@@ -68,10 +68,6 @@ hash_api -fmt 64 -conc -mod "kernel32.dll" -proc GlobalFree
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc LocalAlloc
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc LocalReAlloc
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc LocalFree
-hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlAllocateHeap
-hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlReAllocateHeap
-hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlFreeHeap
-hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlSizeHeap
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc CreateThread
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc ExitThread
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc SuspendThread
@@ -82,7 +78,6 @@ hash_api -fmt 64 -conc -mod "kernel32.dll" -proc SetThreadContext
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc TerminateThread
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc TlsAlloc
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc TlsFree
-hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlExitUserThread
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc CreateMutexA
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc CreateMutexW
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc CreateMutexExA
@@ -108,16 +103,20 @@ hash_api -fmt 64 -conc -mod "kernel32.dll" -proc FindFirstFileExW
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc CreateIoCompletionPort
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc CloseHandle
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc FindClose
+hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlAllocateHeap
+hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlReAllocateHeap
+hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlFreeHeap
+hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlSizeHeap
+hash_api -fmt 64 -conc -mod "ntdll.dll"	-proc RtlExitUserThread
 echo.
 
 echo [Runtime Methods]
-hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressByName
-hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressByHash
-hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressByHashML
-hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressOriginal
-hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetPEB
+hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetProcAddress
+hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressEx
+hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressRaw
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetTEB
-hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetIMOML
+hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetPEB
+hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetPML
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetOptions
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetRuntimeM
 hash_api -fmt 64 -conc -mod "GleamRT.dll" -proc RT_GetInfo
@@ -181,6 +180,7 @@ echo.
 echo [Detector]
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc K32QueryWorkingSetEx
 hash_api -fmt 64 -conc -mod "psapi.dll" -proc QueryWorkingSetEx
+hash_api -fmt 64 -conc -mod "SbieDLL.dll" -proc Padding
 echo.
 
 echo [Library Tracker]
@@ -403,10 +403,6 @@ hash_api -fmt 32 -conc -mod "kernel32.dll" -proc GlobalFree
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc LocalAlloc
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc LocalReAlloc
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc LocalFree
-hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlAllocateHeap
-hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlReAllocateHeap
-hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlFreeHeap
-hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlSizeHeap
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc CreateThread
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc ExitThread
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc SuspendThread
@@ -417,7 +413,6 @@ hash_api -fmt 32 -conc -mod "kernel32.dll" -proc SetThreadContext
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc TerminateThread
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc TlsAlloc
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc TlsFree
-hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlExitUserThread
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc CreateMutexA
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc CreateMutexW
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc CreateMutexExA
@@ -443,16 +438,20 @@ hash_api -fmt 32 -conc -mod "kernel32.dll" -proc FindFirstFileExW
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc CreateIoCompletionPort
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc CloseHandle
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc FindClose
+hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlAllocateHeap
+hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlReAllocateHeap
+hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlFreeHeap
+hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlSizeHeap
+hash_api -fmt 32 -conc -mod "ntdll.dll"	-proc RtlExitUserThread
 echo.
 
 echo [Runtime Methods]
-hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressByName
-hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressByHash
-hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressByHashML
-hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressOriginal
-hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetPEB
+hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetProcAddress
+hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressEx
+hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetProcAddressRaw
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetTEB
-hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetIMOML
+hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetPEB
+hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetPML
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetOptions
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetRuntimeM
 hash_api -fmt 32 -conc -mod "GleamRT.dll" -proc RT_GetInfo
@@ -516,6 +515,7 @@ echo.
 echo [Detector]
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc K32QueryWorkingSetEx
 hash_api -fmt 32 -conc -mod "psapi.dll" -proc QueryWorkingSetEx
+hash_api -fmt 32 -conc -mod "SbieDLL.dll" -proc Padding
 echo.
 
 echo [Library Tracker]
