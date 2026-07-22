@@ -4,12 +4,15 @@ package gleamrt
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"syscall"
 	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 
+	"github.com/RTS-Framework/GRT-Develop/hashmod"
 	"github.com/RTS-Framework/GRT-Develop/info"
 	"github.com/RTS-Framework/GRT-Develop/metric"
 )
@@ -44,6 +47,16 @@ var (
 
 // Initialize is used to call InitRuntime (only for test runtime package).
 func Initialize(opts *Options) error {
+	if opts == nil {
+		opts = new(Options)
+	}
+	// for test Image Pinning
+	path, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	opts.ImagePinningHash = hashmod.Hash(filepath.Base(path))
+	// initialize runtime
 	ret, _, err := procInitialize.Call(uintptr(unsafe.Pointer(opts))) // #nosec
 	if ret == 0 {
 		en := uintptr(err.(syscall.Errno))
