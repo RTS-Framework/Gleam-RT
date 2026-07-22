@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 
-	"github.com/RTS-Framework/GRT-Develop/metric"
 	"github.com/RTS-Framework/GRT-Develop/shield"
 	"github.com/RTS-Framework/Gleam-RT/runtime"
 )
@@ -35,10 +34,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	opts := gleamrt.Options{
-		NotEraseInstruction: metric.TRUE,
-	}
-	err := gleamrt.Initialize(&opts)
+	err := gleamrt.Initialize(nil)
 	if err != nil {
 		panic(err)
 	}
