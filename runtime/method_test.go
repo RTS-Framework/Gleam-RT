@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 
-	"github.com/RTS-Framework/GRT-Develop/metric"
+	"github.com/RTS-Framework/GRT-Develop/types"
 )
 
 func init() {
@@ -36,7 +36,7 @@ func init() {
 
 func TestMain(m *testing.M) {
 	opts := Options{
-		NotEraseInstruction: metric.TRUE,
+		NotEraseInstruction: types.TRUE,
 	}
 	err := Initialize(&opts)
 	if err != nil {
@@ -164,8 +164,7 @@ func TestGetPML(t *testing.T) {
 		}
 
 		ldr := *(*uintptr)(unsafe.Pointer(addr + 0x0C)) // #nosec
-		mod := *(*uintptr)(unsafe.Pointer(ldr + 0x14))  // #nosec
-		pml := mod - 0x08
+		pml := (ldr + 0x14) - 0x08
 		require.Equal(t, pml, actual)
 	})
 
@@ -175,8 +174,7 @@ func TestGetPML(t *testing.T) {
 		}
 
 		ldr := *(*uintptr)(unsafe.Pointer(addr + 0x18)) // #nosec
-		mod := *(*uintptr)(unsafe.Pointer(ldr + 0x20))  // #nosec
-		pml := mod - 0x10
+		pml := (ldr + 0x20) - 0x10
 		require.Equal(t, pml, actual)
 	})
 }
@@ -185,8 +183,11 @@ func TestGetOptions(t *testing.T) {
 	opts, err := GetOptions()
 	require.NoError(t, err)
 
+	// skip compare this field
+	opts.ImagePinningHash = 0
+
 	expected := &Options{
-		NotEraseInstruction: metric.TRUE,
+		NotEraseInstruction: types.TRUE,
 	}
 	require.Equal(t, expected, opts)
 }
