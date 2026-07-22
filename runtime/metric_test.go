@@ -13,7 +13,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 
-	"github.com/RTS-Framework/GRT-Develop"
+	"github.com/RTS-Framework/GRT-Develop/instance"
 	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
@@ -28,10 +28,10 @@ func TestConvertRawMetrics(t *testing.T) {
 	default:
 		t.Fatal("unsupported architecture")
 	}
-	instance, err := develop.Instantiate(template, nil)
+	inst, err := instance.Instantiate(template, nil)
 	require.NoError(t, err)
 
-	addr := loadInstance(t, instance)
+	addr := loadInstance(t, inst)
 	fmt.Printf("Runtime: 0x%X\n", addr)
 
 	Runtime, err := InitRuntime(addr, nil)
