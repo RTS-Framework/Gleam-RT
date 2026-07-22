@@ -13,6 +13,7 @@ import (
 
 	"github.com/RTS-Framework/GRT-Develop/info"
 	"github.com/RTS-Framework/GRT-Develop/metric"
+	"github.com/RTS-Framework/GRT-Develop/types"
 )
 
 const (
@@ -35,13 +36,13 @@ type Options struct {
 	ShieldModuleHash    uint64
 	ShieldEntryPoint    uint64
 	ShieldMemAddress    uint64
-	EnableSecurityMode  metric.BOOL
-	DisableDetector     metric.BOOL
-	DisableWatchdog     metric.BOOL
-	DisableSysmon       metric.BOOL
-	NotEraseInstruction metric.BOOL
-	NotAdjustProtect    metric.BOOL
-	TrackCurrentThread  metric.BOOL
+	EnableSecurityMode  types.BOOL
+	DisableDetector     types.BOOL
+	DisableWatchdog     types.BOOL
+	DisableSysmon       types.BOOL
+	NotEraseInstruction types.BOOL
+	NotAdjustProtect    types.BOOL
+	TrackCurrentThread  types.BOOL
 }
 
 // RuntimeM contains exported methods of runtime.
@@ -276,6 +277,12 @@ type RuntimeM struct {
 		GetTEB uintptr
 		GetPEB uintptr
 		GetPML uintptr
+	}
+
+	DLL struct {
+		GetMainEXE  uintptr
+		GetKernel32 uintptr
+		GetNtdll    uintptr
 	}
 
 	Raw struct {
