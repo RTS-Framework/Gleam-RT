@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 
-	"github.com/RTS-Framework/GRT-Develop"
-	"github.com/RTS-Framework/GRT-Develop/metric"
+	"github.com/RTS-Framework/GRT-Develop/instance"
+	"github.com/RTS-Framework/GRT-Develop/types"
 )
 
 const testVersion = "v0.9.1"
@@ -49,14 +49,14 @@ func TestRuntime(t *testing.T) {
 	default:
 		t.Fatal("unsupported architecture")
 	}
-	instance, err := develop.Instantiate(template, nil)
+	inst, err := instance.Instantiate(template, nil)
 	require.NoError(t, err)
 
-	addr := loadInstance(t, instance)
+	addr := loadInstance(t, inst)
 	fmt.Printf("Runtime: 0x%X\n", addr)
 
 	opts := &Options{
-		NotAdjustProtect: metric.TRUE,
+		NotAdjustProtect: types.TRUE,
 	}
 	Runtime, err := InitRuntime(addr, opts)
 	require.NoError(t, err)
