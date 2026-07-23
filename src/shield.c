@@ -4,6 +4,7 @@
 #include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "hash_api.h"
+#include "hash_mod.h"
 #include "rel_addr.h"
 #include "random.h"
 #include "crypto.h"
@@ -52,7 +53,7 @@ typedef struct {
 } Stop_Args;
 
 typedef struct {
-    // store options
+    // store option
     bool NotEraseInstruction;
     bool NotAdjustProtect;
 
@@ -100,6 +101,9 @@ static errno initShieldEnv(Shield* shield, Context* context);
 static void  eraseShieldMethod(Context* context);
 static void  cleanShieldResource(Shield* shield);
 static void  setShieldPointer(Shield* shield);
+
+static void   unshuffle(byte* data, uint32 size, uint64 seed);
+static uint64 reverseXORShift64(uint64 seed);
 
 static errno sd_clean(Shield* shield);
 
@@ -153,20 +157,6 @@ Shield_M* InitShield(Context* context)
 __declspec(noinline)
 static bool initShieldAPI(Shield* shield, Context* context)
 {
-    // copy from context
-    shield->SetWaitableTimer = context->SetWaitableTimer;
-    shield->CloseHandle      = context->CloseHandle;
-
-    // if the shield stub is NOT pre-injected, use copy from context
-    if (context->ShieldModuleHash == 0)
-    {
-        shield->VirtualFree         = context->VirtualFree;
-        shield->VirtualProtect      = context->VirtualProtect;
-        shield->ExitThread          = context->ExitThread;
-        shield->WaitForSingleObject = context->WaitForSingleObject;
-        return true;
-    }
-
     // get original API address
     typedef struct {
         uint pHash; uint hKey; void* proc;
@@ -201,31 +191,41 @@ static bool initShieldAPI(Shield* shield, Context* context)
     shield->VirtualProtect      = list[0x01].proc;
     shield->ExitThread          = list[0x02].proc;
     shield->WaitForSingleObject = list[0x03].proc;
+
+    // if the shield stub is NOT pre-injected, use copy from context
+    if (context->ShieldModuleHash == 0)
+    {
+        shield->VirtualFree    = context->VirtualFree;
+        shield->VirtualProtect = context->VirtualProtect;
+        shield->ExitThread     = context->ExitThread;
+    }
+
+    // copy from context
+    shield->SetWaitableTimer = context->SetWaitableTimer;
+    shield->CloseHandle      = context->CloseHandle;
     return true;
 }
 
 __declspec(noinline)
 static errno initShieldEnv(Shield* shield, Context* context)
 {
-    // check stub is valid
+    // get stub address
     uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
-    if (*(byte*)(stub) != SHIELD_STUB_MAGIC)
-    {
-        return ERR_SHIELD_INVALID_STUB;
-    }
     // prepare xor key
-    byte*  key = (byte*)(stub + 1);
-    uint16 off = 1 + SHIELD_KEY_SIZE;
-    // check shield
+    uint64 seed = *(uint64*)(stub + 1);
+    uint16 off  = 1 + sizeof(uint64);
+    // get shield
     uint16 shieldSize = *(uint16*)(stub + off);
     off += sizeof(uint16);
     byte* shieldInst = (byte*)(stub + off);
     off += shieldSize;
-    // decrypt decoy
+    // get decoy
     uint16 decoySize = *(uint16*)(stub + off);
     off += sizeof(uint16);
     byte* decoyInst = (byte*)(stub + off);
-    XORBuffer(decoyInst, decoySize, key, SHIELD_KEY_SIZE);
+    // save status
+    shield->DecoyAddr = decoyInst;
+    shield->DecoySize = decoySize;
 
     // deploy shield
     int target;
@@ -258,41 +258,47 @@ static errno initShieldEnv(Shield* shield, Context* context)
         shield->ShieldPage = addr;
         // copy shield to memory page
         void* entryPoint = (void*)((uintptr)addr + (8 + RandUintN(0, 96)) * 16);
-        XORBuffer(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
         mem_copy(entryPoint, shieldInst, shieldSize);
+        unshuffle(entryPoint, shieldSize, seed);
         shield->EntryPoint = entryPoint;
-        // erase or recover shield stub
-        if (context->NotEraseInstruction)
-        {
-            XORBuffer(shieldInst, shieldSize, key, SHIELD_KEY_SIZE);
-        } else {
-            EraseBuffer((void*)stub, SHIELD_STUB_SIZE);
-        }
         // set status
         shield->status.EntryPoint  = entryPoint;
         shield->status.BaseAddress = addr;
         shield->status.Source      = SHIELD_SRC_SHIELD_STUB;
         break;
     case SHIELD_TARGET_EXE_MODULE:
-        // find the target module and calculate
-        // the pre-injected shield entry point
-
-
-
-
-
-
-
+        uintptr base = (uintptr)(context->ImageBase);
+        uintptr sep  = (uintptr)(context->ShieldEntryPoint);
         // set status
-        shield->status.EntryPoint  = NULL;
-        shield->status.BaseAddress = NULL;
+        shield->status.EntryPoint  = (void*)(base + sep);
+        shield->status.BaseAddress = context->ImageBase;
         shield->status.Source      = SHIELD_SRC_PRE_INJECTED;
         break;
     case SHIELD_TARGET_DLL_MODULE:
-
+        uintptr imageBase = 0;
+        // find the target module and calculate
+        // the pre-injected shield entry point
+        PML* pml = context->PML;
+        LIST_ENTRY* head = &pml->Links;
+        for (LIST_ENTRY* link = head->Flink; link != head; link = link->Flink)
+        {
+            PML* entry = (PML*)((uintptr)(link)-offsetof(PML, Links));
+            UNICODE_STRING name = entry->BaseName;
+            if (HashMod(name.Buffer, name.Length) != context->ShieldModuleHash)
+            {
+                continue;
+            }
+            imageBase = (uintptr)(entry->ImageBase);
+            break;
+        }
+        if (imageBase == 0)
+        {
+            return ERR_SHIELD_MODULE_NOT_FOUND;
+        }
+        uintptr offset = (uintptr)(context->ShieldEntryPoint);
         // set status
-        shield->status.EntryPoint  = NULL;
-        shield->status.BaseAddress = NULL;
+        shield->status.EntryPoint  = (void*)(imageBase + offset);
+        shield->status.BaseAddress = (void*)(imageBase);
         shield->status.Source      = SHIELD_SRC_PRE_INJECTED;
         break;
     }
@@ -318,24 +324,20 @@ static errno initShieldEnv(Shield* shield, Context* context)
     // erase shield in stub after deploy
     if (!context->NotEraseInstruction)
     {
-        uint sz = (uint)1 + SHIELD_KEY_SIZE + 2 + shieldSize + 2;
-        EraseBuffer((void*)stub, sz);
+        uint sz = 1 + sizeof(uint64) + sizeof(uint16) + shieldSize + sizeof(uint16);
+        EraseInstruction((void*)stub, sz);
     }
-    // save status
-    shield->DecoyAddr = decoyInst;
-    shield->DecoySize = decoySize;
 
     // prepare VirtualProtect address
     if (context->NotAdjustProtect)
     {
         shield->VirtualProtect = NULL;
     }
-    // align instance size to 4 or 8
-    shield->InstSize = align_up(context->InstSize, sizeof(uint));
 
     // copy runtime data
     shield->MainMemPage = (void*)(context->MainMemPage);
     shield->InstAddr    = (void*)(context->Prologue);
+    shield->InstSize    = align_up(context->InstSize, sizeof(uint));
     return NO_ERROR;
 }
 
@@ -367,6 +369,47 @@ static void cleanShieldResource(Shield* shield)
     {
         shield->CloseHandle(shield->Timer);
     }
+}
+
+// the next functions until reverseXORShift64 will be linked
+// to another modules, so must move these after eraseShieldMethod
+
+__declspec(noinline)
+static void unshuffle(byte* data, uint32 size, uint64 seed)
+{
+    // advance to the final seed
+    for (uint32 i = size - 1; i > 0; i--)
+    {
+        seed = XORShift64(seed);
+    }
+    for (uint i = 1; i < size; i++)
+    {
+        seed = reverseXORShift64(seed);
+        uint j = seed % (uint64)(i + 1);
+        byte t = data[i];
+        data[i] = data[j];
+        data[j] = t;
+    }
+}
+
+__declspec(noinline)
+static uint64 reverseXORShift64(uint64 seed)
+{
+    // reverse seed ^= seed << 17
+    seed ^= seed << 17;
+    seed ^= seed << 34;
+
+    // reverse seed ^= seed >> 7
+    seed ^= seed >> 7;
+    seed ^= seed >> 14;
+    seed ^= seed >> 28;
+    seed ^= seed >> 56;
+
+    // reverse seed ^= seed << 13
+    seed ^= seed << 13;
+    seed ^= seed << 26;
+    seed ^= seed << 52;
+    return seed;
 }
 
 __declspec(noinline)
@@ -422,8 +465,9 @@ errno SD_Sleep(uint32 milliseconds)
     typedef void (*Shield_Sleep_t)(Sleep_Args* args);
     Shield_Sleep_t sleep = shield->EntryPoint;
 
-    // copy memory address before encrypt
+    // save main memory page address before encrypt
     void* mmp = shield->MainMemPage;
+
     // encrypt main memory page
     byte key[CRYPTO_KEY_SIZE];
     byte iv [CRYPTO_IV_SIZE];
@@ -464,9 +508,10 @@ void SD_Stop()
     typedef void (*Shield_Stop_t)(Stop_Args* args);
     Shield_Stop_t stop = shield->EntryPoint;
 
-    // must copy variables in Shield before call EraseBuffer
+    // copy variables before call EraseBuffer
     VirtualFree_t virtualFree = shield->VirtualFree;
     void* mmp = shield->MainMemPage;
+
     // release main memory page
     EraseBuffer(mmp, MAIN_MEM_PAGE_SIZE);
     virtualFree(mmp, 0, MEM_RELEASE);
@@ -507,24 +552,11 @@ static errno sd_clean(Shield* shield)
         errno = ERR_SHIELD_CLOSE_TIMER;
     }
 
-    // process decoy in stub
-    uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
-    if (shield->NotEraseInstruction)
+    // erase shield stub
+    if (!shield->NotEraseInstruction)
     {
-        // prepare xor key
-        byte*  key = (byte*)(stub + 1);
-        uint16 off = 1 + SHIELD_KEY_SIZE;
-        // skip shield
-        uint16 shieldSize = *(uint16*)(stub + off);
-        off += sizeof(uint16);
-        off += shieldSize;
-        // encrypt decoy
-        uint16 decoySize = *(uint16*)(stub + off);
-        off += sizeof(uint16);
-        byte* decoyInst = (byte*)(stub + off);
-        XORBuffer(decoyInst, decoySize, key, SHIELD_KEY_SIZE);
-    } else {
-        EraseBuffer((void*)stub, SHIELD_STUB_SIZE);
+        uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
+        EraseInstruction((void*)stub, SHIELD_STUB_SIZE);
     }
     return errno;
 }
