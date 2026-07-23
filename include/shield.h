@@ -7,15 +7,14 @@
 #include "errno.h"
 #include "context.h"
 
-// +------------+---------+-------------+--------+------------+-------+
-// | magic mark | xor key | shield size | shield | decoy size | decoy |
-// +------------+---------+-------------+--------+------------+-------+
-// |    0xFB    | 32 byte |   uint16    |   var  |   uint16   |  var  |
-// +------------+---------+-------------+--------+------------+-------+
+// +------------+--------+-------------+--------+------------+-------+
+// | magic mark |  seed  | shield size | shield | decoy size | decoy |
+// +------------+--------+-------------+--------+------------+-------+
+// |    0xFA    | uint64 |   uint16    |   var  |   uint16   |  var  |
+// +------------+--------+-------------+--------+------------+-------+
 
-#define SHIELD_STUB_MAGIC 0xFB
+#define SHIELD_STUB_MAGIC 0xFA
 #define SHIELD_STUB_SIZE  (8 * 1024)
-#define SHIELD_KEY_SIZE   32
 
 #define SHIELD_SRC_PRE_INJECTED 1
 #define SHIELD_SRC_SHIELD_STUB  2
