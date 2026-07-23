@@ -23,17 +23,14 @@
 #define OFFSET_ARGUMENT_DATA (4 + 4 + 1)
 
 typedef struct {
-    // store options
-    bool NotEraseInstruction;
-
-    // API addresses
+    // API address
     VirtualAlloc_t        VirtualAlloc;
     VirtualFree_t         VirtualFree;
     ReleaseMutex_t        ReleaseMutex;
     WaitForSingleObject_t WaitForSingleObject;
     CloseHandle_t         CloseHandle;
 
-    // store arguments
+    // store argument
     byte*  Address;
     uint   Size;
     uint32 NumArgs;
@@ -64,9 +61,16 @@ static void eraseStoreMethod(Context* context);
 static void cleanStoreResource(ArgumentStore* store);
 static void setStorePointer(ArgumentStore* store);
 
-static errno loadArguments(ArgumentStore* store, Context* context);
-static byte  ror(byte value, uint8 bits);
-static byte  rol(byte value, uint8 bits);
+static errno  loadArguments(ArgumentStore* store, Context* context);
+static errno  shiftArguments(ArgumentStore* store, uint32 size);
+static void   illuminateStub(byte* data, uint32 size, byte* key);
+static void   decryptStub(byte* data, uint32 size, byte* key);
+static void   initSBox(byte* sbox, uint64 seed);
+static void   reverseSBox(byte* sbox);
+static void   unshuffle(byte* data, uint32 size, uint64 seed);
+static uint64 reverseXORShift64(uint64 seed);
+static byte   ror(byte value, uint8 bits);
+static byte   rol(byte value, uint8 bits);
 
 ArgumentStore_M* InitArgumentStore(Context* context)
 {
@@ -77,8 +81,6 @@ ArgumentStore_M* InitArgumentStore(Context* context)
     // allocate store memory
     ArgumentStore* store = (ArgumentStore*)storeAddr;
     mem_init(store, sizeof(ArgumentStore));
-    // store options
-    store->NotEraseInstruction = context->NotEraseInstruction;
     // initialize store
     errno errno = NO_ERROR;
     for (;;)
@@ -158,9 +160,10 @@ static errno loadArguments(ArgumentStore* store, Context* context)
     // decrypt argument header
     byte header[ARG_HEADER_SIZE];
     mem_copy(header, (byte*)stub, sizeof(header));
-    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    byte* buf = header + 1 + ARG_CRYPTO_KEY_SIZE;
     uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    byte* key = header + ARG_OFFSET_CRYPTO_KEY;
+    XORBuffer(buf, fsz, key, ARG_CRYPTO_KEY_SIZE);
     uint16 num  = *(uint16*)(header + ARG_OFFSET_NUM_ARGS);
     uint32 size = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
     // check the number of arguments
@@ -184,12 +187,79 @@ static errno loadArguments(ArgumentStore* store, Context* context)
     // copy encrypted arguments to new memory page,
     // num is used to reserve memory for the erased
     // field about each arguments
-    byte* argData = (byte*)(stub + ARG_OFFSET_FIRST_ARG);
-    byte* offAddr = mem + num;
-    mem_copy(offAddr, argData, size);
+    byte* src = (byte*)(stub + ARG_OFFSET_FIRST_ARG);
+    byte* dst = mem + num;
+    mem_copy(dst, src, size);
     // decrypted arguments
-    byte* data = offAddr;
-    byte* key  = (byte*)(stub + ARG_OFFSET_CRYPTO_KEY);
+    if (size > ARG_ALGO_SWITCH_SIZE)
+    {
+        illuminateStub(dst, size, key);
+    } else {
+        decryptStub(dst, size, key);
+    }
+    // shift argument for set erased flag
+    errno errno = shiftArguments(store, size);
+    if (errno != NO_ERROR)
+    {
+        return errno;
+    }
+    // erase argument stub after decrypt
+    if (!context->NotEraseInstruction)
+    {
+        EraseBuffer((byte*)stub, ARG_HEADER_SIZE + size);
+        // set a flag that already erased;
+        stub = 0x00;
+    }
+    dbg_log("[argument]", "mem page: 0x%zX", store->Address);
+    dbg_log("[argument]", "num args: %zu", store->NumArgs);
+    return NO_ERROR;
+}
+
+static errno shiftArguments(ArgumentStore* store, uint32 size)
+{
+    byte*  addr = store->Address;
+    byte*  args = addr + store->NumArgs;
+    uint32 rem  = size;
+    for (uint32 i = 0; i < store->NumArgs; i++)
+    {
+        uint32 aid = *(uint32*)(args + 0);
+        uint32 asz = *(uint32*)(args + 4);
+        uint32 set = 4 + 4 + asz;
+        if (set > rem)
+        {
+            return ERR_ARGUMENT_INVALID_SIZE;
+        }
+        byte* src = args + 4 + 4;
+        mem_copy(addr + 0, &aid, sizeof(aid));
+        mem_copy(addr + 4, &asz, sizeof(asz));
+        mem_copy(addr + 9, src, asz);
+        addr[8] = 0; // set erased flag
+        addr += OFFSET_ARGUMENT_DATA + asz;
+        args += set;
+        rem  -= set;
+    }
+    return NO_ERROR;
+}
+
+__declspec(noinline)
+static void illuminateStub(byte* data, uint32 size, byte* key)
+{
+    uint64 seed = *(uint64*)key;
+    // generate S-box from seed
+    byte sbox[256];
+    initSBox(sbox, seed);
+    reverseSBox(sbox);
+    unshuffle(data, size, seed);
+    // substitute data
+    for (uint i = 0; i < size; i++)
+    {
+        data[i] = sbox[data[i]];
+    }
+}
+
+__declspec(noinline)
+static void decryptStub(byte* data, uint32 size, byte* key)
+{
     uint32 last = *(uint32*)(key+0);
     uint32 ctr  = *(uint32*)(key+4);
     uint keyIdx = last % ARG_CRYPTO_KEY_SIZE;
@@ -213,35 +283,6 @@ static errno loadArguments(ArgumentStore* store, Context* context)
         // update address
         data++;
     }
-    // shift argument for set erased flag
-    byte*  addr = mem;
-    byte*  args = offAddr;
-    uint32 rem  = size;
-    for (uint32 i = 0; i < store->NumArgs; i++)
-    {
-        uint32 aid = *(uint32*)(args + 0);
-        uint32 asz = *(uint32*)(args + 4);
-        if (4 + 4 + asz > rem)
-        {
-            return ERR_ARGUMENT_INVALID_SIZE;
-        }
-        byte* src = args + 4 + 4;
-        mem_copy(addr + 0, &aid, sizeof(aid));
-        mem_copy(addr + 4, &asz, sizeof(asz));
-        mem_copy(addr + 9, src, asz);
-        addr[8] = 0; // set erased flag
-        addr += OFFSET_ARGUMENT_DATA + asz;
-        args += 4 + 4 + asz;
-        rem  -= 4 + 4 + asz;
-    }
-    // erase argument stub after decrypt
-    if (!context->NotEraseInstruction)
-    {
-        EraseBuffer((byte*)stub, ARG_HEADER_SIZE + size);
-    }
-    dbg_log("[argument]", "mem page: 0x%zX", store->Address);
-    dbg_log("[argument]", "num args: %zu", store->NumArgs);
-    return NO_ERROR;
 }
 
 static byte ror(byte value, uint8 bits)
@@ -284,18 +325,88 @@ static void cleanStoreResource(ArgumentStore* store)
     }
 }
 
+// the next functions until reverseXORShift64 will be linked
+// to another modules, so must move these after eraseStoreMethod
+
+#pragma optimize("", off)
+static void initSBox(byte* sbox, uint64 seed)
+{
+    // initialize S-Box byte array
+    for (int i = 0; i < 256; i++)
+    {
+        sbox[i] = (byte)i;
+    }
+    for (uint i = 255; i > 0; i--)
+    {
+        uint j = seed % (uint64)(i + 1);
+        byte t = sbox[i];
+        sbox[i] = sbox[j];
+        sbox[j] = t;
+        seed = XORShift64(seed);
+    }
+}
+#pragma optimize("", on)
+
+__declspec(noinline)
+static void reverseSBox(byte* sbox)
+{
+    byte buf[256];
+    mem_copy(buf, sbox, sizeof(buf));
+    for (int i = 0; i < 256; i++)
+    {
+        sbox[buf[i]] = (byte)i;
+    }
+}
+
+__declspec(noinline)
+static void unshuffle(byte* data, uint32 size, uint64 seed)
+{
+    // advance to the final seed
+    for (uint32 i = size - 1; i > 0; i--)
+    {
+        seed = XORShift64(seed);
+    }
+    for (uint i = 1; i < size; i++)
+    {
+        seed = reverseXORShift64(seed);
+        uint j = seed % (uint64)(i + 1);
+        byte t = data[i];
+        data[i] = data[j];
+        data[j] = t;
+    }
+}
+
+__declspec(noinline)
+static uint64 reverseXORShift64(uint64 seed)
+{
+    // reverse seed ^= seed << 17
+    seed ^= seed << 17;
+    seed ^= seed << 34;
+
+    // reverse seed ^= seed >> 7
+    seed ^= seed >> 7;
+    seed ^= seed >> 14;
+    seed ^= seed >> 28;
+    seed ^= seed >> 56;
+
+    // reverse seed ^= seed << 13
+    seed ^= seed << 13;
+    seed ^= seed << 26;
+    seed ^= seed << 52;
+    return seed;
+}
+
 __declspec(noinline)
 static void setStorePointer(ArgumentStore* store)
 {
-    *(ArgumentStore**)(POINTER_OFFSET_LIBRARY_TRACKER) = store;
+    *(ArgumentStore**)(POINTER_OFFSET_ARGUMENT_STORE) = store;
 }
 
-#pragma optimize("", off)
+__declspec(noinline)
 static ArgumentStore* getStorePointer()
 {
-    return *(ArgumentStore**)POINTER_OFFSET_LIBRARY_TRACKER;
+    return *(ArgumentStore**)POINTER_OFFSET_ARGUMENT_STORE;
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 BOOL AS_GetValue(uint32 id, void* value, uint32* size)
