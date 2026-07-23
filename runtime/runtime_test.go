@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -127,6 +128,84 @@ func TestRuntime(t *testing.T) {
 
 	err = Runtime.Exit()
 	require.NoError(t, err)
+}
+
+func TestRuntime_Shield(t *testing.T) {
+	// load runtime instance
+	var template []byte
+	switch runtime.GOARCH {
+	case "386":
+		template = testTemplateX86
+	case "amd64":
+		template = testTemplateX64
+	default:
+		t.Fatal("unsupported architecture")
+	}
+	inst, err := instance.Instantiate(template, nil)
+	require.NoError(t, err)
+
+	addr := loadInstance(t, inst)
+	fmt.Printf("Runtime: 0x%X\n", addr)
+
+	opts := &Options{
+		NotAdjustProtect: types.TRUE,
+	}
+	Runtime, err := InitRuntime(addr, opts)
+	require.NoError(t, err)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		now := time.Now()
+
+		err := Runtime.Sleep(time.Second)
+		require.NoError(t, err)
+
+		require.GreaterOrEqual(t, time.Since(now).Milliseconds(), int64(1000))
+	}()
+	time.Sleep(time.Millisecond * 250)
+
+	// reference script/gen_shield.go
+	expected := []byte{
+		0x31, 0xC0, //  xor eax, eax
+		0xC3, //        ret
+	}
+	decoy := unsafe.Slice((*byte)(unsafe.Pointer(addr)), 3)
+	require.Equal(t, expected, decoy)
+
+	wg.Wait()
+}
+
+func TestRuntime_EraseMagic(t *testing.T) {
+	// load runtime instance
+	var template []byte
+	switch runtime.GOARCH {
+	case "386":
+		template = testTemplateX86
+	case "amd64":
+		template = testTemplateX64
+	default:
+		t.Fatal("unsupported architecture")
+	}
+	opts := &instance.Options{
+		EraseMagic: true,
+	}
+	inst, err := instance.Instantiate(template, opts)
+	require.NoError(t, err)
+
+	addr := loadInstance(t, inst)
+	fmt.Printf("Runtime: 0x%X\n", addr)
+
+	Runtime, err := InitRuntime(addr, nil)
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	err = Runtime.Sleep(time.Second)
+	require.NoError(t, err)
+
+	require.GreaterOrEqual(t, time.Since(now).Milliseconds(), int64(1000))
 }
 
 func loadInstance(t *testing.T, inst []byte) uintptr {
