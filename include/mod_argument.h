@@ -6,22 +6,23 @@
 #include "errno.h"
 #include "context.h"
 
-// +---------+----------+-----------+----------+--------+----------+----------+
-// |   key   | num args | args size | checksum | arg id | arg size | arg data |
-// +---------+----------+-----------+----------+--------+----------+----------+
-// | 32 byte |  uint16  |  uint32   |  uint32  | uint32 |  uint32  |   var    |
-// +---------+----------+-----------+----------+--------+----------+----------+
+// +------+---------+----------+-----------+----------+--------+----------+----------+
+// | init |   key   | num args | args size | checksum | arg id | arg size | arg data |
+// +------+---------+----------+-----------+----------+--------+----------+----------+
+// | bool | 32 byte |  uint16  |  uint32   |  uint32  | uint32 |  uint32  |   var    |
+// +------+---------+----------+-----------+----------+--------+----------+----------+
 
 #define ARG_MAX_NUM_ARGUMENTS 1024
+#define ARG_ALGO_SWITCH_SIZE  512
 
 #define ARG_CRYPTO_KEY_SIZE (32)
-#define ARG_HEADER_SIZE     (32 + 2 + 4 + 4)
+#define ARG_HEADER_SIZE     (1 + 32 + 2 + 4 + 4)
 
-#define ARG_OFFSET_CRYPTO_KEY (0)
-#define ARG_OFFSET_NUM_ARGS   (32)
-#define ARG_OFFSET_ARGS_SIZE  (32 + 2)
-#define ARG_OFFSET_CHECKSUM   (32 + 2 + 4)
-#define ARG_OFFSET_FIRST_ARG  (32 + 2 + 4 + 4)
+#define ARG_OFFSET_CRYPTO_KEY (1)
+#define ARG_OFFSET_NUM_ARGS   (1 + 32)
+#define ARG_OFFSET_ARGS_SIZE  (1 + 32 + 2)
+#define ARG_OFFSET_CHECKSUM   (1 + 32 + 2 + 4)
+#define ARG_OFFSET_FIRST_ARG  (1 + 32 + 2 + 4 + 4)
 
 typedef BOOL (*ArgGetValue_t)(uint32 id, void* value, uint32* size);
 typedef BOOL (*ArgGetPointer_t)(uint32 id, void** pointer, uint32* size);
