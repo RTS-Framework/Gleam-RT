@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "c_types.h"
+#include "lib_string.h"
 #include "hash_mod.h"
 #include "test.h"
 
@@ -25,7 +26,9 @@ bool TestHashMod()
 
 static bool TestHashModule()
 {
-    uint64 hash = HashMod(L"test_main.exe");
+    uint16* module = L"test_main.exe";
+
+    uint64 hash = HashMod(module, strlen_w(module));
     if (hash != 0x4E8B01B5BB7B24DB)
     {
         printf_s("invalid module hash\n");
