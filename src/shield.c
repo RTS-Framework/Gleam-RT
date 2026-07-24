@@ -50,6 +50,8 @@ typedef struct {
     uint  CriticalSize;
     void* DecoyAddr;
     uint  DecoySize;
+
+    uint ExitCode;
 } Stop_Args;
 
 typedef struct {
@@ -91,7 +93,7 @@ BOOL SD_GetStatus(SD_Status* status);
 
 // methods for runtime
 errno SD_Sleep(uint32 milliseconds);
-void  SD_Stop();
+void  SD_Stop(uint32 code);
 errno SD_Clean();
 
 static Shield* getShieldPointer();
@@ -223,6 +225,14 @@ static errno initShieldEnv(Shield* shield, Context* context)
     uint16 decoySize = *(uint16*)(stub + off);
     off += sizeof(uint16);
     byte* decoyInst = (byte*)(stub + off);
+    // check decoy size is enough
+    if (context->EnableSecurityMode)
+    {
+        if (decoySize < SHIELD_SEC_MIN_DECOY_SIZE)
+        {
+            return ERR_SHIELD_DECOY_SIZE;
+        }
+    }
     // save status
     shield->DecoyAddr = decoyInst;
     shield->DecoySize = decoySize;
@@ -484,7 +494,7 @@ errno SD_Sleep(uint32 milliseconds)
 }
 
 __declspec(noinline)
-void SD_Stop()
+void SD_Stop(uint32 code)
 {
     Shield* shield = getShieldPointer();
 
@@ -502,6 +512,8 @@ void SD_Stop()
         .CriticalSize = shield->InstSize,
         .DecoyAddr    = shield->DecoyAddr,
         .DecoySize    = shield->DecoySize,
+
+        .ExitCode = code,
     };
 
     // save entry point before release main page
@@ -515,8 +527,6 @@ void SD_Stop()
     // release main memory page
     EraseBuffer(mmp, MAIN_MEM_PAGE_SIZE);
     virtualFree(mmp, 0, MEM_RELEASE);
-
-    // TODO ROP VirtualFree and ExitThread
 
     // call shield stub
     stop(&args);
@@ -550,13 +560,6 @@ static errno sd_clean(Shield* shield)
     if (!shield->CloseHandle(shield->Timer) && errno == NO_ERROR)
     {
         errno = ERR_SHIELD_CLOSE_TIMER;
-    }
-
-    // erase shield stub
-    if (!shield->NotEraseInstruction)
-    {
-        uintptr stub = (uintptr)(GetFuncAddr(&Shield_Stub));
-        EraseInstruction((void*)stub, SHIELD_STUB_SIZE);
     }
     return errno;
 }
