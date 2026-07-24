@@ -180,7 +180,7 @@ errno RT_GetInfo(Runtime_Info* info);
 errno RT_GetMetrics(Runtime_Metrics* metrics);
 errno RT_Cleanup();
 errno RT_Exit();
-void  RT_Stop();
+void  RT_Stop(uint32 code);
 
 // internal methods for Runtime submodules
 void* RT_malloc(uint size);
@@ -230,10 +230,13 @@ static void* getNtdllAddress(PML* pml);
 static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32);
 static void  buildRuntimeInformation(Runtime* runtime);
 static void* calculateEpilogue();
+
 static bool  initRuntimeAPI(Runtime* runtime);
 static bool  initRuntimeEnv(Runtime* runtime);
 static bool  adjustPageProtect(Runtime* runtime, DWORD* old);
 static bool  recoverPageProtect(Runtime* runtime, DWORD protect);
+static void  setMainPagePointer(Runtime* runtime);
+static void  setRuntimePointer(Runtime* runtime);
 static errno initSubmodules(Runtime* runtime);
 static errno initDetector(Runtime* runtime, Context* context);
 static errno initLibraryTracker(Runtime* runtime, Context* context);
@@ -255,8 +258,8 @@ static void  eraseRuntimeMethod(Runtime* runtime);
 static errno cleanRuntimeResource(Runtime* runtime, bool init);
 static errno closeHandles(Runtime* runtime);
 static void  interruptInit(Runtime* runtime);
+static void  recoverProcessEnv(Runtime* runtime);
 static void  recoverErrorMode(Runtime* runtime);
-static void  setRuntimePointer(Runtime* runtime);
 
 static bool rt_lock();
 static bool rt_unlock();
@@ -270,7 +273,7 @@ static errno hide(Runtime* runtime);
 static errno recover(Runtime* runtime);
 
 static void eraseMemory(uintptr address, uintptr size);
-static void rt_epilogue();
+static void epilogue();
 
 Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
 {
@@ -381,6 +384,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
             errno = ERR_RUNTIME_ADJUST_PROTECT;
             break;
         }
+        setMainPagePointer(runtime);
         setRuntimePointer(runtime);
         errno = initSubmodules(runtime);
         if (errno != NO_ERROR)
@@ -679,17 +683,22 @@ static bool checkOptionConflict(Runtime_Opts* opts)
     return true;
 }
 
-// TODO add argument magic for check is valid after erased (after init mod arg)
 static bool isValidArgumentStub()
 {
     uintptr stub = (uintptr)(GetFuncAddr(&Argument_Stub));
+    // check is already initialized
+    if (*(byte*)stub == 0x00)
+    {
+        return false;
+    }
     // decrypt argument header
     byte header[ARG_HEADER_SIZE];
     mem_init(header, sizeof(header));
     mem_copy(header, (byte*)stub, sizeof(header));
-    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    byte* buf = header + 1 + ARG_CRYPTO_KEY_SIZE;
     uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    byte* key = header + ARG_OFFSET_CRYPTO_KEY;
+    XORBuffer(buf, fsz, key, ARG_CRYPTO_KEY_SIZE);
     // check the number of argument
     uint16 numArgs  = *(uint16*)(header + ARG_OFFSET_NUM_ARGS);
     uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
@@ -724,9 +733,10 @@ static uint32 calcArgumentStubSize()
     byte header[ARG_HEADER_SIZE];
     mem_init(header, sizeof(header));
     mem_copy(header, (byte*)stub, sizeof(header));
-    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    byte* buf = header + 1 + ARG_CRYPTO_KEY_SIZE;
     uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    byte* key = header + ARG_OFFSET_CRYPTO_KEY;
+    XORBuffer(buf, fsz, key, ARG_CRYPTO_KEY_SIZE);
     uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
     return ARG_HEADER_SIZE + argsSize;
 }
@@ -818,7 +828,9 @@ static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32)
     {
         return NULL;
     }
-    RandBuffer(addr, (int64)size);
+    // padding random data to main memory page
+    uint range = RandUintN(0, (size - MAIN_MEM_PAGE_SIZE) / 5);
+    RandBuffer(addr, MAIN_MEM_PAGE_SIZE + range);
     dbg_log("[runtime]", "Main Memory Page: 0x%zX", addr);
     return addr;
 }
@@ -826,8 +838,6 @@ static void* allocateMainMemoryPage(PML* pml, HMODULE kernel32)
 static void buildRuntimeInformation(Runtime* runtime)
 {
     Runtime_Info* info = &runtime->Info;
-
-    // TODO replace the epilogue of asm module
 
     // calculate runtime .text size
     uintptr begin = (uintptr)(GetFuncAddr(&InitRuntime));
@@ -985,6 +995,13 @@ static bool initRuntimeEnv(Runtime* runtime)
     return true;
 }
 
+#pragma optimize("", off)
+static void setMainPagePointer(Runtime* runtime)
+{
+    *(void**)POINTER_MAIN_PAGE = runtime->MainMemPage;
+}
+#pragma optimize("", on)
+
 static errno initSubmodules(Runtime* runtime)
 {
     // create context data for initialize other modules
@@ -1140,7 +1157,7 @@ static errno initSubmodules(Runtime* runtime)
     context.TT_ForceKillThreads = runtime->ThreadTracker->ForceKill;
 
     context.RT_Cleanup = GetFuncAddr(&RT_Cleanup);
-    context.RT_Stop    = GetFuncAddr(&RT_stop);
+    context.RT_Stop    = GetFuncAddr(&RT_Stop);
 
     // initialize reliability modules
     err = initWatchdog(runtime, &context);
@@ -1705,6 +1722,12 @@ static void interruptInit(Runtime* runtime)
     }
 
     recoverPageProtect(runtime, oldProtect);
+}
+
+__declspec(noinline)
+static void recoverProcessEnv(Runtime* runtime)
+{
+    recoverErrorMode(runtime);
 }
 
 __declspec(noinline)
@@ -2706,8 +2729,7 @@ void RT_ExitProcess(UINT uExitCode)
     Runtime* runtime = getRuntimePointer();
 
     RT_Cleanup();
-
-    // TODO think shield
+    runtime->Shield->Clean();
 
     runtime->ExitProcess(uExitCode);
 }
@@ -3069,7 +3091,7 @@ errno RT_Cleanup()
     runtime->MemoryTracker->Flush();
     runtime->ResourceTracker->Flush();
 
-    recoverErrorMode(runtime);
+    recoverProcessEnv(runtime);
 
     errno errum = RT_unlock_mods();
     if (errum != NO_ERROR)
@@ -3090,9 +3112,9 @@ errno RT_Exit()
 }
 
 __declspec(noinline)
-void RT_Stop()
+void RT_Stop(uint32 code)
 {
-    RT_stop(true, 0);
+    RT_stop(true, code);
 }
 
 __declspec(noinline)
@@ -3108,12 +3130,6 @@ errno RT_stop(bool exitThread, uint32 code)
     if (errlm != NO_ERROR)
     {
         return errlm;
-    }
-
-    DWORD oldProtect;
-    if (!adjustPageProtect(runtime, &oldProtect))
-    {
-        return ERR_RUNTIME_ADJUST_PROTECT;
     }
 
     errno error = NO_ERROR;
@@ -3157,12 +3173,7 @@ errno RT_stop(bool exitThread, uint32 code)
         }
     }
 
-    recoverErrorMode(runtime);
-
-    // must copy structure before clean runtime
-    Runtime clone;
-    mem_init(&clone, sizeof(Runtime));
-    mem_copy(&clone, runtime, sizeof(Runtime));
+    recoverProcessEnv(runtime);
 
     // clean runtime resource
     errno enclr = cleanRuntimeResource(runtime, false);
@@ -3171,92 +3182,83 @@ errno RT_stop(bool exitThread, uint32 code)
         error = enclr;
     }
 
-    // must replace it until reach here
-    runtime = &clone;
-
-    // must calculate address before erase instructions
-    void* addr = runtime->Prologue;
-    if (!exitThread)
+    // if need exit thread, delegate to shield
+    if (exitThread)
     {
-        addr = GetFuncAddr(&InitRuntime);
+        // force set thread exit code to zero
+        if (runtime->Options.EnableSecurityMode)
+        {
+            code = 0;
+        }
+        runtime->Shield->Stop(code);
+        // unreachable code
+        return error;
     }
 
-    // TODO think it
+    // clean resource about shield
     errno ensdc = runtime->Shield->Clean();
     if (ensdc != NO_ERROR && error == NO_ERROR)
     {
         error = ensdc;
     }
 
-    // erase runtime instructions except this function
-    if (!runtime->Options.NotEraseInstruction)
+    if (runtime->Options.NotEraseInstruction)
     {
-        uintptr begin = (uintptr)(GetFuncAddr(&InitRuntime));
-        uintptr end   = (uintptr)(GetFuncAddr(&RT_Exit));
-        uintptr size  = end - begin;
-        eraseMemory(begin, size);
-        begin = (uintptr)(GetFuncAddr(&rt_epilogue));
-        end   = (uintptr)(GetFuncAddr(&Argument_Stub));
-        size  = end - begin;
-        eraseMemory(begin, size);
+        eraseMemory((uintptr)(runtime->MainMemPage), MAIN_MEM_PAGE_SIZE);
+        return error;
     }
 
-    // recover memory project
-    // TODO move it to cleaner stub
+    // adjust protect for erase instruction
+    DWORD oldProtect;
+    if (!adjustPageProtect(runtime, &oldProtect))
+    {
+        return ERR_RUNTIME_ADJUST_PROTECT;
+    }
+
+    // erase runtime instruction except these 
+    uintptr begin = (uintptr)(GetFuncAddr(&InitRuntime));
+    uintptr end   = (uintptr)(GetFuncAddr(&RT_Exit));
+    eraseMemory(begin, end - begin);
+    begin = (uintptr)(GetFuncAddr(&epilogue));
+    end   = (uintptr)(GetFuncAddr(&Argument_Stub));
+    eraseMemory(begin, end - begin);
+
+    // not call recoverPageProtect because
+    // this function has been erased
     if (!runtime->Options.NotAdjustProtect)
     {
-        uintptr begin = (uintptr)(addr);
-        uintptr end   = (uintptr)(runtime->Epilogue);
-        SIZE_T  size  = (SIZE_T)(end - begin);
-        DWORD old;
-        if (!runtime->VirtualProtect(addr, size, oldProtect, &old) && error == NO_ERROR)
+        LPVOID addr = runtime->Prologue;
+        SIZE_T size = runtime->InstSize;
+        DWORD  old;
+        if (!runtime->VirtualProtect(addr, size, oldProtect, &old))
         {
-            error = ERR_RUNTIME_RECOVER_PROTECT;
+            if (error == NO_ERROR)
+            {
+                error = ERR_RUNTIME_RECOVER_PROTECT;
+            }
         }
     }
 
-    // copy function address before erase memory
-    ExitThread_t ExitThread = runtime->ExitThread;
-
-    // clean stack about cloned structure data
-    eraseMemory((uintptr)(runtime), sizeof(Runtime));
-
-    if (exitThread)
-    {
-        ExitThread(code);
-    }
+    eraseMemory((uintptr)(runtime->MainMemPage), MAIN_MEM_PAGE_SIZE);
     return error;
-}
-
-// TODO replace to xorshift
-__declspec(noinline)
-static void eraseMemory(uintptr address, uintptr size)
-{
-    byte* addr = (byte*)address;
-    for (uintptr i = 0; i < size; i++)
-    {
-        byte b = *addr;
-        if (i > 0)
-        {
-            byte prev = *(byte*)(address + i - 1);
-            b -= prev;
-            b ^= prev;
-            b += prev;
-            b |= prev;
-        }
-        b += (byte)(address + i);
-        b |= (byte)(address ^ 0xFF);
-        *addr = b;
-        addr++;
-    }
 }
 
 // prevent it be linked to other functions.
 #pragma optimize("", off)
 
+__declspec(noinline)
+static void eraseMemory(uintptr address, uintptr size)
+{
+    byte* buf = (byte*)address;
+    for (uint i = 0; i < size; i++)
+    {
+        buf[i] = buf[i] & 0;
+    }
+}
+
 #pragma warning(push)
 #pragma warning(disable: 4189)
-static void rt_epilogue()
+static void epilogue()
 {
     byte var = 1;
     return;
