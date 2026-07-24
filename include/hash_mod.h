@@ -4,6 +4,6 @@
 #include "c_types.h"
 
 // HashMod is used to calculate module hash for options.
-uint64 HashMod(uint16* module);
+uint64 HashMod(uint16* module, uint size);
 
 #endif // HASH_MOD_H
