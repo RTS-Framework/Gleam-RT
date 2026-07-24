@@ -1,14 +1,20 @@
 #ifndef LAYOUT_H
 #define LAYOUT_H
 
-// +--------------+--------------+-------------+--------------------+---------------+-------------+
-// |    0-8192    |  8192-16384  | 16384-32768 |    32768-49152     |  49152-53248  | 53248-65536 |
-// +--------------+--------------+-------------+--------------------+---------------+-------------+
-// | runtime core | base modules | sub modules | high-level modules | suffix module |  data page  |
-// +--------------+--------------+-------------+--------------------+---------------+-------------+
-
+// +--------------+--------------+-------------+-------------------+---------------+
+// |    0-8191    |  8192-16383  | 16384-32767 |    32768-49151    |  49152-53247  |
+// +--------------+--------------+-------------+-------------------+---------------+
+// | runtime core | base modules |  submodule  | high-level module | suffix module |
+// +--------------+--------------+-------------+-------------------+---------------+
+//
+// +---------------+
+// |  53248-53503  |
+// +---------------+
+// | pointer table |
+// +---------------+
+//
 // the main memory page store the data of all the core structures.
-// data page is used to store the decrypted constant for modules.
+// pointer table is used to store module pointers.
 
 #define MAIN_MEM_PAGE_SIZE (64 * 1024)
 
@@ -17,7 +23,7 @@
 #define LAYOUT_RUNTIME_STRUCT 1024
 #define LAYOUT_RUNTIME_MODULE 4096
 
-// ------------base modules------------
+// ------------base module-------------
 
 // Spoof Call
 #define LAYOUT_SC_STRUCT 8192
@@ -27,10 +33,11 @@
 #define LAYOUT_SS_STRUCT 10000
 #define LAYOUT_SS_MODULE 11000
 
+// Detector
 #define LAYOUT_DT_STRUCT 12000
 #define LAYOUT_DT_MODULE 13000
 
-// -------------sub modules------------
+// -------------submodule--------------
 
 // Library Tracker
 #define LAYOUT_LT_STRUCT 16384
@@ -56,7 +63,7 @@
 #define LAYOUT_IS_STRUCT 27000
 #define LAYOUT_IS_MODULE 27500
 
-// ---------high-level modules---------
+// ---------high-level module----------
 
 // WinBase
 #define LAYOUT_WB_STRUCT 32768
@@ -82,12 +89,14 @@
 #define LAYOUT_SM_STRUCT 44000
 #define LAYOUT_SM_METHOD 45000
 
-// -----------suffix modules-----------
+// -----------suffix module------------
 
 // Shield
 #define LAYOUT_SD_STRUCT 49152
 #define LAYOUT_SD_METHOD 50000
 
 // -------------data page--------------
+
+#define LAYOUT_POINTER_TABLE 53248
 
 #endif // LAYOUT_H
