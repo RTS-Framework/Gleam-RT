@@ -3,10 +3,10 @@
 
 static uint64 ror64(uint64 value, uint64 bits);
 
-uint64 HashMod(uint16* module)
+uint64 HashMod(uint16* module, uint size)
 {
     uint64 hash = 0xFFFFFFFF;
-    for (;;)
+    for (uint i = 0; i < size; i++)
     {
         uint16 c = *module;
         if (c == 0x0000)
