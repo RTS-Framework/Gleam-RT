@@ -22,6 +22,8 @@
 
 #define SHIELD_MAIN_MODULE 0x0001
 
+#define SHIELD_SEC_MIN_DECOY_SIZE 1024
+
 typedef struct {
     void* EntryPoint;
     void* BaseAddress;
@@ -31,7 +33,7 @@ typedef struct {
 typedef BOOL (*SDGetStatus_t)(SD_Status* status);
 
 typedef errno (*SDSleep_t)(uint32 milliseconds);
-typedef void  (*SDStop_t)();
+typedef void  (*SDStop_t)(uint32 code);
 typedef errno (*SDClean_t)();
 
 typedef struct {
