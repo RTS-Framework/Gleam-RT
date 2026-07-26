@@ -62,15 +62,21 @@ int strnicmp_a(ANSI a, ANSI b, uint n);
 int strnicmp_w(UTF16 a, UTF16 b, uint n);
 
 // strcpy_a is used to copy source ANSI string to destination.
+// return value is the number of copied characters, exclude the null.
 uint strcpy_a(ANSI dst, ANSI src);
 
 // strcpy_w is used to copy source UTF-16 string to destination.
+// return value is the number of copied characters, exclude the null.
 uint strcpy_w(UTF16 dst, UTF16 src);
 
 // strncpy_a is used to copy source ANSI string to destination with length.
+// it will stop after copying the null terminator.
+// return value is the number of copied characters, exclude the null.
 uint strncpy_a(ANSI dst, ANSI src, uint n);
 
 // strncpy_w is used to copy source UTF-16 string to destination with length.
+// it will stop after copying the null terminator.
+// return value is the number of copied characters, exclude the null.
 uint strncpy_w(UTF16 dst, UTF16 src, uint n);
 
 #endif // LIB_STRING_H
