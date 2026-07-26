@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/RTS-Framework/GRT-Develop/hashmod"
 	"github.com/RTS-Framework/GRT-Develop/option"
 )
 
 func main() {
 	opts := option.Options{
-		ImagePinningHash: option.Hash("test.exe"),
-		ShieldModuleHash: option.Hash("test.dll"),
+		ImagePinningHash: hashmod.Hash("test.exe"),
+		ShieldModuleHash: hashmod.Hash("test.dll"),
 		ShieldEntryPoint: 0x12345678,
 	}
 
