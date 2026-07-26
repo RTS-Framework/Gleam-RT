@@ -4,36 +4,37 @@
 #pragma optimize("t", on)
 
 __declspec(noinline)
-void mem_copy(void* dst, void* src, uint num)
+void* mem_copy(void* dst, void* src, uint num)
 {
     if (num == 0)
     {
-        return;
+        return dst;
     }
     byte* d = (byte*)dst;
     byte* s = (byte*)src;
     if (d == s)
     {
-        return;
+        return dst;
     }
     for (uint i = 0; i < num; i++)
     {
         d[i] = s[i];
     }
+    return dst;
 }
 
 __declspec(noinline)
-void mem_move(void* dst, void* src, uint num)
+void* mem_move(void* dst, void* src, uint num)
 {
     if (num == 0)
     {
-        return;
+        return dst;
     }
     byte* d = (byte*)dst;
     byte* s = (byte*)src;
     if (d == s)
     {
-        return;
+        return dst;
     }
     if (d < s || d >= s + num)
     {
@@ -41,38 +42,40 @@ void mem_move(void* dst, void* src, uint num)
         {
             d[i] = s[i];
         }
-        return;
+        return dst;
     }
     for (uint i = num; i > 0; i--)
     {
         d[i - 1] = s[i - 1];
     }
+    return dst;
 }
 
 #pragma optimize("", off)
-void mem_init(void* ptr, uint num)
+void* mem_init(void* ptr, uint num)
 {
     if (num == 0)
     {
-        return;
+        return ptr;
     }
-    mem_set(ptr, 0, num);
+    return mem_set(ptr, 0, num);
 }
 #pragma optimize("", on)
 
 // prevent link to the internal function "memset"
 #pragma optimize("", off)
-void mem_set(void* ptr, byte val, uint num)
+void* mem_set(void* ptr, byte val, uint num)
 {
     if (num == 0)
     {
-        return;
+        return ptr;
     }
     byte* p = (byte*)ptr;
     for (uint i = 0; i < num; i++)
     {
         p[i] = val;
     }
+    return ptr;
 }
 #pragma optimize("", on)
 
