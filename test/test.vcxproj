@@ -59,6 +59,7 @@
     <ClInclude Include="..\include\watchdog.h" />
     <ClInclude Include="..\include\sysmon.h" />
     <ClInclude Include="..\include\shield.h" />
+    <ClInclude Include="..\include\option.h" />
     <ClInclude Include="..\include\runtime.h" />
     <ClInclude Include="..\include\debug.h" />
   </ItemGroup>
