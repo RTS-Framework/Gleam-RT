@@ -122,7 +122,7 @@ static bool TestArgument_GetValue()
     printf_s("arg0: 0x%X\n", arg0);
 
     // get argument with invalid id
-    id = 3;
+    id = 123;
     if (runtime->Argument.GetValue(id, &arg0, NULL))
     {
         printf_s("get argument with invalid id\n");
@@ -209,7 +209,7 @@ static bool TestArgument_GetPointer()
     printf_s("arg0: 0x%X\n", *arg0);
 
     // get argument with invalid id
-    id = 3;
+    id = 123;
     if (runtime->Argument.GetPointer(id, &arg0, NULL))
     {
         printf_s("get argument with invalid id\n");
