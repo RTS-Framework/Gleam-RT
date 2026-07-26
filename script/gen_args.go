@@ -22,7 +22,11 @@ func main() {
 		ID:   2,
 		Data: make([]byte, 0),
 	}
-	stub, err := argument.Encode(arg0, arg1, arg2)
+	arg3 := &argument.Arg{
+		ID:   3,
+		Data: make([]byte, 7),
+	}
+	stub, err := argument.Encode(arg0, arg1, arg2, arg3)
 	checkError(err)
 
 	data := dumpBytesHex(stub)
