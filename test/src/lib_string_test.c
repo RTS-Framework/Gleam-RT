@@ -18,6 +18,14 @@ static bool TestStrcpy_a();
 static bool TestStrcpy_w();
 static bool TestStrncpy_a();
 static bool TestStrncpy_w();
+static bool TestStrequ_a();
+static bool TestStrequ_w();
+static bool TestStrnequ_a();
+static bool TestStrnequ_w();
+static bool TestStriequ_a();
+static bool TestStriequ_w();
+static bool TestStrniequ_a();
+static bool TestStrniequ_w();
 
 bool TestLibString()
 {
@@ -37,6 +45,14 @@ bool TestLibString()
         { TestStrcpy_w   },
         { TestStrncpy_a  },
         { TestStrncpy_w  },
+        { TestStrequ_a   },
+        { TestStrequ_w   },
+        { TestStrnequ_a  },
+        { TestStrnequ_w  },
+        { TestStriequ_a  },
+        { TestStriequ_w  },
+        { TestStrniequ_a },
+        { TestStrniequ_w },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -425,5 +441,253 @@ static bool TestStrncpy_w()
     }
 
     printf_s("test strncpy_w passed\n");
+    return true;
+}
+
+static bool TestStrequ_a()
+{
+    ANSI s0 = "abc";
+    ANSI s1 = "abc";
+    if (!strequ_a(s0, s1))
+    {
+        printf_s("strequ_a return incorrect value with equal strings\n");
+        return false;
+    }
+    printf_s("test strequ_a with equal strings passed\n");
+
+    s0 = "abc";
+    s1 = "abd";
+    if (strequ_a(s0, s1))
+    {
+        printf_s("strequ_a return incorrect value with different strings\n");
+        return false;
+    }
+    printf_s("test strequ_a with different strings passed\n");
+
+    s0 = "abc";
+    s1 = "ab";
+    if (strequ_a(s0, s1))
+    {
+        printf_s("strequ_a return incorrect value with different length strings\n");
+        return false;
+    }
+    printf_s("test strequ_a with different length strings passed\n");
+    return true;
+}
+
+static bool TestStrequ_w()
+{
+    UTF16 s0 = L"abc";
+    UTF16 s1 = L"abc";
+    if (!strequ_w(s0, s1))
+    {
+        printf_s("strequ_w return incorrect value with equal strings\n");
+        return false;
+    }
+    printf_s("test strequ_w with equal strings passed\n");
+
+    s0 = L"abc";
+    s1 = L"abd";
+    if (strequ_w(s0, s1))
+    {
+        printf_s("strequ_w return incorrect value with different strings\n");
+        return false;
+    }
+    printf_s("test strequ_w with different strings passed\n");
+
+    s0 = L"abc";
+    s1 = L"ab";
+    if (strequ_w(s0, s1))
+    {
+        printf_s("strequ_w return incorrect value with different length strings\n");
+        return false;
+    }
+    printf_s("test strequ_w with different length strings passed\n");
+    return true;
+}
+
+static bool TestStrnequ_a()
+{
+    ANSI s0 = "abc";
+    ANSI s1 = "abc";
+    if (!strnequ_a(s0, s1, 3))
+    {
+        printf_s("strnequ_a return incorrect value with equal strings\n");
+        return false;
+    }
+    printf_s("test strnequ_a with equal strings passed\n");
+
+    s0 = "abc";
+    s1 = "abd";
+    if (!strnequ_a(s0, s1, 2))
+    {
+        printf_s("strnequ_a return incorrect value with equal prefix\n");
+        return false;
+    }
+    printf_s("test strnequ_a with equal prefix passed\n");
+
+    s0 = "abc";
+    s1 = "abd";
+    if (strnequ_a(s0, s1, 3))
+    {
+        printf_s("strnequ_a return incorrect value with different strings\n");
+        return false;
+    }
+    printf_s("test strnequ_a with different strings passed\n");
+    return true;
+}
+
+static bool TestStrnequ_w()
+{
+    UTF16 s0 = L"abc";
+    UTF16 s1 = L"abc";
+    if (!strnequ_w(s0, s1, 3))
+    {
+        printf_s("strnequ_w return incorrect value with equal strings\n");
+        return false;
+    }
+    printf_s("test strnequ_w with equal strings passed\n");
+
+    s0 = L"abc";
+    s1 = L"abd";
+    if (!strnequ_w(s0, s1, 2))
+    {
+        printf_s("strnequ_w return incorrect value with equal prefix\n");
+        return false;
+    }
+    printf_s("test strnequ_w with equal prefix passed\n");
+
+    s0 = L"abc";
+    s1 = L"abd";
+    if (strnequ_w(s0, s1, 3))
+    {
+        printf_s("strnequ_w return incorrect value with different strings\n");
+        return false;
+    }
+    printf_s("test strnequ_w with different strings passed\n");
+    return true;
+}
+
+static bool TestStriequ_a()
+{
+    ANSI s0 = "aBc";
+    ANSI s1 = "AbC";
+    if (!striequ_a(s0, s1))
+    {
+        printf_s("striequ_a return incorrect value with equal strings\n");
+        return false;
+    }
+    printf_s("test striequ_a with equal strings passed\n");
+
+    s0 = "abc";
+    s1 = "abd";
+    if (striequ_a(s0, s1))
+    {
+        printf_s("striequ_a return incorrect value with different strings\n");
+        return false;
+    }
+    printf_s("test striequ_a with different strings passed\n");
+
+    s0 = "abc";
+    s1 = "ab";
+    if (striequ_a(s0, s1))
+    {
+        printf_s("striequ_a return incorrect value with different length strings\n");
+        return false;
+    }
+    printf_s("test striequ_a with different length strings passed\n");
+    return true;
+}
+
+static bool TestStriequ_w()
+{
+    UTF16 s0 = L"aBc";
+    UTF16 s1 = L"AbC";
+    if (!striequ_w(s0, s1))
+    {
+        printf_s("striequ_w return incorrect value with equal strings\n");
+        return false;
+    }
+    printf_s("test striequ_w with equal strings passed\n");
+
+    s0 = L"abc";
+    s1 = L"abd";
+    if (striequ_w(s0, s1))
+    {
+        printf_s("striequ_w return incorrect value with different strings\n");
+        return false;
+    }
+    printf_s("test striequ_w with different strings passed\n");
+
+    s0 = L"abc";
+    s1 = L"ab";
+    if (striequ_w(s0, s1))
+    {
+        printf_s("striequ_w return incorrect value with different length strings\n");
+        return false;
+    }
+    printf_s("test striequ_w with different length strings passed\n");
+    return true;
+}
+
+static bool TestStrniequ_a()
+{
+    ANSI s0 = "aBc";
+    ANSI s1 = "AbC";
+    if (!strniequ_a(s0, s1, 3))
+    {
+        printf_s("strniequ_a return incorrect value with equal strings\n");
+        return false;
+    }
+    printf_s("test strniequ_a with equal strings passed\n");
+
+    s0 = "aBc";
+    s1 = "Abd";
+    if (!strniequ_a(s0, s1, 2))
+    {
+        printf_s("strniequ_a return incorrect value with equal prefix\n");
+        return false;
+    }
+    printf_s("test strniequ_a with equal prefix passed\n");
+
+    s0 = "aBc";
+    s1 = "Abd";
+    if (strniequ_a(s0, s1, 3))
+    {
+        printf_s("strniequ_a return incorrect value with different strings\n");
+        return false;
+    }
+    printf_s("test strniequ_a with different strings passed\n");
+    return true;
+}
+
+static bool TestStrniequ_w()
+{
+    UTF16 s0 = L"aBc";
+    UTF16 s1 = L"AbC";
+    if (!strniequ_w(s0, s1, 3))
+    {
+        printf_s("strniequ_w return incorrect value with equal strings\n");
+        return false;
+    }
+    printf_s("test strniequ_w with equal strings passed\n");
+
+    s0 = L"aBc";
+    s1 = L"Abd";
+    if (!strniequ_w(s0, s1, 2))
+    {
+        printf_s("strniequ_w return incorrect value with equal prefix\n");
+        return false;
+    }
+    printf_s("test strniequ_w with equal prefix passed\n");
+
+    s0 = L"aBc";
+    s1 = L"Abd";
+    if (strniequ_w(s0, s1, 3))
+    {
+        printf_s("strniequ_w return incorrect value with different strings\n");
+        return false;
+    }
+    printf_s("test strniequ_w with different strings passed\n");
     return true;
 }
