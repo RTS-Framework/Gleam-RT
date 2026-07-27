@@ -19,4 +19,7 @@ DWORD GetModuleBaseName(PML* pml, HMODULE hModule, LPWSTR lpBasename, DWORD nSiz
 // GetModuleHandle is used to get module handle by base name.
 HMODULE GetModuleHandle(PML* pml, LPWSTR lpBasename);
 
+// GetProcedureName is used to get procedure name by address.
+LPSTR GetProcedureName(PML* pml, HMODULE hModule, void* procedure);
+
 #endif // WIN_API_H
