@@ -294,7 +294,7 @@ PML* GetDefaultPML()
     TEB* teb = (TEB*)__readfsdword(0x18);
 #endif
     PEB_LDR_DATA* ldr = teb->ProcessEnvironmentBlock->LDR;
-    LIST_ENTRY* entry = ldr->InMemoryOrderModuleList.Flink;
+    LIST_ENTRY* entry = &ldr->InMemoryOrderModuleList;
     return (PML*)((uintptr)entry - offsetof(PML, Links));
 }
 
