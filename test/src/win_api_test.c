@@ -5,19 +5,22 @@
 #include "dll_kernel32.h"
 #include "lib_memory.h"
 #include "lib_string.h"
+#include "hash_api.h"
 #include "win_api.h"
 #include "test.h"
 
 static bool TestIsValidModuleHandle();
 static bool TestGetModuleBaseName();
 static bool TestGetModuleHandle();
+static bool TestGetProcedureName();
 
 bool TestWinAPI()
 {
     test_t tests[] = {
         { TestIsValidModuleHandle },
-        { TestGetModuleBaseName  },
-        { TestGetModuleHandle    },
+        { TestGetModuleBaseName   },
+        { TestGetModuleHandle     },
+        { TestGetProcedureName    },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -148,5 +151,39 @@ static bool TestGetModuleHandle()
     }
 
     printf_s("test GetModuleHandle passed\n");
+    return true;
+}
+
+static bool TestGetProcedureName()
+{
+    PML* pml = GetDefaultPML();
+
+    HMODULE hKernel32 = FindMod_A("kernel32.dll");
+    if (hKernel32 == NULL)
+    {
+        printf_s("failed to get handle of kernel32.dll\n");
+        return false;
+    }
+
+    Sleep_t Sleep = FindAPI_A("kernel32.dll", "Sleep");
+    if (Sleep == NULL)
+    {
+        printf_s("kernel32.Sleep is not found\n");
+        return false;
+    }
+
+    LPSTR procName = GetProcedureName(pml, hKernel32, Sleep);
+    if (procName == NULL)
+    {
+        printf_s("failed to get procedure name\n");
+        return false;
+    }
+    if (!strequ_a(procName, "Sleep"))
+    {
+        printf_s("invalid procedure name\n");
+        return false;
+    }
+
+    printf_s("test GetProcedureName passed\n");
     return true;
 }
