@@ -27,24 +27,35 @@
 // MUST be a multiple of 100.
 #define MAX_SAFE_RANK 200
 
+#define VM_NUM_EXEC_CPUID  5
+#define VM_CPUID_THRESHOLD 750
+
+#define ACC_OPEN_DIR_THRESHOLD 200000
+
 typedef struct {
-    // store options
+    // store option
     bool DisableDetector;
-    bool NotEraseInstruction;
 
     // process environment
     PEB* PEB;
-    PML* PML;
 
-    // API addresses
+    // core dll address
+    HMODULE hKernel32;
+    HMODULE hNtdll;
+
+    // get process module list
+    RT_GetPML_t GetPML;
+
+    // API address
     GetTickCount_t        GetTickCount;
     FreeLibrary_t         FreeLibrary;
     VirtualFree_t         VirtualFree;
     ReleaseMutex_t        ReleaseMutex;
     WaitForSingleObject_t WaitForSingleObject;
+    CreateFileA_t         CreateFileA;
     CloseHandle_t         CloseHandle;
 
-    // lazy API addresses
+    // lazy API address
     QueryWorkingSetEx_t QueryWorkingSetEx;
 
     // for detector memory scanner
@@ -105,11 +116,14 @@ Detector_M* InitDetector(Context* context)
     Detector* detector = (Detector*)detectorAddr;
     mem_init(detector, sizeof(Detector));
     // store options
-    detector->DisableDetector     = context->DisableDetector;
-    detector->NotEraseInstruction = context->NotEraseInstruction;
+    detector->DisableDetector = context->DisableDetector;
     // store process environment
     detector->PEB = context->PEB;
-    detector->PML = context->PML;
+    // core dll address
+    detector->hKernel32 = context->hKernel32,
+    detector->hNtdll    = context->hNtdll,
+    // store runtime method
+    detector->GetPML = context->GetPML;
     // initialize detector
     errno errno = NO_ERROR;
     for (;;)
@@ -151,6 +165,31 @@ Detector_M* InitDetector(Context* context)
 __declspec(noinline)
 static bool initDetectorAPI(Detector* detector, Context* context)
 {
+    typedef struct {
+        uint pHash; uint hKey; void* proc;
+    } winapi;
+    winapi list[] =
+#ifdef _WIN64
+    {
+        { 0xB8051A7915B80944, 0x0F743D616B0CAEE6 }, // CreateFileA
+    };
+#elif _WIN32
+    {
+        { 0x041548A2, 0x6078A702 }, // CreateFileA
+    };
+#endif
+    for (int i = 0; i < arrlen(list); i++)
+    {
+        winapi item = list[i];
+        void*  proc = context->FindAPI_MA(context->hKernel32, item.pHash, item.hKey);
+        if (proc == NULL)
+        {
+            return false;
+        }
+        list[i].proc = proc;
+    }
+    detector->CreateFileA = list[0].proc;
+
     detector->GetTickCount        = context->GetTickCount;
     detector->FreeLibrary         = context->FreeLibrary;
     detector->VirtualFree         = context->VirtualFree;
@@ -268,12 +307,11 @@ static void setDetectorPointer(Detector* detector)
     *(Detector**)(POINTER_OFFSET_DETECTOR) = detector;
 }
 
-#pragma optimize("", off)
+__declspec(noinline)
 static Detector* getDetectorPointer()
 {
     return *(Detector**)POINTER_OFFSET_DETECTOR;
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 BOOL DT_Detect()
@@ -290,7 +328,7 @@ BOOL DT_Detect()
         return false;
     }
 
-    BOOL success = true;
+    BOOL success;
     for (;;)
     {
         // items that need detect loop
@@ -372,7 +410,7 @@ static bool detectDebugger()
         return true;
     }
 
-    if (IsDebuggerPresent(detector->PEB))
+    if (detector->PEB->BeingDebugged)
     {
         detector->HasDebugger += 100;
         detector->PrevDebugged = true;
@@ -425,7 +463,7 @@ static bool detectSandbox()
     uint mHash = 0x08392D5C;
     uint hKey  = 0x81A86120;
 #endif
-    if (FindMod_MHL(detector->PML, mHash, hKey) != NULL)
+    if (FindMod_MHL(detector->GetPML(), mHash, hKey) != NULL)
     {
         detector->InSandbox += 100;
         return true;
@@ -438,6 +476,20 @@ static bool detectEmulator()
 {
     Detector* detector = getDetectorPointer();
 
+    // I known "wine is not emulator", but we put code here
+    // detect method "ntdll.wine_get_version" is exist
+#ifdef _WIN64
+    uint pHash = 0x27A511B86D46D81F;
+    uint hKey  = 0x10E7E2CEA866AA17;
+#elif _WIN32
+    uint pHash = 0x661D9DD4;
+    uint hKey  = 0x90ABC79E;
+#endif
+    if (FindAPI_MAL(detector->GetPML(), detector->hNtdll, pHash, hKey) != NULL)
+    {
+        detector->InSandbox += 100;
+        return true;
+    }
     return true;
 }
 
@@ -446,6 +498,25 @@ static bool detectVirtualMachine()
 {
     Detector* detector = getDetectorPointer();
 
+    // check the CPUID execute is too slow
+    bool cpuidSlow = true;
+    int cpuInfo[4];
+    for (int i = 0; i < VM_NUM_EXEC_CPUID; i++)
+    {
+        uint64 start = __rdtsc();
+        __cpuid(cpuInfo, 0);
+        uint64 end = __rdtsc();
+        if (end - start < VM_CPUID_THRESHOLD)
+        {
+            cpuidSlow = false;
+            break;
+        }
+    }
+    if (cpuidSlow)
+    {
+        detector->InVirtualMachine += 100;
+        return true;
+    }
     return true;
 }
 
@@ -454,6 +525,39 @@ static bool detectAccelerator()
 {
     Detector* detector = getDetectorPointer();
 
+    uint64 begin0 = __rdtsc();
+    DWORD  begin1 = detector->GetTickCount();
+
+    byte path[] = { 
+        'C'^0x17, ':'^0x26, '\\'^0x42, 0x00^0xAC,
+    };
+    byte key[] = { 0x17, 0x26, 0x42, 0xAC };
+    XORBuffer(path, sizeof(path), key, sizeof(key));
+    HANDLE hDir = detector->CreateFileA(
+        path, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+        NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL
+    );
+    if (hDir == INVALID_HANDLE_VALUE)
+    {
+        return false;
+    }
+    if (!detector->CloseHandle(hDir))
+    {
+        return false;
+    }
+
+    DWORD  end1 = detector->GetTickCount();
+    uint64 end0 = __rdtsc();
+
+    if (end0 - begin0 > ACC_OPEN_DIR_THRESHOLD)
+    {
+        detector->IsAccelerated += 40;
+    }
+    if (end1 - begin1 > 5)
+    {
+        detector->IsAccelerated += 40;
+    }
     return true;
 }
 
@@ -476,7 +580,7 @@ BOOL DT_GetStatus(DT_Status* status)
 
     int32 total = 0;
     typedef struct {
-        uint16 src; BOOL* dst; uint16 th;
+        uint16 src; BOOL* dst; uint16 threshold;
     } item;
     item items[] = {
         { detector->HasDebugger,      &status->HasDebugger,      JT_HAS_DEBUGGER       },
@@ -489,7 +593,7 @@ BOOL DT_GetStatus(DT_Status* status)
     for (int i = 0; i < arrlen(items); i++)
     {
         item item = items[i];
-        if (item.src >= item.th)
+        if (item.src >= item.threshold)
         {
             total += item.src;
             *item.dst = true;
