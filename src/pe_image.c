@@ -1,5 +1,6 @@
 #include "c_types.h"
 #include "win_types.h"
+#include "lib_memory.h"
 #include "pe_image.h"
 
 // not search the section that named ".text".
@@ -28,15 +29,17 @@ void ParsePEImage(void* address, PE_Image* image)
     {
         if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE)
         {
-            image->Text = *section;
+            // use mem_copy for reduce instruction size
+            mem_copy(&image->Text, section, sizeof(Image_SectionHeader));
             break;
         }
         section++;
     }
     // store the parsed result
-    image->EntryPoint     = imageAddr + optHeader->AddressOfEntryPoint;
-    image->ImageBase      = optHeader->ImageBase;
-    image->ImageSize      = optHeader->SizeOfImage;
-    image->FileHeader     = *fileHeader;
-    image->OptionalHeader = *optHeader;
+    image->EntryPoint = imageAddr + optHeader->AddressOfEntryPoint;
+    image->ImageBase  = optHeader->ImageBase;
+    image->ImageSize  = optHeader->SizeOfImage;
+    // use mem_copy for reduce instruction size
+    mem_copy(&image->FileHeader, fileHeader, sizeof(Image_FileHeader));
+    mem_copy(&image->OptionalHeader, optHeader, sizeof(Image_OptionalHeader));
 }
