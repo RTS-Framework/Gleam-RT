@@ -1090,7 +1090,7 @@ static errno initSubmodules(Runtime* runtime)
     {
         if (!success)
         {
-            return ERR_RUNTIME_DETECT_UNSAFE_ENV;
+            return ERR_RUNTIME_DETECT_FAILED;
         }
         DT_Status status;
         runtime->Detector->GetStatus(&status);
@@ -2276,8 +2276,10 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
         }
         return method;
     }
+    // get process module list snapshot
+    PML* pml = RT_GetPML();
     // check the module is exists
-    if (!IsValidModuleHandle(RT_GetPML(), hModule))
+    if (!IsValidModuleHandle(pml, hModule))
     {
         SetLastErrno(ERR_RUNTIME_MODULE_NOT_FOUND);
         return NULL;
@@ -2287,12 +2289,12 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
     if (lpProcName <= (LPCSTR)(0xFFFF))
     {
         // process ordinal import
-        proc = SC_FindAPI_MA(hModule, HASHAPI_ORDINAL, (uint)lpProcName);
+        proc = SC_FindAPI_MAL(pml, hModule, HASHAPI_ORDINAL, (uint)lpProcName);
     } else {
         // generate hash for find Windows API address
         uint hKey  = 0xFFFFFFFF;
         uint pHash = CalcProcHash((byte*)lpProcName, hKey);
-        proc = SC_FindAPI_MA(hModule, pHash, hKey);
+        proc = SC_FindAPI_MAL(pml, hModule, pHash, hKey);
     }
     // if not found, use native GetProcAddress and try again
     if (proc == NULL)
@@ -2312,6 +2314,15 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
     if (rdr != NULL)
     {
         return rdr;
+    }
+    // if lpProcName is a ordinal, get procedure name
+    if (lpProcName <= (LPCSTR)(0xFFFF))
+    {
+        lpProcName = GetProcedureName(pml, hModule, proc);
+        if (lpProcName == NULL)
+        {
+            return proc;
+        }
     }
     rdr = getLazyAPIRedirector(hModule, lpProcName);
     if (rdr != NULL)
