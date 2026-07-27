@@ -61,6 +61,30 @@ int strnicmp_a(ANSI a, ANSI b, uint n);
 // if a < b, return -1
 int strnicmp_w(UTF16 a, UTF16 b, uint n);
 
+// strcmp_a is used to compare two ANSI strings are equaled.
+bool strequ_a(ANSI a, ANSI b);
+
+// strcmp_w is used to compare two UTF-16 strings are equaled.
+bool strequ_w(UTF16 a, UTF16 b);
+
+// strcmp_a is used to compare two ANSI strings with length are equaled.
+bool strnequ_a(ANSI a, ANSI b, uint n);
+
+// strcmp_w is used to compare two UTF-16 strings with length are equaled.
+bool strnequ_w(UTF16 a, UTF16 b, uint n);
+
+// strcmp_a is used to compare two ANSI strings, it is case-insensitive.
+bool striequ_a(ANSI a, ANSI b);
+
+// strcmp_w is used to compare two UTF-16 strings, it is case-insensitive.
+bool striequ_w(UTF16 a, UTF16 b);
+
+// strcmp_a is used to compare two ANSI strings with length, it is case-insensitive.
+bool strniequ_a(ANSI a, ANSI b, uint n);
+
+// strcmp_w is used to compare two UTF-16 strings with length, it is case-insensitive.
+bool strniequ_w(UTF16 a, UTF16 b, uint n);
+
 // strcpy_a is used to copy source ANSI string to destination.
 // return value is the number of copied characters, exclude the null.
 uint strcpy_a(ANSI dst, ANSI src);
