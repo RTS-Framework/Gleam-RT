@@ -251,6 +251,54 @@ int strnicmp_w(UTF16 a, UTF16 b, uint n)
 }
 
 __declspec(noinline)
+bool strequ_a(ANSI a, ANSI b)
+{
+    return strcmp_a(a, b) == 0;
+}
+
+__declspec(noinline)
+bool strequ_w(UTF16 a, UTF16 b)
+{
+    return strcmp_w(a, b) == 0;
+}
+
+__declspec(noinline)
+bool strnequ_a(ANSI a, ANSI b, uint n)
+{
+    return strncmp_a(a, b, n) == 0;
+}
+
+__declspec(noinline)
+bool strnequ_w(UTF16 a, UTF16 b, uint n)
+{
+    return strncmp_w(a, b, n) == 0;
+}
+
+__declspec(noinline)
+bool striequ_a(ANSI a, ANSI b)
+{
+    return stricmp_a(a, b) == 0;
+}
+
+__declspec(noinline)
+bool striequ_w(UTF16 a, UTF16 b)
+{
+    return stricmp_w(a, b) == 0;
+}
+
+__declspec(noinline)
+bool strniequ_a(ANSI a, ANSI b, uint n)
+{
+    return strnicmp_a(a, b, n) == 0;
+}
+
+__declspec(noinline)
+bool strniequ_w(UTF16 a, UTF16 b, uint n)
+{
+    return strnicmp_w(a, b, n) == 0;
+}
+
+__declspec(noinline)
 byte lowercase_a(byte c)
 {
     if (c >= 'A' && c <= 'Z')
