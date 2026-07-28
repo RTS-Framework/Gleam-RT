@@ -179,6 +179,7 @@ echo.
 
 echo [Detector]
 hash_api -fmt 64 -conc -mod "kernel32.dll" -proc K32QueryWorkingSetEx
+hash_api -fmt 64 -conc -mod "ntdll.dll" -proc wine_get_version
 hash_api -fmt 64 -conc -mod "psapi.dll" -proc QueryWorkingSetEx
 hash_api -fmt 64 -conc -mod "SbieDLL.dll" -proc Padding
 echo.
@@ -514,6 +515,7 @@ echo.
 
 echo [Detector]
 hash_api -fmt 32 -conc -mod "kernel32.dll" -proc K32QueryWorkingSetEx
+hash_api -fmt 32 -conc -mod "ntdll.dll" -proc wine_get_version
 hash_api -fmt 32 -conc -mod "psapi.dll" -proc QueryWorkingSetEx
 hash_api -fmt 32 -conc -mod "SbieDLL.dll" -proc Padding
 echo.
