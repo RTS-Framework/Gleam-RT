@@ -9,6 +9,8 @@
 #include "hash_api.h"
 #include "errno.h"
 
+typedef PML* (*RT_GetPML_t)();
+
 typedef errno (*rt_lock_mods_t)();
 typedef errno (*rt_unlock_mods_t)();
 typedef void  (*rt_try_lock_mods_t)();
@@ -30,7 +32,7 @@ typedef errno  (*TT_ForceKillThreads_t)();
 typedef BOOL (*WD_IsEnabled_t)();
 
 typedef errno (*RT_Cleanup_t)();
-typedef errno (*RT_Stop_t)(bool exitThread, uint32 code);
+typedef void  (*RT_Stop_t)(uint32 code);
 
 typedef struct {
     // runtime options
@@ -47,8 +49,11 @@ typedef struct {
 
     // process environment
     PEB* PEB; // process environment block
-    PML* PML; // process module list
+    PML* PML; // process module list (snapshot)
     uint MPS; // memory page size
+
+    // process exe image base
+    HMODULE ImageBase;
 
     // core dll address
     HMODULE hKernel32;
@@ -86,6 +91,9 @@ typedef struct {
     uintptr Prologue;
     uintptr Epilogue;
     uintptr InstSize;
+
+    // for get real-time process module list
+    RT_GetPML_t GetPML;
 
     // HashAPI with spoof call wrapper
     FindAPI_MA_t FindAPI_MA;
