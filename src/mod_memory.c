@@ -49,16 +49,13 @@ typedef struct {
 } heapObject;
 
 typedef struct {
-    // store options
-    bool NotEraseInstruction;
-
-    // process environment
-    PML* PML;
+    // get process module list
+    RT_GetPML_t GetPML;
 
     // store HashAPI with spoof call
     FindAPI_MA_t FindAPI_MA;
 
-    // API addresses
+    // API address
     VirtualAlloc_t        VirtualAlloc;
     VirtualFree_t         VirtualFree;
     VirtualProtect_t      VirtualProtect;
@@ -84,11 +81,11 @@ typedef struct {
     WaitForSingleObject_t WaitForSingleObject;
     CloseHandle_t         CloseHandle;
 
-    // cached module handles
+    // cached module handle
     HMODULE hMsvcrt;
     HMODULE hUcrtbase;
 
-    // cached API addresses
+    // cached API address
     msvcrt_malloc_t  msvcrt_malloc;
     msvcrt_calloc_t  msvcrt_calloc;
     msvcrt_realloc_t msvcrt_realloc;
@@ -101,7 +98,7 @@ typedef struct {
     ucrtbase_free_t    ucrtbase_free;
     ucrtbase_msize_t   ucrtbase_msize;
 
-    // runtime methods
+    // runtime method
     malloc_t  RT_malloc;
     calloc_t  RT_calloc;
     realloc_t RT_realloc;
@@ -245,11 +242,8 @@ MemoryTracker_M* InitMemoryTracker(Context* context)
     // allocate tracker memory
     MemoryTracker* tracker = (MemoryTracker*)trackerAddr;
     mem_init(tracker, sizeof(MemoryTracker));
-    // store options
-    tracker->NotEraseInstruction = context->NotEraseInstruction;
-    // store process environment
-    tracker->PML = context->PML;
-    // store HashAPI method
+    // store runtime method
+    tracker->GetPML     = context->GetPML;
     tracker->FindAPI_MA = context->FindAPI_MA;
     // initialize tracker
     errno errno = NO_ERROR;
@@ -488,12 +482,11 @@ static void setTrackerPointer(MemoryTracker* tracker)
     *(MemoryTracker**)(POINTER_OFFSET_MEMORY_TRACKER) = tracker;
 }
 
-#pragma optimize("", off)
+__declspec(noinline)
 static MemoryTracker* getTrackerPointer()
 {
     return *(MemoryTracker**)(POINTER_OFFSET_MEMORY_TRACKER);
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 LPVOID MT_VirtualAlloc(LPVOID address, SIZE_T size, DWORD type, DWORD protect)
@@ -2252,7 +2245,7 @@ static HMODULE getMsvcrtHandle(MemoryTracker* tracker)
     uint mHash = 0x3DD7996A;
     uint hKey  = 0x9591B59B;
 #endif
-    HMODULE module = FindMod_MHL(tracker->PML, mHash, hKey);
+    HMODULE module = FindMod_MHL(tracker->GetPML(), mHash, hKey);
     if (module == NULL)
     {
         return NULL;
@@ -2275,7 +2268,7 @@ static HMODULE getUcrtbaseHandle(MemoryTracker* tracker)
     uint mHash = 0x65389226;
     uint hKey  = 0x83A98C6F;
 #endif
-    HMODULE module = FindMod_MHL(tracker->PML, mHash, hKey);
+    HMODULE module = FindMod_MHL(tracker->GetPML(), mHash, hKey);
     if (module == NULL)
     {
         return NULL;
@@ -2755,28 +2748,16 @@ errno MT_Decrypt()
     List* pages   = &tracker->Pages;
     List* regions = &tracker->Regions;
 
-    // reverse order traversal is used to deal with the problem
-    // that some memory pages may be encrypted twice, like use
-    // VirtualAlloc to allocate multiple times to the same address
-    uint len = pages->Len;
-    uint idx = pages->Last;
-    for (uint num = 0; num < len; idx--)
+    // decrypt heap blocks
+    errno errno = NO_ERROR;
+    if (tracker->NumBlocks != 0 && !decryptHeapBlocks())
     {
-        memPage* page = List_Get(pages, idx);
-        if (page->address == 0)
-        {
-            continue;
-        }
-        if (!decryptPage(tracker, page))
-        {
-            return ERR_MEMORY_DECRYPT_PAGE;
-        }
-        num++;
+        errno = ERR_MEMORY_DECRYPT_BLOCK;
     }
 
     // decrypt RWX memory regions
-    len = regions->Len;
-    idx = 0;
+    uint len = regions->Len;
+    uint idx = 0;
     for (uint num = 0; num < len; idx++)
     {
         memRegion* region = List_Get(regions, idx);
@@ -2796,11 +2777,23 @@ errno MT_Decrypt()
         num++;
     }
 
-    // decrypt heap blocks
-    errno errno = NO_ERROR;
-    if (tracker->NumBlocks != 0 && !decryptHeapBlocks())
+    // reverse order traversal is used to deal with the problem
+    // that some memory pages may be encrypted twice, like use
+    // VirtualAlloc to allocate multiple times to the same address
+    len = pages->Len;
+    idx = pages->Last;
+    for (uint num = 0; num < len; idx--)
     {
-        errno = ERR_MEMORY_DECRYPT_BLOCK;
+        memPage* page = List_Get(pages, idx);
+        if (page->address == 0)
+        {
+            continue;
+        }
+        if (!decryptPage(tracker, page))
+        {
+            return ERR_MEMORY_DECRYPT_PAGE;
+        }
+        num++;
     }
 
     dbg_log("[memory]", "regions: %zu", tracker->Regions.Len);
@@ -2824,7 +2817,7 @@ static bool encryptPage(MemoryTracker* tracker, memPage* page)
     RandBuffer(page->iv, CRYPTO_IV_SIZE);
     byte key[CRYPTO_KEY_SIZE];
     deriveKey(tracker, page, key);
-    EncryptBuffer((byte*)(page->address), tracker->PageSize, key, page->iv);
+    ObfuscateBuffer((byte*)(page->address), tracker->PageSize, *(uint64*)key);
     return true;
 }
 
@@ -2836,7 +2829,7 @@ static bool decryptPage(MemoryTracker* tracker, memPage* page)
     }
     byte key[CRYPTO_KEY_SIZE];
     deriveKey(tracker, page, key);
-    DecryptBuffer((byte*)(page->address), tracker->PageSize, key, page->iv);
+    IlluminateBuffer((byte*)(page->address), tracker->PageSize, *(uint64*)key);
     if (!recoverPageProtect(tracker, page))
     {
         return false;
@@ -3119,7 +3112,7 @@ errno MT_FreeAll()
         // cover memory page
         if (isPageProtectWriteable(page->protect))
         {
-            RandBuffer((byte*)(page->address), tracker->PageSize);
+            EraseBuffer((byte*)(page->address), tracker->PageSize);
         }
         num++;
     }
@@ -3146,7 +3139,7 @@ errno MT_FreeAll()
             continue;
         }
         // cover memory region
-        RandBuffer((byte*)(region->address), region->size);
+        EraseBuffer((byte*)(region->address), region->size);
         num++;
     }
 
