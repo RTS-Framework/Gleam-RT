@@ -432,6 +432,8 @@ typedef errno (*SMContinue_t)();
 
 #define SHIELD_MAIN_MODULE 0x0001
 
+#define SHIELD_SEC_MIN_DECOY_SIZE 1024
+
 typedef struct {
     void* EntryPoint;
     void* BaseAddress;
@@ -441,7 +443,7 @@ typedef struct {
 
 typedef BOOL  (*SDGetStatus_t)(SD_Status* status);
 typedef errno (*SDSleep_t)(uint32 milliseconds);
-typedef void  (*SDStop_t)();
+typedef void  (*SDStop_t)(uint32 code);
 
 // about process environment
 //
@@ -499,7 +501,7 @@ typedef errno (*RTInfo_t)(Runtime_Info* info);
 typedef errno (*RTMetrics_t)(Runtime_Metrics* metrics);
 typedef errno (*RTCleanup_t)();
 typedef errno (*RTExit_t)();
-typedef void  (*RTStop_t)();
+typedef void  (*RTStop_t)(uint32 code);
 
 // Runtime_M contains exported runtime methods.
 typedef struct {
