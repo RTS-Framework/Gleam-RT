@@ -35,7 +35,8 @@ bool TestRuntime_WinCrypto();
 bool TestRuntime_Watchdog();
 bool TestRuntime_Sysmon();
 bool TestRuntime_Exit();
-bool TestRuntime_Options();
+bool TestRuntime_DisableCoreModule();
+bool TestRuntime_EnableSecurityMode();
 #pragma warning(pop)
 
 typedef bool (*test_t)();
@@ -56,8 +57,8 @@ static unit tests[] =
     { "Crypto",      TestCrypto     },
     { "Compress",    TestCompress   },
     { "Serialize",   TestSerialize  },
-    { "Mem_Scanner", TestMemScanner },
-    { "Win_API",     TestWinAPI     },
+    { "MemScanner",  TestMemScanner },
+    { "WinAPI",      TestWinAPI     },
 
     { "Runtime_Detector",  TestRuntime_Detector  },
     { "Runtime_Memory",    TestRuntime_Memory    },
@@ -70,7 +71,9 @@ static unit tests[] =
     { "Runtime_Watchdog",  TestRuntime_Watchdog  },
     { "Runtime_Sysmon",    TestRuntime_Sysmon    },
     { "Runtime_Exit",      TestRuntime_Exit      },
-    { "Runtime_Options",   TestRuntime_Options   },
+
+    { "Runtime_DisableCoreModule",  TestRuntime_DisableCoreModule  },
+    { "Runtime_EnableSecurityMode", TestRuntime_EnableSecurityMode },
 };
 
 #endif // TEST_H
