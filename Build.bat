@@ -7,7 +7,10 @@ if "%VisualStudio%" == "" (
 )
 call "%VisualStudio%\VC\Auxiliary\Build\vcvars64.bat"
 
-echo ==================== clean old files =====================
+echo ================== clean outdated dist ===================
+del /S /Q dist
+
+echo =============== clean outdated build files ===============
 rd /S /Q "Release"
 rd /S /Q "x64"
 rd /S /Q "builder\Release"
@@ -19,12 +22,11 @@ echo ==================== generate builder ====================
 MSBuild.exe Gleam-RT.sln /t:builder /p:Configuration=Release /p:Platform=x86
 MSBuild.exe Gleam-RT.sln /t:builder /p:Configuration=Release /p:Platform=x64
 
-echo ================ extract runtime template ================
-del /S /Q dist
+echo ================= build runtime template =================
 cd builder
-echo --------extract template for x86--------
+echo --------build template for x86--------
 "..\Release\builder.exe"
-echo --------extract template for x64--------
+echo --------build template for x64--------
 "..\x64\Release\builder.exe"
 cd ..
 
@@ -34,7 +36,7 @@ MSBuild.exe Gleam-RT.sln /t:test_dll /p:Configuration=Release /p:Platform=x64
 copy Release\test_dll.dll     dist\GleamRT_x86.dll
 copy x64\Release\test_dll.dll dist\GleamRT_x64.dll
 
-echo =================== clean output files ===================
+echo =================== clean build files ====================
 rd /S /Q "Release"
 rd /S /Q "x64"
 rd /S /Q "builder\Release"
