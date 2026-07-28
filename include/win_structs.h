@@ -82,11 +82,11 @@ typedef struct {
 
 typedef struct _NT_TIB {
     PVOID ExceptionList;
-	PVOID StackBase;
-	PVOID StackLimit;
-	PVOID SubSystemTIB;
+    PVOID StackBase;
+    PVOID StackLimit;
+    PVOID SubSystemTIB;
     PVOID FiberData;
-	PVOID ArbitraryUserPointer;
+    PVOID ArbitraryUserPointer;
     struct _NT_TIB* Self;
 } NT_TIB;
 
