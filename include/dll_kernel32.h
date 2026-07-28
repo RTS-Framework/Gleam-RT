@@ -85,28 +85,32 @@ typedef HANDLE HLOCAL;
 #define GENERIC_WRITE   0x40000000
 #define GENERIC_READ    0x80000000
 
-#define FILE_SHARE_DELETE 0x00000004
 #define FILE_SHARE_READ   0x00000001
 #define FILE_SHARE_WRITE  0x00000002
+#define FILE_SHARE_DELETE 0x00000004
+
+#define FILE_READ_ATTRIBUTES 0x80
 
 #define CREATE_ALWAYS     2
 #define CREATE_NEW        1
 #define OPEN_ALWAYS       4
 #define OPEN_EXISTING     3
-#define TRUNCATE_EXISTING 5 
+#define TRUNCATE_EXISTING 5
 
 #define FILE_ATTRIBUTE_ARCHIVE   0x20
 #define FILE_ATTRIBUTE_ENCRYPTED 0x4000
-#define FILE_ATTRIBUTE_HIDDEN    0x2
-#define FILE_ATTRIBUTE_NORMAL    0x80
-#define FILE_ATTRIBUTE_OFFLINE   0x1000
-#define FILE_ATTRIBUTE_READONLY  0x1
-#define FILE_ATTRIBUTE_SYSTEM    0x4
-#define FILE_ATTRIBUTE_TEMPORARY 0x100
 
-#define FILE_FLAG_DELETE_ON_CLOSE 0x04000000
-#define FILE_FLAG_NO_BUFFERING    0x20000000
-#define FILE_FLAG_WRITE_THROUGH   0x80000000
+#define FILE_ATTRIBUTE_READONLY  0x1
+#define FILE_ATTRIBUTE_HIDDEN    0x2
+#define FILE_ATTRIBUTE_SYSTEM    0x4
+#define FILE_ATTRIBUTE_NORMAL    0x80
+#define FILE_ATTRIBUTE_TEMPORARY 0x100
+#define FILE_ATTRIBUTE_OFFLINE   0x1000
+
+#define FILE_FLAG_BACKUP_SEMANTICS 0x02000000
+#define FILE_FLAG_DELETE_ON_CLOSE  0x04000000
+#define FILE_FLAG_NO_BUFFERING     0x20000000
+#define FILE_FLAG_WRITE_THROUGH    0x80000000
 
 #define CP_ACP 0
 
@@ -173,7 +177,7 @@ typedef struct {
 #ifdef _WIN64
 
 typedef struct __declspec(align(16)) {
-    QWORD    Low; 
+    QWORD    Low;
     LONGLONG High;
 } M128A;
 
@@ -674,7 +678,7 @@ typedef DWORD (*WaitForMultipleObjects_t)
 
 typedef BOOL (*DuplicateHandle_t)
 (
-    HANDLE hSourceProcessHandle, HANDLE hSourceHandle, HANDLE hTargetProcessHandle, 
+    HANDLE hSourceProcessHandle, HANDLE hSourceHandle, HANDLE hTargetProcessHandle,
     LPHANDLE lpTargetHandle, DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwOptions
 );
 
@@ -685,7 +689,7 @@ typedef BOOL (*CloseHandle_t)
 
 typedef int (*MultiByteToWideChar_t)
 (
-    UINT CodePage, DWORD dwFlags, LPSTR lpMultiByteStr, int cbMultiByte, 
+    UINT CodePage, DWORD dwFlags, LPSTR lpMultiByteStr, int cbMultiByte,
     LPWSTR lpWideCharStr, int cchWideChar
 );
 
