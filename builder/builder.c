@@ -7,6 +7,7 @@
 #include "ptr_table.h"
 #include "mod_argument.h"
 #include "shield.h"
+#include "option.h"
 #include "runtime.h"
 
 // NOT using stdio is to ensure that no runtime instructions 
@@ -134,7 +135,7 @@ bool saveTemplate()
         printf_s("invalid runtime option stub\n");
         return false;
     }
-    mem_init((void*)(optionStub+1), OPTION_STUB_SIZE-1);
+    mem_init((void*)(optionStub + 1), OPTION_STUB_SIZE - 1);
 
     // save template data to file
 #ifdef _WIN64
