@@ -569,9 +569,7 @@ static byte rol(byte value, uint8 bits)
 {
     return value << bits | value >> (8 - bits);
 }
-#pragma optimize("t", off)
 
-#pragma optimize("t", on)
 void ObfuscateBuffer(void* buf, uint size, uint64 key)
 {
     if (size <= 1)
@@ -689,92 +687,14 @@ static uint64 reverseXORShift64(uint64 seed)
     seed ^= seed << 52;
     return seed;
 }
-#pragma optimize("t", off)
 
-#pragma optimize("t", on)
-void XORBuffer(void* buf, uint bufSize, void* key, uint keySize)
-{
-    if (bufSize == 0 || keySize == 0)
-    {
-        return;
-    }
-    byte* b = buf;
-    byte* k = key;
-    for (uint i = 0; i < bufSize; i++)
-    {
-        b[i] ^= k[i%keySize];
-    }
-}
-#pragma optimize("t", off)
-
-#pragma optimize("t", on)
-void SubstituteBuffer(void* buf, uint size)
+void FillInstruction(void* buf, uint size, uint64 seed)
 {
     if (size == 0)
     {
         return;
     }
-    byte* buffer = buf;
-    // generate a random S-box.
-    byte sbox[256];
-    mem_init(sbox, sizeof(sbox));
-    for (uint i = 0; i < 256; i++)
-    {
-        // (i + size) is used to prevent
-        // incorrect compiler optimization
-        sbox[i] = (byte)(i + size);
-    }
-    ShuffleBuffer(sbox, sizeof(sbox));
-    // substitute buffer.
-    for (uint i = 0; i < size; i++)
-    {
-        buffer[i] = sbox[buffer[i]];
-    }
-}
-#pragma optimize("t", off)
-
-#pragma optimize("t", on)
-void ShuffleBuffer(void* buf, uint size)
-{
-    if (size <= 1)
-    {
-        return;
-    }
-    byte* buffer = buf;
-    uint64  seed = GenerateSeed();
-    for (uint i = size - 1; i > 0; i--)
-    {
-        uint j = RandUintN(seed, i + 1);
-        byte t = buffer[i];
-        buffer[i] = buffer[j];
-        buffer[j] = t;
-        // update seed
-        seed = XORShift64(seed);
-    }
-}
-#pragma optimize("t", off)
-
-#pragma optimize("", off)
-void EraseBuffer(void* buf, uint size)
-{
-    if (size == 0)
-    {
-        return;
-    }
-    RandBuffer(buf, size);
-    mem_init(buf, size);
-}
-#pragma optimize("", on)
-
-#pragma optimize("t", on)
-void EraseInstruction(void* buf, uint size)
-{
-    if (size == 0)
-    {
-        return;
-    }
-    byte*  inst = buf;
-    uint64 seed = GenerateSeed();
+    byte* inst = buf;
     while (size)
     {   
         // update seed
@@ -857,4 +777,79 @@ void EraseInstruction(void* buf, uint size)
         size--;
     }
 }
+
+void XORBuffer(void* buf, uint bufSize, void* key, uint keySize)
+{
+    if (bufSize == 0 || keySize == 0)
+    {
+        return;
+    }
+    byte* b = buf;
+    byte* k = key;
+    for (uint i = 0; i < bufSize; i++)
+    {
+        b[i] ^= k[i%keySize];
+    }
+}
+
+void SubstituteBuffer(void* buf, uint size)
+{
+    if (size == 0)
+    {
+        return;
+    }
+    byte* buffer = buf;
+    // generate a random S-box.
+    byte sbox[256];
+    mem_init(sbox, sizeof(sbox));
+    for (uint i = 0; i < 256; i++)
+    {
+        // (i + size) is used to prevent
+        // incorrect compiler optimization
+        sbox[i] = (byte)(i + size);
+    }
+    ShuffleBuffer(sbox, sizeof(sbox));
+    // substitute buffer.
+    for (uint i = 0; i < size; i++)
+    {
+        buffer[i] = sbox[buffer[i]];
+    }
+}
+
+void ShuffleBuffer(void* buf, uint size)
+{
+    if (size <= 1)
+    {
+        return;
+    }
+    byte* buffer = buf;
+    uint64  seed = GenerateSeed();
+    for (uint i = size - 1; i > 0; i--)
+    {
+        uint j = RandUintN(seed, i + 1);
+        byte t = buffer[i];
+        buffer[i] = buffer[j];
+        buffer[j] = t;
+        // update seed
+        seed = XORShift64(seed);
+    }
+}
 #pragma optimize("t", off)
+
+#pragma optimize("", off)
+void EraseBuffer(void* buf, uint size)
+{
+    if (size == 0)
+    {
+        return;
+    }
+    RandBuffer(buf, size);
+    mem_init(buf, size);
+}
+#pragma optimize("", on)
+
+void EraseInstruction(void* buf, uint size)
+{
+    uint64 seed = GenerateSeed();
+    FillInstruction(buf, size, seed);
+}
