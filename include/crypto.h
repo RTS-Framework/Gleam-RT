@@ -19,6 +19,9 @@ void ObfuscateBuffer(void* buf, uint size, uint64 key);
 // IlluminateBuffer is used to recover obfuscated memory data.
 void IlluminateBuffer(void* buf, uint size, uint64 key);
 
+// FillInstruction is used to generate instruction to fill the buffer.
+void FillInstruction(void* buf, uint size, uint64 seed);
+
 // XORBuffer is used to xor data in buffer with key.
 void XORBuffer(void* buf, uint bufSize, void* key, uint keySize);
 
