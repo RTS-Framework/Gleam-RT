@@ -117,6 +117,7 @@
     <ClInclude Include="build.h" />
     <ClInclude Include="..\include\c_types.h" />
     <ClInclude Include="..\include\win_types.h" />
+    <ClInclude Include="..\include\win_structs.h" />
     <ClInclude Include="..\include\dll_kernel32.h" />
     <ClInclude Include="..\include\dll_ntdll.h" />
     <ClInclude Include="..\include\dll_msvcrt.h" />
@@ -130,10 +131,10 @@
     <ClInclude Include="..\include\lib_match.h" />
     <ClInclude Include="..\include\lib_encode.h" />
     <ClInclude Include="..\include\lib_hash.h" />
-    <ClInclude Include="..\include\rel_addr.h" />
     <ClInclude Include="..\include\hash_api.h" />
     <ClInclude Include="..\include\hash_mod.h" />
     <ClInclude Include="..\include\list_md.h" />
+    <ClInclude Include="..\include\rel_addr.h" />
     <ClInclude Include="..\include\random.h" />
     <ClInclude Include="..\include\crypto.h" />
     <ClInclude Include="..\include\compress.h" />
@@ -160,6 +161,7 @@
     <ClInclude Include="..\include\watchdog.h" />
     <ClInclude Include="..\include\sysmon.h" />
     <ClInclude Include="..\include\shield.h" />
+    <ClInclude Include="..\include\option.h" />
     <ClInclude Include="..\include\runtime.h" />
     <ClInclude Include="..\include\debug.h" />
   </ItemGroup>
