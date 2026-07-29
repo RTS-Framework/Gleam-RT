@@ -20,10 +20,10 @@ void* CamouflageStartAddress(HMODULE hModule, void* address)
     {
         return address;
     }
-    // select a random start address
+    // select a random start address in .text
     uintptr base  = (uintptr)hModule + image.Text.VirtualAddress;
     uintptr range = image.Text.SizeOfRawData;
-    uintptr begin = base + RandUintN((uint64)address, range);
+    uintptr begin = base + RandUintN(0, range);
     uintptr end   = base + image.Text.SizeOfRawData;
     for (uintptr addr = begin; addr < end; addr++)
     {
