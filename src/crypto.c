@@ -562,19 +562,11 @@ static void reverseSBox(byte* sbox)
 
 static byte ror(byte value, uint8 bits)
 {
-    if (bits == 0)
-    {
-        return value;
-    }
     return value >> bits | value << (8 - bits);
 }
 
 static byte rol(byte value, uint8 bits)
 {
-    if (bits == 0)
-    {
-        return value;
-    }
     return value << bits | value >> (8 - bits);
 }
 #pragma optimize("t", off)
@@ -587,25 +579,32 @@ void ObfuscateBuffer(void* buf, uint size, uint64 key)
         return;
     }
     byte* buffer = buf;
-    // generate seed
-    uint64 seed = key * size;
+    // generate seeds
+    uint64 seed0 = XORShift64(key);
+    uint64 seed1 = XORShift64(seed0);
+    uint64 seed2 = XORShift64(seed1);
     // generate a random S-box from seed
     byte sbox[256];
-    initObfuscateSBox(sbox, seed);
+    initObfuscateSBox(sbox, seed0);
     // substitute buffer
     for (uint i = 0; i < size; i++)
     {
         buffer[i] = sbox[buffer[i]];
     }
     // shuffle buffer
-    seed *= (key + size);
     for (uint i = size - 1; i > 0; i--)
     {
-        uint j = RandUintN(seed, i + 1);
+        uint j = seed2 % (i + 1);
         byte t = buffer[i];
         buffer[i] = buffer[j];
         buffer[j] = t;
-        seed = XORShift64(seed);
+        seed2 = XORShift64(seed2);
+    }
+    // substitute buffer
+    initObfuscateSBox(sbox, seed1);
+    for (uint i = 0; i < size; i++)
+    {
+        buffer[i] = sbox[buffer[i]];
     }
 }
 
@@ -616,29 +615,36 @@ void IlluminateBuffer(void* buf, uint size, uint64 key)
         return;
     }
     byte* buffer = buf;
-    // generate seed
-    uint64 seed = key * size;
+    // generate seeds
+    uint64 seed0 = XORShift64(key);
+    uint64 seed1 = XORShift64(seed0);
+    uint64 seed2 = XORShift64(seed1);
     // generate a random S-box from seed
     byte sbox[256];
-    initObfuscateSBox(sbox, seed);
+    initObfuscateSBox(sbox, seed1);
     reverseSBox(sbox);
-    // unshuffle buffer
-    seed *= (key + size);
+    // substitute buffer
+    for (uint i = 0; i < size; i++)
+    {
+        buffer[i] = sbox[buffer[i]];
+    }
     // advance to the final seed
     for (uint i = size - 1; i > 0; i--)
     {
-        seed = XORShift64(seed);
+        seed2 = XORShift64(seed2);
     }
     // reverse shuffle
     for (uint i = 1; i < size; i++)
     {
-        seed = reverseXORShift64(seed);
-        uint j = RandUintN(seed, i + 1);
+        seed2 = reverseXORShift64(seed2);
+        uint j = seed2 % (i + 1);
         byte t = buffer[i];
         buffer[i] = buffer[j];
         buffer[j] = t;
     }
     // substitute buffer
+    initObfuscateSBox(sbox, seed0);
+    reverseSBox(sbox);
     for (uint i = 0; i < size; i++)
     {
         buffer[i] = sbox[buffer[i]];
@@ -657,7 +663,7 @@ static void initObfuscateSBox(byte* sbox, uint64 seed)
     }
     for (uint i = 255; i > 0; i--)
     {
-        uint j = RandUintN(seed, i + 1);
+        uint j = seed % (i + 1);
         byte t = sbox[i];
         sbox[i] = sbox[j];
         sbox[j] = t;
