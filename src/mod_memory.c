@@ -26,8 +26,11 @@
 typedef struct {
     uintptr address;
     uint    size;
-    bool    isRWX;
     bool    locked;
+
+    // for protect RWX region
+    bool  isRWX;
+    void* shelter; // TODO update VirtualFree
 
     // only for rwx region
     byte key[CRYPTO_KEY_SIZE];
@@ -237,8 +240,8 @@ MemoryTracker_M* InitMemoryTracker(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr trackerAddr = addr + LAYOUT_MT_STRUCT + RandUintN(addr, 128);
-    uintptr moduleAddr  = addr + LAYOUT_MT_MODULE + RandUintN(addr, 128);
+    uintptr trackerAddr = addr + LAYOUT_MT_STRUCT + RandUintN(0, 128);
+    uintptr moduleAddr  = addr + LAYOUT_MT_MODULE + RandUintN(0, 128);
     // allocate tracker memory
     MemoryTracker* tracker = (MemoryTracker*)trackerAddr;
     mem_init(tracker, sizeof(MemoryTracker));
@@ -506,40 +509,55 @@ LPVOID MT_VirtualAlloc(LPVOID address, SIZE_T size, DWORD type, DWORD protect)
     // adjust protect at sometime
     protect = replacePageProtect(protect);
 
-    LPVOID page;
+    LPVOID shelter = NULL;
+    LPVOID memPage = NULL;
+
     bool success = false;
     for (;;)
     {
         if (type == (MEM_COMMIT|MEM_RESERVE) && protect == PAGE_EXECUTE_READWRITE)
         {
+            // create shelter page for protect RWX memory page
+            SIZE_T shelterSize = size + 1024 + RandUintN(0, (uint)(64 * 4096));
+            shelter = tracker->VirtualAlloc(address, shelterSize, type, PAGE_READWRITE);
+            if (shelter == NULL)
+            {
+                break;
+            }
+            shelter = tracker->VirtualAlloc(address, shelterSize, type, PAGE_READWRITE);
+            if (shelter == NULL)
+            {
+                break;
+            }
             // for make the allocation type is Read+Write
-            page = tracker->VirtualAlloc(address, size, type, PAGE_READWRITE);
-            if (page == NULL)
+            memPage = tracker->VirtualAlloc(address, size, type, PAGE_READWRITE);
+            if (memPage == NULL)
             {
                 break;
             }
             DWORD old;
-            if (!tracker->VirtualProtect(page, size, PAGE_EXECUTE_READWRITE, &old))
+            if (!tracker->VirtualProtect(memPage, size, PAGE_EXECUTE_READWRITE, &old))
             {
                 break;
             }
-            memRegion region = {
-                .address = (uintptr)page,
-                .size    = size,
-                .isRWX   = true,
-                .locked  = false,
-            };
+            // record new RWX region
+            memRegion region;
+            mem_init(&region, sizeof(memRegion));
+            region.address = (uintptr)memPage;
+            region.size    = size;
+            region.isRWX   = true;
+            region.shelter = shelter;
             if (!List_Insert(&tracker->Regions, &region))
             {
                 break;
             }
         } else {
-            page = tracker->VirtualAlloc(address, size, type, protect);
-            if (page == NULL)
+            memPage = tracker->VirtualAlloc(address, size, type, protect);
+            if (memPage == NULL)
             {
                 break;
             }
-            if (!allocPage((uintptr)page, size, type, protect))
+            if (!allocPage((uintptr)memPage, size, type, protect))
             {
                 break;
             }
@@ -550,21 +568,29 @@ LPVOID MT_VirtualAlloc(LPVOID address, SIZE_T size, DWORD type, DWORD protect)
 
     if (!MT_Unlock())
     {
-        if (page != NULL)
+        if (shelter != NULL)
         {
-            tracker->VirtualFree(page, 0, MEM_RELEASE);
+            tracker->VirtualFree(shelter, 0, MEM_RELEASE);
+        }
+        if (memPage != NULL)
+        {
+            tracker->VirtualFree(memPage, 0, MEM_RELEASE);
         }
         return NULL;
     }
     if (!success)
     {
-        if (page != NULL)
+        if (shelter != NULL)
         {
-            tracker->VirtualFree(page, 0, MEM_RELEASE);
+            tracker->VirtualFree(shelter, 0, MEM_RELEASE);
+        }
+        if (memPage != NULL)
+        {
+            tracker->VirtualFree(memPage, 0, MEM_RELEASE);
         }
         return NULL;
     }
-    return page;
+    return memPage;
 }
 
 static bool allocPage(uintptr address, uint size, uint32 type, uint32 protect)
@@ -594,12 +620,10 @@ static bool allocPage(uintptr address, uint size, uint32 type, uint32 protect)
 
 static bool reserveRegion(MemoryTracker* tracker, uintptr address, uint size)
 {
-    memRegion region = {
-        .address = address,
-        .size    = size,
-        .isRWX   = false,
-        .locked  = false,
-    };
+    memRegion region;
+    mem_init(&region, sizeof(memRegion));
+    region.address = address;
+    region.size    = size;
     return List_Insert(&tracker->Regions, &region);
 }
 
@@ -614,10 +638,9 @@ static bool commitPage(MemoryTracker* tracker, uintptr address, uint size, uint3
         numPage++;
     }
     register List* pages = &tracker->Pages;
-    memPage page = {
-        .protect = protect,
-        .locked  = false,
-    };
+    memPage page;
+    mem_init(&page, sizeof(memPage));
+    page.protect = protect;
     for (uint i = 0; i < numPage; i++)
     {
         page.address = address + i * pageSize;
@@ -2854,10 +2877,23 @@ static bool isEmptyPage(MemoryTracker* tracker, memPage* page)
 
 static bool encryptRWXRegion(MemoryTracker* tracker, memRegion* region)
 {
+    void* addr = (void*)(region->address);
+    // copy data to shelter and encrypt it
+    mem_copy(region->shelter, addr, region->size);
     RandBuffer(region->key, CRYPTO_KEY_SIZE);
     RandBuffer(region->iv, CRYPTO_IV_SIZE);
-    void* addr = (void*)(region->address);
-    EncryptBuffer(addr, region->size, region->key, region->iv);
+    EncryptBuffer(region->shelter, region->size, region->key, region->iv);
+    // fill garbage instructions to it
+    mem_init(addr, region->size);
+    uint64 seed = (uint64)(addr);
+    uint decoySize = region->size;
+    if (decoySize > 4096)
+    {
+        decoySize = 4096;
+    }
+    decoySize = RandUintN(seed, decoySize);
+    FillInstruction(addr, decoySize, seed);
+    // adjust memory page protect
     DWORD old;
     return tracker->VirtualProtect(addr, region->size, PAGE_READWRITE, &old);
 }
@@ -2865,9 +2901,16 @@ static bool encryptRWXRegion(MemoryTracker* tracker, memRegion* region)
 static bool decryptRWXRegion(MemoryTracker* tracker, memRegion* region)
 {
     void* addr = (void*)(region->address);
-    DecryptBuffer(addr, region->size, region->key, region->iv);
+    // recover memory page protect
     DWORD old;
-    return tracker->VirtualProtect(addr, region->size, PAGE_EXECUTE_READWRITE, &old);
+    if (!tracker->VirtualProtect(addr, region->size, PAGE_EXECUTE_READWRITE, &old))
+    {
+        return false;
+    }
+    // copy cipher data from shelter to page and decrypt them
+    mem_copy(addr, region->shelter, region->size);
+    DecryptBuffer(addr, region->size, region->key, region->iv);
+    return true;
 }
 
 static void deriveKey(MemoryTracker* tracker, memPage* page, byte* key)
@@ -3192,6 +3235,13 @@ errno MT_FreeAll()
         {
             errno = ERR_MEMORY_CLEAN_REGION;
         }
+        if (region->isRWX)
+        {
+            if (!tracker->VirtualFree((LPVOID)(region->shelter), 0, MEM_RELEASE))
+            {
+                errno = ERR_MEMORY_CLEAN_REGION_RWX;
+            }
+        }
         if (!List_Delete(regions, idx))
         {
             errno = ERR_MEMORY_DELETE_REGION;
@@ -3323,6 +3373,16 @@ errno MT_Clean()
             if (errno == NO_ERROR)
             {
                 errno = ERR_MEMORY_CLEAN_REGION;
+            }
+        }
+        if (region->isRWX)
+        {
+            if (!tracker->VirtualFree((LPVOID)(region->shelter), 0, MEM_RELEASE))
+            {
+                if (errno == NO_ERROR)
+                {
+                    errno = ERR_MEMORY_CLEAN_REGION_RWX;
+                }
             }
         }
         num++;
