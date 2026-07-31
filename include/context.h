@@ -9,8 +9,6 @@
 #include "hash_api.h"
 #include "errno.h"
 
-typedef PML* (*RT_GetPML_t)();
-
 typedef errno (*rt_lock_mods_t)();
 typedef errno (*rt_unlock_mods_t)();
 typedef void  (*rt_try_lock_mods_t)();
@@ -31,6 +29,7 @@ typedef errno  (*TT_ForceKillThreads_t)();
 
 typedef BOOL (*WD_IsEnabled_t)();
 
+typedef PML*  (*RT_GetPML_t)();
 typedef errno (*RT_Cleanup_t)();
 typedef void  (*RT_Stop_t)(uint32 code);
 
@@ -69,7 +68,6 @@ typedef struct {
     VirtualFree_t            VirtualFree;
     VirtualProtect_t         VirtualProtect;
     VirtualQuery_t           VirtualQuery;
-    FlushInstructionCache_t  FlushInstructionCache;
     SuspendThread_t          SuspendThread;
     ResumeThread_t           ResumeThread;
     GetThreadContext_t       GetThreadContext;
