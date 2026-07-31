@@ -104,19 +104,16 @@ typedef struct {
 } handle;
 
 typedef struct {
-    // store options
-    bool NotEraseInstruction;
-
-    // process environment
-    PML* PML;
-
-    // core dll address
-    HMODULE hKernel32;
+    // get process module list
+    RT_GetPML_t GetPML;
 
     // store HashAPI with spoof call
     FindAPI_MA_t FindAPI_MA;
 
-    // API addresses
+    // core dll address
+    HMODULE hKernel32;
+
+    // API address
     CreateMutexA_t           CreateMutexA;
     CreateMutexW_t           CreateMutexW;
     CreateMutexExA_t         CreateMutexExA;
@@ -145,11 +142,11 @@ typedef struct {
     ReleaseMutex_t           ReleaseMutex;
     WaitForSingleObject_t    WaitForSingleObject;
 
-    // cached module handles
+    // cached module handle
     HMODULE hAdvapi32;
     HMODULE hWs2_32;
 
-    // cached API addresses
+    // cached API address
     CancelIoEx_t CancelIoEx;
 
     RegCreateKeyA_t   RegCreateKeyA;
@@ -349,19 +346,16 @@ ResourceTracker_M* InitResourceTracker(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr trackerAddr = addr + LAYOUT_RT_STRUCT + RandUintN(addr, 128);
-    uintptr moduleAddr  = addr + LAYOUT_RT_MODULE + RandUintN(addr, 128);
+    uintptr trackerAddr = addr + LAYOUT_RT_STRUCT + RandUintN(0, 128);
+    uintptr moduleAddr  = addr + LAYOUT_RT_MODULE + RandUintN(0, 128);
     // allocate tracker memory
     ResourceTracker* tracker = (ResourceTracker*)trackerAddr;
     mem_init(tracker, sizeof(ResourceTracker));
-    // store options
-    tracker->NotEraseInstruction = context->NotEraseInstruction;
-    // store process environment
-    tracker->PML = context->PML;
+    // store runtime method
+    tracker->GetPML     = context->GetPML;
+    tracker->FindAPI_MA = context->FindAPI_MA;
     // store core dll address
     tracker->hKernel32 = context->hKernel32;
-    // store HashAPI method
-    tracker->FindAPI_MA = context->FindAPI_MA;
     // initialize tracker
     errno errno = NO_ERROR;
     for (;;)
@@ -623,12 +617,11 @@ static void setTrackerPointer(ResourceTracker* tracker)
     *(ResourceTracker**)(POINTER_OFFSET_RESOURCE_TRACKER) = tracker;
 }
 
-#pragma optimize("", off)
+__declspec(noinline)
 static ResourceTracker* getTrackerPointer()
 {
     return *(ResourceTracker**)(POINTER_OFFSET_RESOURCE_TRACKER);
 }
-#pragma optimize("", on)
 
 // For unknown reasons, placing RT_Lock before a function call like CreateEventA
 // will cause Go runtime to fail during initialization, so the lock granularity
@@ -2668,7 +2661,7 @@ static HMODULE getAdvapi32Handle(ResourceTracker* tracker)
     uint mHash = 0x5FE996AD;
     uint hKey  = 0x94E3EBAE;
 #endif
-    HMODULE module = FindMod_MHL(tracker->PML, mHash, hKey);
+    HMODULE module = FindMod_MHL(tracker->GetPML(), mHash, hKey);
     if (module == NULL)
     {
         return NULL;
@@ -2691,7 +2684,7 @@ static HMODULE getWs2_32Handle(ResourceTracker* tracker)
     uint mHash = 0x5585015C;
     uint hKey  = 0xE6423398;
 #endif
-    HMODULE module = FindMod_MHL(tracker->PML, mHash, hKey);
+    HMODULE module = FindMod_MHL(tracker->GetPML(), mHash, hKey);
     if (module == NULL)
     {
         return NULL;
