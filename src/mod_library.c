@@ -28,10 +28,7 @@ typedef struct {
 } module;
 
 typedef struct {
-    // store options
-    bool NotEraseInstruction;
-
-    // API addresses
+    // API address
     LoadLibraryA_t             LoadLibraryA;
     LoadLibraryW_t             LoadLibraryW;
     LoadLibraryExA_t           LoadLibraryExA;
@@ -100,13 +97,11 @@ LibraryTracker_M* InitLibraryTracker(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr trackerAddr = addr + LAYOUT_LT_STRUCT + RandUintN(addr, 128);
-    uintptr moduleAddr  = addr + LAYOUT_LT_MODULE + RandUintN(addr, 128);
+    uintptr trackerAddr = addr + LAYOUT_LT_STRUCT + RandUintN(0, 128);
+    uintptr moduleAddr  = addr + LAYOUT_LT_MODULE + RandUintN(0, 128);
     // allocate tracker memory
     LibraryTracker* tracker = (LibraryTracker*)trackerAddr;
     mem_init(tracker, sizeof(LibraryTracker));
-    // store options
-    tracker->NotEraseInstruction = context->NotEraseInstruction;
     // initialize tracker
     errno errno = NO_ERROR;
     for (;;)
@@ -258,12 +253,11 @@ static void setTrackerPointer(LibraryTracker* tracker)
     *(LibraryTracker**)(POINTER_OFFSET_LIBRARY_TRACKER) = tracker;
 }
 
-#pragma optimize("", off)
+__declspec(noinline)
 static LibraryTracker* getTrackerPointer()
 {
     return *(LibraryTracker**)POINTER_OFFSET_LIBRARY_TRACKER;
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 HMODULE LT_LoadLibraryA(LPCSTR lpLibFileName)
@@ -579,7 +573,7 @@ __declspec(noinline)
 static bool isGleamRT_A(LPCSTR lpLibFileName)
 {
     uint32 key  = 0xFFFFFFFF;
-    uint32 hash = 0x65DF1F0C;
+    uint32 hash = 0x0C1FDF65;
     return CalcModHash32_A((byte*)lpLibFileName, key) == hash;
 }
 
@@ -587,7 +581,7 @@ __declspec(noinline)
 static bool isGleamRT_W(LPCWSTR lpLibFileName)
 {
     uint32 key  = 0xFFFFFFFF;
-    uint32 hash = 0x65DF1F0C;
+    uint32 hash = 0x0C1FDF65;
     return CalcModHash32_W((uint16*)lpLibFileName, key) == hash;
 }
 
