@@ -62,7 +62,7 @@ static bool TestArgument_GetValue()
         return false;
     }
     arg1[12] = 0x00; // set string end
-    if (strcmp_a(arg1, "aaabbbccc") != 0)
+    if (!strequ_a(arg1, "aaabbbccc"))
     {
         printf_s("argument 1 is invalid data\n");
         return false;
@@ -162,7 +162,7 @@ static bool TestArgument_GetPointer()
         printf_s("failed to get argument with id 1\n");
         return false;
     }
-    if (strcmp_a(arg1, "aaabbbccc") != 0)
+    if (!strequ_a(arg1, "aaabbbccc"))
     {
         printf_s("argument 1 is invalid data\n");
         return false;

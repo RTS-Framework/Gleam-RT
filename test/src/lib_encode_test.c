@@ -46,7 +46,7 @@ static bool TestLibEncode_Hex()
         printf_s("invalid encode length\n");
         return false;
     }
-    if (strcmp_a("1234ABCD", buf) != 0)
+    if (!strequ_a("1234ABCD", buf))
     {
         printf_s("invalid encode data\n");
         return false;
@@ -101,7 +101,7 @@ static bool TestLibEncode_Base64()
         printf_s("invalid encode length\n");
         return false;
     }
-    if (strcmp_a("TWFu", buf) != 0)
+    if (!strequ_a("TWFu", buf))
     {
         printf_s("invalid encode data\n");
         return false;
@@ -129,7 +129,7 @@ static bool TestLibEncode_Base64()
     // one '=' padding.
     byte data2[] = { 'M', 'a' };
     Base64_Encode(data2, sizeof(data2), buf);
-    if (strcmp_a("TWE=", buf) != 0)
+    if (!strequ_a("TWE=", buf))
     {
         printf_s("invalid encode data\n");
         return false;
@@ -144,7 +144,7 @@ static bool TestLibEncode_Base64()
     // two '=' padding.
     byte data3[] = { 'M' };
     Base64_Encode(data3, sizeof(data3), buf);
-    if (strcmp_a("TQ==", buf) != 0)
+    if (!strequ_a("TQ==", buf))
     {
         printf_s("invalid encode data\n");
         return false;

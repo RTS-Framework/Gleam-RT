@@ -37,7 +37,7 @@ bool TestRuntime_Memory()
     return true;
 }
 
-bool TestMemory_Virtual()
+static bool TestMemory_Virtual()
 {
     uint64* test1 = (uint64*)runtime->Memory.Alloc(sizeof(uint64));
     if (test1 == NULL)

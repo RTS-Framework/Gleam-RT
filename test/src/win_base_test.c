@@ -40,7 +40,7 @@ static bool TestWinBase_ANSIToUTF16()
         printf_s("failed to convert ANSI to UTF16: 0x%X\n", GetLastErrno());
         return false;
     }
-    if (strcmp_w(s1, s) != 0)
+    if (!strequ_w(s1, s))
     {
         printf_s("unexpected UTF16 string\n");
         return false;
@@ -60,7 +60,7 @@ static bool TestWinBase_UTF16ToANSI()
         printf_s("failed to convert UTF16 to ANSI: 0x%X\n", GetLastErrno());
         return false;
     }
-    if (strcmp_a(s1, s) != 0)
+    if (!strequ_a(s1, s))
     {
         printf_s("unexpected UTF16 string\n");
         return false;

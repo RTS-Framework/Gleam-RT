@@ -165,7 +165,7 @@ static bool TestSer_Unserialize()
         printf_s("invalid unserialize arg3\n");
         return false;
     }
-    if (strcmp_a(s1.arg4, s2.arg4))
+    if (!strequ_a(s1.arg4, s2.arg4))
     {
         printf_s("invalid unserialize arg4\n");
         return false;

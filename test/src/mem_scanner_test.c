@@ -120,7 +120,7 @@ static bool TestBinToPattern()
 {
     byte pattern[32];
     runtime->MemScanner.BinToPattern("test", 4, pattern);
-    if (strcmp_a(pattern, "74 65 73 74 ") != 0)
+    if (!strequ_a(pattern, "74 65 73 74 "))
     {
         printf_s("invalid output pattern\n");
         return false;
@@ -128,7 +128,7 @@ static bool TestBinToPattern()
 
     uint64 value = 0xABCDEF123456;
     runtime->MemScanner.BinToPattern(&value, sizeof(value), pattern);
-    if (strcmp_a(pattern, "56 34 12 EF CD AB 00 00 ") != 0)
+    if (!strequ_a(pattern, "56 34 12 EF CD AB 00 00 "))
     {
         printf_s("invalid output pattern\n");
         return false;
