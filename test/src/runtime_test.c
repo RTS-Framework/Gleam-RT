@@ -10,13 +10,14 @@
 #include "runtime.h"
 #include "test.h"
 
+static bool  initRuntime(Runtime_Opts* opts);
 static void* loadInstance();
 static void* calcEpilogue();
 
 bool TestInitRuntime()
 {
     Runtime_Opts opts = {
-        .ImagePinningHash    = 0,
+        .ImagePinningHash    = 0x4E8B01B5BB7B24DB, // "test_main.exe"
         .ShieldModuleHash    = 0,
         .ShieldEntryPoint    = 0,
         .ShieldMemAddress    = 0,
@@ -28,18 +29,9 @@ bool TestInitRuntime()
         .NotAdjustProtect    = false,
         .TrackCurrentThread  = false,
     };
-#ifdef PIC_MODE
-    typedef Runtime_M* (*InitRuntime_t)(void* boot, Runtime_Opts* opts);
-    InitRuntime_t initRuntime = loadInstance();
-    runtime = initRuntime(NULL, &opts);
-#else
-    runtime = InitRuntime(&opts);
-#endif // PIC_MODE
-    if (runtime == NULL)
+    if (!initRuntime(&opts))
     {
-        printf_s("failed to initialize runtime: 0x%X\n", GetLastErrno());
         panic(PANIC_UNREACHABLE_CODE);
-        return false;
     }
     return true;
 }
@@ -61,10 +53,10 @@ bool TestRuntime_Exit()
     return true;
 }
 
-bool TestRuntime_Options()
+bool TestRuntime_DisableCoreModule()
 {
     Runtime_Opts opts = {
-        .ImagePinningHash    = 0,
+        .ImagePinningHash    = 0x4E8B01B5BB7B24DB, // "test_main.exe"
         .ShieldModuleHash    = 0,
         .ShieldEntryPoint    = 0,
         .ShieldMemAddress    = 0,
@@ -76,16 +68,8 @@ bool TestRuntime_Options()
         .NotAdjustProtect    = false,
         .TrackCurrentThread  = false,
     };
-#ifdef PIC_MODE
-    typedef Runtime_M* (*InitRuntime_t)(void* boot, Runtime_Opts* opts);
-    InitRuntime_t initRuntime = loadInstance();
-    runtime = initRuntime(NULL, &opts);
-#else
-    runtime = InitRuntime(&opts);
-#endif // PIC_MODE
-    if (runtime == NULL)
+    if (!initRuntime(&opts))
     {
-        printf_s("failed to initialize runtime: 0x%X\n", GetLastErrno());
         return false;
     }
 
@@ -106,6 +90,49 @@ bool TestRuntime_Options()
     if (errno != NO_ERROR)
     {
         printf_s("find last errno: 0x%X\n", errno);
+        return false;
+    }
+    return true;
+}
+
+bool TestRuntime_EnableSecurityMode()
+{
+    Runtime_Opts opts = {
+        .ImagePinningHash    = 0x4E8B01B5BB7B24DB, // "test_main.exe"
+        .ShieldModuleHash    = 0,
+        .ShieldEntryPoint    = 0,
+        .ShieldMemAddress    = 0,
+        .EnableSecurityMode  = true,
+        .DisableDetector     = false,
+        .DisableSysmon       = false,
+        .DisableWatchdog     = false,
+        .NotEraseInstruction = true,
+        .NotAdjustProtect    = false,
+        .TrackCurrentThread  = false,
+    };
+    if (initRuntime(&opts))
+    {
+        return false;
+    }
+    if (GetLastErrno() != ERR_RUNTIME_DETECT_UNSAFE_ENV)
+    {
+        return false;
+    }
+    return true;
+}
+
+static bool initRuntime(Runtime_Opts* opts)
+{
+#ifdef PIC_MODE
+    typedef Runtime_M* (*InitRuntime_t)(void* boot, Runtime_Opts* opts);
+    InitRuntime_t initRuntime = loadInstance();
+    runtime = initRuntime(NULL, opts);
+#else
+    runtime = InitRuntime(NULL, opts);
+#endif // PIC_MODE
+    if (runtime == NULL)
+    {
+        printf_s("failed to initialize runtime: 0x%X\n", GetLastErrno());
         return false;
     }
     return true;
@@ -135,9 +162,10 @@ static void* calcEpilogue()
     byte header[ARG_HEADER_SIZE];
     mem_init(header, sizeof(header));
     mem_copy(header, (byte*)stub, sizeof(header));
-    byte* buf = header + ARG_CRYPTO_KEY_SIZE;
+    byte* buf = header + 1 + ARG_CRYPTO_KEY_SIZE;
     uint  fsz = sizeof(uint16) + sizeof(uint32);
-    XORBuffer(buf, fsz, (byte*)stub, ARG_CRYPTO_KEY_SIZE);
+    byte* key = header + ARG_OFFSET_CRYPTO_KEY;
+    XORBuffer(buf, fsz, key, ARG_CRYPTO_KEY_SIZE);
     uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
     return (void*)(stub + ARG_HEADER_SIZE + argsSize);
 }
