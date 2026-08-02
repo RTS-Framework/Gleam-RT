@@ -82,10 +82,15 @@ void RandBuffer(void* buf, int64 size);
 // example: RandSequence(array, 4) will set array like [0, 3, 1, 2]
 void RandSequence(int* array, int n);
 
-// for generate random data fast.
+// for generate random data faster.
 uint   XORShift(uint seed);
 uint32 XORShift32(uint32 seed);
 uint64 XORShift64(uint64 seed);
+
+// for modules like crypto.
+uint   ReverseXORShift(uint seed);
+uint32 ReverseXORShift32(uint32 seed);
+uint64 ReverseXORShift64(uint64 seed);
 
 // GenerateSeed is used to generate a seed from CPU context.
 #pragma warning(push)
