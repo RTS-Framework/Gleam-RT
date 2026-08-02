@@ -357,22 +357,15 @@ static uint64 ror(uint64 value, uint8 bits)
     return value >> bits | value << (64 - bits);
 }
 
-__declspec(noinline)
 uint XORShift(uint seed)
 {
 #ifdef _WIN64
-    seed ^= seed << 13;
-    seed ^= seed >> 7;
-    seed ^= seed << 17;
+    return XORShift64(seed);
 #elif _WIN32
-    seed ^= seed << 13;
-    seed ^= seed >> 17;
-    seed ^= seed << 5;
+    return XORShift32(seed);
 #endif
-    return seed;
 }
 
-__declspec(noinline)
 uint32 XORShift32(uint32 seed)
 {
     seed ^= seed << 13;
@@ -381,12 +374,55 @@ uint32 XORShift32(uint32 seed)
     return seed;
 }
 
-__declspec(noinline)
 uint64 XORShift64(uint64 seed)
 {
     seed ^= seed << 13;
     seed ^= seed >> 7;
     seed ^= seed << 17;
+    return seed;
+}
+
+uint ReverseXORShift(uint seed)
+{
+#ifdef _WIN64
+    return ReverseXORShift64(seed);
+#elif _WIN32
+    return ReverseXORShift32(seed);
+#endif
+}
+
+uint64 ReverseXORShift64(uint64 seed)
+{
+    // reverse seed ^= seed << 17
+    seed ^= seed << 17;
+    seed ^= seed << 34;
+
+    // reverse seed ^= seed >> 7
+    seed ^= seed >> 7;
+    seed ^= seed >> 14;
+    seed ^= seed >> 28;
+    seed ^= seed >> 56;
+
+    // reverse seed ^= seed << 13
+    seed ^= seed << 13;
+    seed ^= seed << 26;
+    seed ^= seed << 52;
+    return seed;
+}
+
+uint32 ReverseXORShift32(uint32 seed)
+{
+    // reverse: seed ^= seed << 5
+    seed ^= seed << 5;
+    seed ^= seed << 10;
+    seed ^= seed << 20;
+
+    // reverse: seed ^= seed >> 17
+    seed ^= seed >> 17;
+
+    // reverse: seed ^= seed << 13
+    seed ^= seed << 13;
+    seed ^= seed << 26;
     return seed;
 }
 
