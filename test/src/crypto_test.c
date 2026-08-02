@@ -9,6 +9,7 @@ static bool TestEncryptBuffer();
 static bool TestDecryptBuffer();
 static bool TestObfuscateBuffer();
 static bool TestIlluminateBuffer();
+static bool TestFillInstruction();
 static bool TestXORBuffer();
 static bool TestSubstituteBuffer();
 static bool TestShuffleBuffer();
@@ -25,6 +26,7 @@ bool TestCrypto()
         { TestDecryptBuffer    },
         { TestObfuscateBuffer  },
         { TestIlluminateBuffer },
+        { TestFillInstruction  },
         { TestXORBuffer        },
         { TestSubstituteBuffer },
         { TestShuffleBuffer    },
@@ -137,16 +139,17 @@ static bool TestObfuscateBuffer()
 {
     printf_s("=======TestObfuscateBuffer begin========\n");
 
-    byte data[64];
+    byte data[256];
     mem_init(data, sizeof(data));
-    data[0] = 0x00;
-    data[1] = 0x01;
-    data[2] = 0x02;
-    data[3] = 0x03;
-    data[4] = 0x04;
-    data[5] = 0x05;
-    data[6] = 0x06;
-    data[7] = 0x07;
+    for (int i = 0; i < 128; i++)
+    {
+        data[i] = (byte)i;
+    }
+    for (int i = 128; i < 256; i++)
+    {
+        data[i] = 0;
+    }
+    printHexBytes(data, sizeof(data));
 
     uint64 key = RandUint64(0);
     ObfuscateBuffer(data, sizeof(data), key);
@@ -160,25 +163,23 @@ static bool TestIlluminateBuffer()
 {
     printf_s("=======TestIlluminateBuffer begin========\n");
 
-    byte data[64];
+    byte data[256];
     mem_init(data, sizeof(data));
-    data[0] = 0x00;
-    data[1] = 0x01;
-    data[2] = 0x02;
-    data[3] = 0x03;
-    data[4] = 0x04;
-    data[5] = 0x05;
-    data[6] = 0x06;
-    data[7] = 0x07;
+    for (int i = 0; i < 128; i++)
+    {
+        data[i] = (byte)i;
+    }
+    for (int i = 128; i < 256; i++)
+    {
+        data[i] = 0;
+    }
 
-    byte buf[64];
+    byte buf[256];
     mem_copy(buf, data, sizeof(data));
 
     uint64 key = RandUint64(0);
     ObfuscateBuffer(buf, sizeof(buf), key);
     IlluminateBuffer(buf, sizeof(buf), key);
-    printHexBytes(buf, sizeof(buf));
-
     if (!mem_equal(buf, data, sizeof(data)))
     {
         printf_s("[error] recover incorrect data\n");
@@ -186,6 +187,30 @@ static bool TestIlluminateBuffer()
     }
 
     printf_s("=======TestIlluminateBuffer passed=======\n\n");
+    return true;
+}
+
+static bool TestFillInstruction()
+{
+    printf_s("======TestFillInstruction begin=======\n");
+
+    byte inst[256];
+    mem_init(inst, sizeof(inst));
+
+    uint64 seed = 123;
+    FillInstruction(inst, sizeof(inst), seed);
+    printHexBytes(inst, sizeof(inst));
+
+    byte copy[256];
+    mem_copy(copy, inst, sizeof(inst));
+    FillInstruction(inst, sizeof(inst), seed);
+    if (!mem_equal(copy, inst, sizeof(inst)))
+    {
+        printf_s("[error] different instruction\n");
+        return false;
+    }
+
+    printf_s("======TestFillInstruction passed======\n\n");
     return true;
 }
 
@@ -222,6 +247,12 @@ static bool TestSubstituteBuffer()
     printf_s("=======TestSubstituteBuffer begin=======\n");
 
     byte data[256];
+    mem_init(data, sizeof(data));
+    for (int i = 0; i < 256; i++)
+    {
+        data[i] = (byte)i;
+    }
+
     SubstituteBuffer(data, sizeof(data));
     printHexBytes(data, sizeof(data));
 
@@ -234,6 +265,12 @@ static bool TestShuffleBuffer()
     printf_s("=======TestShuffleBuffer begin=======\n");
 
     byte data[256];
+    mem_init(data, sizeof(data));
+    for (int i = 0; i < 256; i++)
+    {
+        data[i] = (byte)i;
+    }
+
     ShuffleBuffer(data, sizeof(data));
     printHexBytes(data, sizeof(data));
 
