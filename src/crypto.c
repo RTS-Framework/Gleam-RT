@@ -18,7 +18,7 @@
 static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox);
 static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox);
 static void initSBox(byte* sbox, byte* key, byte* iv);
-static void reverseSBox(byte* sbox);
+static void inverseSBox(byte* sbox);
 static byte ror(byte value, uint8 bits);
 static byte rol(byte value, uint8 bits);
 
@@ -277,7 +277,7 @@ void DecryptBuffer(void* buf, uint size, byte* key, byte* iv)
     }
     byte sbox[256];
     initSBox(sbox, key, iv);
-    reverseSBox(sbox);
+    inverseSBox(sbox);
     decryptBuffer(buf, size, key, iv, sbox);
 }
 
@@ -550,7 +550,7 @@ static void initSBox(byte* sbox, byte* key, byte* iv)
     }
 }
 
-static void reverseSBox(byte* sbox)
+static void inverseSBox(byte* sbox)
 {
     byte buf[256];
     mem_copy(buf, sbox, sizeof(buf));
@@ -570,6 +570,62 @@ static byte rol(byte value, uint8 bits)
     return value << bits | value >> (8 - bits);
 }
 
+// CSWO (Cache-aware Sliding Window Obfuscation)
+//
+// A fast reversible memory obfuscation algorithm designed for runtime sleep
+// state protection. CSWO is optimized for high-throughput memory
+// transformation rather than cryptographic encryption.
+//
+// The primary goal of CSWO is to remove recognizable semantic structures from
+// runtime memory while avoiding the high entropy characteristics commonly
+// produced by conventional encryption algorithms. The algorithm does not
+// attempt to introduce cryptographic randomness; instead, it applies
+// reversible value transformations and position diffusion to obscure memory
+// layout while largely preserving the original statistical characteristics.
+//
+// CSWO combines reversible substitution with a cache-aware sliding window
+// transformation. Unlike a fully random permutation, which causes excessive
+// cache misses due to unpredictable memory access patterns, CSWO limits data
+// movement within a small window aligned with common CPU cache line sizes.
+// Overlapping sliding windows allow local transformations to propagate across
+// the entire memory region, providing large-scale layout diffusion while
+// maintaining sequential memory access behavior.
+//
+// The substitution operation is fused directly into the sliding window
+// transformation. This avoids additional full-buffer processing passes and
+// improves throughput by reducing unnecessary memory reads and writes. Each
+// byte may undergo different numbers of reversible transformations depending
+// on its participation in overlapping windows, providing additional
+// position-dependent diffusion without sacrificing locality.
+//
+// CSWO intentionally favors the obfuscation path over the restoration path.
+// Obfuscation is a latency-sensitive operation executed before entering sleep
+// state and therefore uses a forward streaming design optimized for cache
+// efficiency. Restoration requires reverse traversal, PRNG state recovery,
+// and inverse transformations, making it inherently more expensive. This
+// asymmetry reduces the cost of frequent sleep transitions while keeping the
+// recovery process deterministic and fully reversible.
+//
+// CSWO does not provide cryptographic security and should not be used as a
+// replacement for encryption. Its diffusion mechanism is deliberately limited
+// to preserve memory locality and maximize transformation throughput. The
+// purpose of CSWO is efficient runtime memory state concealment, not secure
+// data confidentiality.
+//
+// CSWO v1 Benchmark
+// 
+// Input:
+//     200MB memory region
+// 
+// Previous implementation:
+//     ~1000ms
+// 
+// CSWO:
+//     ~75ms
+// 
+// Improvement:
+//     ~13x latency reduction
+
 void ObfuscateBuffer(void* buf, uint size, uint64 key)
 {
     if (size <= 1)
@@ -581,28 +637,36 @@ void ObfuscateBuffer(void* buf, uint size, uint64 key)
     uint64 seed0 = XORShift64(key);
     uint64 seed1 = XORShift64(seed0);
     uint64 seed2 = XORShift64(seed1);
-    // generate a random S-box from seed
+    // prepare sbox
     byte sbox[256];
     initObfuscateSBox(sbox, seed0);
-    // substitute buffer
+    // first substitution
     for (uint i = 0; i < size; i++)
     {
         buffer[i] = sbox[buffer[i]];
     }
-    // shuffle buffer
-    for (uint i = size - 1; i > 0; i--)
+    // cache-aware sliding shuffle
+    uint range = 64; // common cache line size
+    uint step  = 8;
+    for (uint i = 0; i < size - range; i += step)
     {
-        uint j = seed2 % (i + 1);
+        // select swap target
+        uint j = i + seed1 % range;
+        // swap data
         byte t = buffer[i];
         buffer[i] = buffer[j];
         buffer[j] = t;
-        seed2 = XORShift64(seed2);
+        // update seed
+        seed1 = XORShift64(seed1);
     }
-    // substitute buffer
-    initObfuscateSBox(sbox, seed1);
-    for (uint i = 0; i < size; i++)
+    // partial second substitution
+    uint pct = 1 + (seed2 % 5);
+    uint cnt = (size * pct) / 100;
+    for (uint i = 0; i < cnt; i++)
     {
-        buffer[i] = sbox[buffer[i]];
+        seed2 = XORShift64(seed2);
+        uint idx = seed2 % size;
+        buffer[idx] = sbox[buffer[idx]];
     }
 }
 
@@ -617,32 +681,40 @@ void IlluminateBuffer(void* buf, uint size, uint64 key)
     uint64 seed0 = XORShift64(key);
     uint64 seed1 = XORShift64(seed0);
     uint64 seed2 = XORShift64(seed1);
-    // generate a random S-box from seed
+    // prepare sbox
     byte sbox[256];
-    initObfuscateSBox(sbox, seed1);
-    reverseSBox(sbox);
-    // substitute buffer
-    for (uint i = 0; i < size; i++)
-    {
-        buffer[i] = sbox[buffer[i]];
-    }
-    // advance to the final seed
-    for (uint i = size - 1; i > 0; i--)
+    initObfuscateSBox(sbox, seed0);
+    inverseSBox(sbox);
+    // reverse partial second substitution
+    uint pct = 1 + (seed2 % 5);
+    uint cnt = (size * pct) / 100;
+    for (uint i = 0; i < cnt; i++)
     {
         seed2 = XORShift64(seed2);
+        uint idx = seed2 % size;
+        buffer[idx] = sbox[buffer[idx]];
     }
-    // reverse shuffle
-    for (uint i = 1; i < size; i++)
+    // advance to the final seed
+    uint range = 64; // common cache line size
+    uint step  = 8;
+    for (uint i = 0; i < size - range; i += step)
     {
-        seed2 = reverseXORShift64(seed2);
-        uint j = seed2 % (i + 1);
+        seed1 = XORShift64(seed1);
+    }
+    // reverse cache-aware sliding shuffle
+    int64 last = (((int64)size - range - 1) / step) * step;
+    for (int64 i = last; i >= 0; i -= step)
+    {
+        // update seed
+        seed1 = reverseXORShift64(seed1);
+        // select swap target
+        uint j = (uint)(i + seed1 % range);
+        // swap data
         byte t = buffer[i];
         buffer[i] = buffer[j];
         buffer[j] = t;
     }
-    // substitute buffer
-    initObfuscateSBox(sbox, seed0);
-    reverseSBox(sbox);
+    // reverse first substitute
     for (uint i = 0; i < size; i++)
     {
         buffer[i] = sbox[buffer[i]];
@@ -661,7 +733,7 @@ static void initObfuscateSBox(byte* sbox, uint64 seed)
     }
     for (uint i = 255; i > 0; i--)
     {
-        uint j = seed % (i + 1);
+        uint j = seed % (uint64)(i + 1);
         byte t = sbox[i];
         sbox[i] = sbox[j];
         sbox[j] = t;
@@ -711,6 +783,7 @@ void FillInstruction(void* buf, uint size, uint64 seed)
             }
             for (uint i = 0; i < len; i++)
             {
+                seed = XORShift64(seed);
                 inst[i] = RandByte(seed);
             }
 
@@ -763,7 +836,9 @@ void FillInstruction(void* buf, uint size, uint64 seed)
                 0x03, 0x29,
             };
             // ModRM = register-direct.
+            seed = XORShift64(seed);
             inst[0] = ops[RandUint8N(seed, arrlen(ops))];
+            seed = XORShift64(seed);
             inst[1] = 0xC0 | (RandUint8N(seed, 8) << 3) | RandUint8N(seed, 8);
 
             inst += 2;
