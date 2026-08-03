@@ -19,11 +19,9 @@ static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox);
 static void initSBox(byte* sbox, byte* key, byte* iv);
 static void inverseSBox(byte* sbox);
+static void initObfuscateSBox(byte* sbox, uint seed);
 static byte ror(byte value, uint8 bits);
 static byte rol(byte value, uint8 bits);
-
-static void   initObfuscateSBox(byte* sbox, uint64 seed);
-static uint64 reverseXORShift64(uint64 seed);
 
 #pragma optimize("t", on)
 void EncryptBuffer(void* buf, uint size, byte* key, byte* iv)
@@ -40,56 +38,46 @@ void EncryptBuffer(void* buf, uint size, byte* key, byte* iv)
 static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 {
     // prepare seed from key
-    uint32 seeds[8] = {
+    uint seeds[8] = {
         *(uint32*)(key+0x00), *(uint32*)(key+0x04),
         *(uint32*)(key+0x08), *(uint32*)(key+0x0C),
         *(uint32*)(key+0x10), *(uint32*)(key+0x14),
         *(uint32*)(key+0x18), *(uint32*)(key+0x1C),
     };
+
     // initialize random seeds
     for (int i = 0; i < 8; i++)
     {
-        uint32 seed = seeds[i];
-
-        seed *= (uint32)(key[i * 4 + 0]) << 0;
-        seed *= (uint32)(key[i * 4 + 1]) << 8;
-        seed *= (uint32)(key[i * 4 + 2]) << 16;
-        seed *= (uint32)(key[i * 4 + 3]) << 24;
-
-        seed ^= (uint32)(key[i * 4 + 0]) << 0;
-        seed ^= (uint32)(key[i * 4 + 1]) << 8;
-        seed ^= (uint32)(key[i * 4 + 2]) << 16;
-        seed ^= (uint32)(key[i * 4 + 3]) << 24;
-
-        seed ^= (uint32)(iv[i * 2 + 0]) << 8;
-        seed ^= (uint32)(iv[i * 2 + 1]) << 24;
-
+        uint seed = seeds[i];
+        uint mid  = *(uint*)(iv + i);
+        seed *= mid;
+        seed ^= mid;
         seeds[i] = seed;
     }
 
     // load random seeds
-    register uint32 seed0 = seeds[0];
-    register uint32 seed1 = seeds[1];
-    register uint32 seed2 = seeds[2];
-    register uint32 seed3 = seeds[3];
-    register uint32 seed4 = seeds[4];
-    register uint32 seed5 = seeds[5];
-    register uint32 seed6 = seeds[6];
-    register uint32 seed7 = seeds[7];
+    register uint seed0 = seeds[0];
+    register uint seed1 = seeds[1];
+    register uint seed2 = seeds[2];
+    register uint seed3 = seeds[3];
+    register uint seed4 = seeds[4];
+    register uint seed5 = seeds[5];
+    register uint seed6 = seeds[6];
+    register uint seed7 = seeds[7];
 
     byte last  = key[0] + iv[0];
     uint limit = size - (size % PARALLEL_LEVEL);
     for (uint i = 0; i < limit; i += PARALLEL_LEVEL)
     {
         // update seeds
-        seed0 = XORShift32(seed0);
-        seed1 = XORShift32(seed1);
-        seed2 = XORShift32(seed2);
-        seed3 = XORShift32(seed3);
-        seed4 = XORShift32(seed4);
-        seed5 = XORShift32(seed5);
-        seed6 = XORShift32(seed6);
-        seed7 = XORShift32(seed7);
+        seed0 = XORShift(seed0);
+        seed1 = XORShift(seed1);
+        seed2 = XORShift(seed2);
+        seed3 = XORShift(seed3);
+        seed4 = XORShift(seed4);
+        seed5 = XORShift(seed5);
+        seed6 = XORShift(seed6);
+        seed7 = XORShift(seed7);
 
         // load plain data
         uint64 block = *(uint64*)(buf + i);
@@ -237,8 +225,8 @@ static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
     for (uint i = limit; i < size; i++)
     {
         // get and update seed
-        uint32 seed = seeds[i % 8];
-        seed = XORShift32(seed);
+        uint seed = seeds[i % 8];
+        seed = XORShift(seed);
 
         // load plain data
         byte b = buf[i];
@@ -284,56 +272,46 @@ void DecryptBuffer(void* buf, uint size, byte* key, byte* iv)
 static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
 {
     // prepare seed from key
-    uint32 seeds[8] = {
+    uint seeds[8] = {
         *(uint32*)(key+0x00), *(uint32*)(key+0x04),
         *(uint32*)(key+0x08), *(uint32*)(key+0x0C),
         *(uint32*)(key+0x10), *(uint32*)(key+0x14),
         *(uint32*)(key+0x18), *(uint32*)(key+0x1C),
     };
+
     // initialize random seeds
     for (int i = 0; i < 8; i++)
     {
-        uint32 seed = seeds[i];
-
-        seed *= (uint32)(key[i * 4 + 0]) << 0;
-        seed *= (uint32)(key[i * 4 + 1]) << 8;
-        seed *= (uint32)(key[i * 4 + 2]) << 16;
-        seed *= (uint32)(key[i * 4 + 3]) << 24;
-
-        seed ^= (uint32)(key[i * 4 + 0]) << 0;
-        seed ^= (uint32)(key[i * 4 + 1]) << 8;
-        seed ^= (uint32)(key[i * 4 + 2]) << 16;
-        seed ^= (uint32)(key[i * 4 + 3]) << 24;
-
-        seed ^= (uint32)(iv[i * 2 + 0]) << 8;
-        seed ^= (uint32)(iv[i * 2 + 1]) << 24;
-
+        uint seed = seeds[i];
+        uint mid  = *(uint*)(iv + i);
+        seed *= mid;
+        seed ^= mid;
         seeds[i] = seed;
     }
 
     // load random seeds
-    register uint32 seed0 = seeds[0];
-    register uint32 seed1 = seeds[1];
-    register uint32 seed2 = seeds[2];
-    register uint32 seed3 = seeds[3];
-    register uint32 seed4 = seeds[4];
-    register uint32 seed5 = seeds[5];
-    register uint32 seed6 = seeds[6];
-    register uint32 seed7 = seeds[7];
+    register uint seed0 = seeds[0];
+    register uint seed1 = seeds[1];
+    register uint seed2 = seeds[2];
+    register uint seed3 = seeds[3];
+    register uint seed4 = seeds[4];
+    register uint seed5 = seeds[5];
+    register uint seed6 = seeds[6];
+    register uint seed7 = seeds[7];
 
     byte last  = key[0] + iv[0];
     uint limit = size - (size % PARALLEL_LEVEL);
     for (uint i = 0; i < limit; i += PARALLEL_LEVEL)
     {
         // update seeds
-        seed0 = XORShift32(seed0);
-        seed1 = XORShift32(seed1);
-        seed2 = XORShift32(seed2);
-        seed3 = XORShift32(seed3);
-        seed4 = XORShift32(seed4);
-        seed5 = XORShift32(seed5);
-        seed6 = XORShift32(seed6);
-        seed7 = XORShift32(seed7);
+        seed0 = XORShift(seed0);
+        seed1 = XORShift(seed1);
+        seed2 = XORShift(seed2);
+        seed3 = XORShift(seed3);
+        seed4 = XORShift(seed4);
+        seed5 = XORShift(seed5);
+        seed6 = XORShift(seed6);
+        seed7 = XORShift(seed7);
 
         // load cipher data
         uint64 block = *(uint64*)(buf + i);
@@ -484,8 +462,8 @@ static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
     for (uint i = limit; i < size; i++)
     {
         // get and update seed
-        uint32 seed = seeds[i % 8];
-        seed = XORShift32(seed);
+        uint seed = seeds[i % 8];
+        seed = XORShift(seed);
 
         // load cipher data
         byte b = buf[i];
@@ -626,7 +604,7 @@ static byte rol(byte value, uint8 bits)
 // Improvement:
 //     ~13x latency reduction
 
-void ObfuscateBuffer(void* buf, uint size, uint64 key)
+void ObfuscateBuffer(void* buf, uint size, uint key)
 {
     if (size <= 1)
     {
@@ -634,9 +612,9 @@ void ObfuscateBuffer(void* buf, uint size, uint64 key)
     }
     byte* buffer = buf;
     // generate seeds
-    uint64 seed0 = XORShift64(key);
-    uint64 seed1 = XORShift64(seed0);
-    uint64 seed2 = XORShift64(seed1);
+    uint seed0 = XORShift(key);
+    uint seed1 = XORShift(seed0);
+    uint seed2 = XORShift(seed1);
     // prepare sbox
     byte sbox[256];
     initObfuscateSBox(sbox, seed0);
@@ -657,20 +635,20 @@ void ObfuscateBuffer(void* buf, uint size, uint64 key)
         buffer[i] = buffer[j];
         buffer[j] = t;
         // update seed
-        seed1 = XORShift64(seed1);
+        seed1 = XORShift(seed1);
     }
     // partial second substitution
     uint pct = 1 + (seed2 % 5);
     uint cnt = (size * pct) / 100;
     for (uint i = 0; i < cnt; i++)
     {
-        seed2 = XORShift64(seed2);
+        seed2 = XORShift(seed2);
         uint idx = seed2 % size;
         buffer[idx] = sbox[buffer[idx]];
     }
 }
 
-void IlluminateBuffer(void* buf, uint size, uint64 key)
+void IlluminateBuffer(void* buf, uint size, uint key)
 {
     if (size <= 1)
     {
@@ -678,9 +656,9 @@ void IlluminateBuffer(void* buf, uint size, uint64 key)
     }
     byte* buffer = buf;
     // generate seeds
-    uint64 seed0 = XORShift64(key);
-    uint64 seed1 = XORShift64(seed0);
-    uint64 seed2 = XORShift64(seed1);
+    uint seed0 = XORShift(key);
+    uint seed1 = XORShift(seed0);
+    uint seed2 = XORShift(seed1);
     // prepare sbox
     byte sbox[256];
     initObfuscateSBox(sbox, seed0);
@@ -690,7 +668,7 @@ void IlluminateBuffer(void* buf, uint size, uint64 key)
     uint cnt = (size * pct) / 100;
     for (uint i = 0; i < cnt; i++)
     {
-        seed2 = XORShift64(seed2);
+        seed2 = XORShift(seed2);
         uint idx = seed2 % size;
         buffer[idx] = sbox[buffer[idx]];
     }
@@ -699,14 +677,14 @@ void IlluminateBuffer(void* buf, uint size, uint64 key)
     uint step  = 8;
     for (uint i = 0; i < size - range; i += step)
     {
-        seed1 = XORShift64(seed1);
+        seed1 = XORShift(seed1);
     }
     // reverse cache-aware sliding shuffle
     int64 last = (((int64)size - range - 1) / step) * step;
     for (int64 i = last; i >= 0; i -= step)
     {
         // update seed
-        seed1 = reverseXORShift64(seed1);
+        seed1 = ReverseXORShift(seed1);
         // select swap target
         uint j = (uint)(i + seed1 % range);
         // swap data
@@ -722,7 +700,7 @@ void IlluminateBuffer(void* buf, uint size, uint64 key)
 }
 
 __declspec(noinline)
-static void initObfuscateSBox(byte* sbox, uint64 seed)
+static void initObfuscateSBox(byte* sbox, uint seed)
 {
     // initialize S-Box byte array
     for (int i = 0; i < 256; i++)
@@ -733,31 +711,12 @@ static void initObfuscateSBox(byte* sbox, uint64 seed)
     }
     for (uint i = 255; i > 0; i--)
     {
-        uint j = seed % (uint64)(i + 1);
+        uint j = seed % (i + 1);
         byte t = sbox[i];
         sbox[i] = sbox[j];
         sbox[j] = t;
-        seed = XORShift64(seed);
+        seed = XORShift(seed);
     }
-}
-
-static uint64 reverseXORShift64(uint64 seed)
-{
-    // reverse seed ^= seed << 17
-    seed ^= seed << 17;
-    seed ^= seed << 34;
-
-    // reverse seed ^= seed >> 7
-    seed ^= seed >> 7;
-    seed ^= seed >> 14;
-    seed ^= seed >> 28;
-    seed ^= seed >> 56;
-
-    // reverse seed ^= seed << 13
-    seed ^= seed << 13;
-    seed ^= seed << 26;
-    seed ^= seed << 52;
-    return seed;
 }
 
 void FillInstruction(void* buf, uint size, uint64 seed)
