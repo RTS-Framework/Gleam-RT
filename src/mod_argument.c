@@ -61,23 +61,22 @@ static void eraseStoreMethod(Context* context);
 static void cleanStoreResource(ArgumentStore* store);
 static void setStorePointer(ArgumentStore* store);
 
-static errno  loadArguments(ArgumentStore* store, Context* context);
-static errno  shiftArguments(ArgumentStore* store, uint32 size);
-static void   illuminateStub(byte* data, uint32 size, byte* key);
-static void   decryptStub(byte* data, uint32 size, byte* key);
-static void   initSBox(byte* sbox, uint64 seed);
-static void   reverseSBox(byte* sbox);
-static void   unshuffle(byte* data, uint32 size, uint64 seed);
-static uint64 reverseXORShift64(uint64 seed);
-static byte   ror(byte value, uint8 bits);
-static byte   rol(byte value, uint8 bits);
+static errno loadArguments(ArgumentStore* store, Context* context);
+static errno shiftArguments(ArgumentStore* store, uint32 size);
+static void  illuminateStub(byte* data, uint32 size, byte* key);
+static void  decryptStub(byte* data, uint32 size, byte* key);
+static void  initSBox(byte* sbox, uint64 seed);
+static void  inverseSBox(byte* sbox);
+static void  unshuffle(byte* data, uint32 size, uint64 seed);
+static byte  ror(byte value, uint8 bits);
+static byte  rol(byte value, uint8 bits);
 
 ArgumentStore_M* InitArgumentStore(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr storeAddr  = addr + LAYOUT_AS_STRUCT + RandUintN(addr, 128);
-    uintptr moduleAddr = addr + LAYOUT_AS_MODULE + RandUintN(addr, 128);
+    uintptr storeAddr  = addr + LAYOUT_AS_STRUCT + RandUintN(0, 128);
+    uintptr moduleAddr = addr + LAYOUT_AS_MODULE + RandUintN(0, 128);
     // allocate store memory
     ArgumentStore* store = (ArgumentStore*)storeAddr;
     mem_init(store, sizeof(ArgumentStore));
@@ -248,7 +247,7 @@ static void illuminateStub(byte* data, uint32 size, byte* key)
     // generate S-box from seed
     byte sbox[256];
     initSBox(sbox, seed);
-    reverseSBox(sbox);
+    inverseSBox(sbox);
     unshuffle(data, size, seed);
     // substitute data
     for (uint i = 0; i < size; i++)
@@ -325,7 +324,7 @@ static void cleanStoreResource(ArgumentStore* store)
     }
 }
 
-// the next functions until reverseXORShift64 will be linked
+// the next functions until unshuffle will be linked
 // to another modules, so must move these after eraseStoreMethod
 
 #pragma optimize("", off)
@@ -348,7 +347,7 @@ static void initSBox(byte* sbox, uint64 seed)
 #pragma optimize("", on)
 
 __declspec(noinline)
-static void reverseSBox(byte* sbox)
+static void inverseSBox(byte* sbox)
 {
     byte buf[256];
     mem_copy(buf, sbox, sizeof(buf));
@@ -366,34 +365,15 @@ static void unshuffle(byte* data, uint32 size, uint64 seed)
     {
         seed = XORShift64(seed);
     }
-    for (uint i = 1; i < size; i++)
+    // reverse shuffle
+    for (uint64 i = 1; i < size; i++)
     {
-        seed = reverseXORShift64(seed);
-        uint j = seed % (uint64)(i + 1);
+        seed = ReverseXORShift64(seed);
+        uint j = (uint)(seed % (i + 1));
         byte t = data[i];
         data[i] = data[j];
         data[j] = t;
     }
-}
-
-__declspec(noinline)
-static uint64 reverseXORShift64(uint64 seed)
-{
-    // reverse seed ^= seed << 17
-    seed ^= seed << 17;
-    seed ^= seed << 34;
-
-    // reverse seed ^= seed >> 7
-    seed ^= seed >> 7;
-    seed ^= seed >> 14;
-    seed ^= seed >> 28;
-    seed ^= seed >> 56;
-
-    // reverse seed ^= seed << 13
-    seed ^= seed << 13;
-    seed ^= seed << 26;
-    seed ^= seed << 52;
-    return seed;
 }
 
 __declspec(noinline)
