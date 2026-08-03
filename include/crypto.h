@@ -14,10 +14,10 @@ void DecryptBuffer(void* buf, uint size, byte* key, byte* iv);
 
 // ObfuscateBuffer is used to obfuscate memory data, it is used to
 // preserve statistical characteristics as much as possible.
-void ObfuscateBuffer(void* buf, uint size, uint64 key);
+void ObfuscateBuffer(void* buf, uint size, uint key);
 
 // IlluminateBuffer is used to recover obfuscated memory data.
-void IlluminateBuffer(void* buf, uint size, uint64 key);
+void IlluminateBuffer(void* buf, uint size, uint key);
 
 // FillInstruction is used to generate instruction to fill the buffer.
 void FillInstruction(void* buf, uint size, uint64 seed);
