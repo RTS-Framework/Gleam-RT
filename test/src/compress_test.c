@@ -8,16 +8,18 @@
 static bool TestCompressor_SHashCandidate();
 static bool TestCompressor_NHashCandidate();
 static bool TestCompressor_BruteForce();
+static bool TestCompressor_DefaultArgument();
 static bool TestCompressor_Fuzz();
 
 bool TestCompress()
 {
     test_t tests[] = 
     {
-        { TestCompressor_SHashCandidate },
-        { TestCompressor_NHashCandidate },
-        { TestCompressor_BruteForce     },
-        { TestCompressor_Fuzz           },
+        { TestCompressor_SHashCandidate  },
+        { TestCompressor_NHashCandidate  },
+        { TestCompressor_BruteForce      },
+        { TestCompressor_DefaultArgument },
+        { TestCompressor_Fuzz            },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -175,6 +177,45 @@ static bool TestCompressor_BruteForce()
     return true;
 }
 
+static bool TestCompressor_DefaultArgument()
+{
+    LPSTR path = "..\\src\\runtime.c";
+    databuf data;
+    errno errno = runtime->WinFile.ReadFileA(path, &data);
+    if (errno != NO_ERROR)
+    {
+        printf_s("failed to read test file: 0x%X\n", errno);
+        return false;
+    }
+
+    uint cLen = runtime->Compressor.Compress(NULL, data.buf, data.len, 0, 0);
+    printf_s("compressed: %zu/%zu\n", cLen, data.len);
+    void* dst = runtime->Memory.Alloc(cLen);
+    cLen = runtime->Compressor.Compress(dst, data.buf, data.len, 0, 0);
+    
+    uint dLen = runtime->Compressor.Decompress(NULL, dst, cLen);
+    void* raw = runtime->Memory.Alloc(dLen);
+    dLen = runtime->Compressor.Decompress(raw, dst, cLen);
+    printf_s("decompressed: %zu\n", dLen);
+    
+    if (dLen != data.len)
+    {
+        printf_s("incorrect decompressed data size: %zu\n", dLen);
+        return false;
+    }
+    if (mem_cmp(data.buf, raw, data.len) != 0)
+    {
+        printf_s("incorrect decompressed data\n");
+        return false;
+    }
+
+    runtime->Memory.Free(dst);
+    runtime->Memory.Free(raw);
+    runtime->Memory.Free(data.buf);
+    printf_s("test compress default argument passed\n");
+    return true;
+}
+
 static bool TestCompressor_Fuzz()
 {
     uint  size = (uint)(32 * 1024);
@@ -209,7 +250,7 @@ static bool TestCompressor_Fuzz()
         }
 
         // single hash candidate
-        void* dst = runtime->Memory.Alloc(size);
+        void* dst = runtime->Memory.Alloc(size + size / 8 + 2);
         uint  len = runtime->Compressor.Compress(dst, data, size, 512, MINIMUM_CHAIN_LEN);
         void* raw = runtime->Memory.Alloc(size);
         len = runtime->Compressor.Decompress(raw, dst, len);
@@ -227,7 +268,7 @@ static bool TestCompressor_Fuzz()
         runtime->Memory.Free(raw);
 
         // N hash candidate
-        dst = runtime->Memory.Alloc(size);
+        dst = runtime->Memory.Alloc(size + size / 8 + 2);
         len = runtime->Compressor.Compress(dst, data, size, 512, DEFAULT_CHAIN_LEN);
         raw = runtime->Memory.Alloc(size);
         len = runtime->Compressor.Decompress(raw, dst, len);
@@ -245,7 +286,7 @@ static bool TestCompressor_Fuzz()
         runtime->Memory.Free(raw);
 
         // brute force
-        dst = runtime->Memory.Alloc(size);
+        dst = runtime->Memory.Alloc(size + size / 8 + 2);
         len = runtime->Compressor.Compress(dst, data, size, 512, MAXIMUM_CHAIN_LEN);
         raw = runtime->Memory.Alloc(size);
         len = runtime->Compressor.Decompress(raw, dst, len);
