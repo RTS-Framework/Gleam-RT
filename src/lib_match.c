@@ -2,13 +2,13 @@
 #include "lib_memory.h"
 #include "lib_match.h"
 
-static integer bruteForce(byte* s, integer ns, byte* sep, integer nsep);
+static intx bruteForce(byte* s, intx ns, byte* sep, intx nsep);
 
 #pragma optimize("t", on)
 
-integer MatchByte(byte* s, integer ns, byte b)
+intx MatchByte(byte* s, intx ns, byte b)
 {
-    for (integer i = 0; i < ns; i++)
+    for (intx i = 0; i < ns; i++)
     {
         if (s[i] == b)
         {
@@ -19,7 +19,7 @@ integer MatchByte(byte* s, integer ns, byte b)
 }
 
 __declspec(noinline)
-integer MatchBytes(byte* s, integer ns, byte* sep, integer nsep)
+intx MatchBytes(byte* s, intx ns, byte* sep, intx nsep)
 {
     if (nsep == 0)
     {
@@ -48,14 +48,14 @@ integer MatchBytes(byte* s, integer ns, byte* sep, integer nsep)
     }
     byte b0 = sep[0];
     byte b1 = sep[1];
-    integer i = 0;
-    integer t = ns - nsep + 1;
+    intx i = 0;
+    intx t = ns - nsep + 1;
     while (i < t)
     {
         // search the first same byte
         if (s[i] != b0)
         {
-            integer o = MatchByte(s+(i+1), t-(i+1), b0);
+            intx o = MatchByte(s+(i+1), t-(i+1), b0);
             if (o < 0)
             {
                 return -1;
@@ -78,9 +78,9 @@ integer MatchBytes(byte* s, integer ns, byte* sep, integer nsep)
     return -1;
 }
 
-static integer bruteForce(byte* s, integer ns, byte* sep, integer nsep)
+static intx bruteForce(byte* s, intx ns, byte* sep, intx nsep)
 {
-    for (integer i = 0; i < (ns - nsep + 1); i++)
+    for (intx i = 0; i < (ns - nsep + 1); i++)
     {
         if (mem_equal(s+i, sep, nsep))
         {
