@@ -4,9 +4,9 @@
 #include "c_types.h"
 
 // MatchByte is used to search the same byte that use brute force.
-integer MatchByte(byte* s, integer ns, byte b);
+intx MatchByte(byte* s, intx ns, byte b);
 
 // MatchBytes is used to search the same sub bytes with different strategy.
-integer MatchBytes(byte* s, integer ns, byte* sep, integer nsep);
+intx MatchBytes(byte* s, intx ns, byte* sep, intx nsep);
 
 #endif // LIB_MATCH_H
