@@ -5,17 +5,19 @@
 #include "compress.h"
 #include "test.h"
 
-static bool TestCom_Compress();
-static bool TestCom_Decompress();
-static bool TestCom_Fuzz();
+static bool TestCompressor_SHashCandidate();
+static bool TestCompressor_NHashCandidate();
+static bool TestCompressor_BruteForce();
+static bool TestCompressor_Fuzz();
 
 bool TestCompress()
 {
     test_t tests[] = 
     {
-        { TestCom_Compress   },
-        { TestCom_Decompress },
-        { TestCom_Fuzz       },
+        { TestCompressor_SHashCandidate },
+        { TestCompressor_NHashCandidate },
+        { TestCompressor_BruteForce     },
+        { TestCompressor_Fuzz           },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -29,7 +31,7 @@ bool TestCompress()
     return true;
 }
 
-static bool TestCom_Compress()
+static bool TestCompressor_SHashCandidate()
 {
     LPSTR path = "..\\src\\runtime.c";
     databuf data;
@@ -45,19 +47,39 @@ static bool TestCom_Compress()
     };
     for (int i = 0; i < arrlen(windows); i++)
     {
-        uint len = Compress(NULL, data.buf, data.len, windows[i]);
-        printf_s("compressed: %zu/%zu, window: %zu\n", len, data.len, windows[i]);
-        void* dst = runtime->Memory.Alloc(len);
-        len = Compress(dst, data.buf, data.len, windows[i]);
+        uint cl = MINIMUM_CHAIN_LEN;
+
+        uint cLen = runtime->Compressor.Compress(NULL, data.buf, data.len, windows[i], cl);
+        printf_s("compressed: %zu/%zu, window: %zu\n", cLen, data.len, windows[i]);
+        void* dst = runtime->Memory.Alloc(cLen);
+        cLen = runtime->Compressor.Compress(dst, data.buf, data.len, windows[i], cl);
+        
+        uint dLen = runtime->Compressor.Decompress(NULL, dst, cLen);
+        void* raw = runtime->Memory.Alloc(dLen);
+        dLen = runtime->Compressor.Decompress(raw, dst, cLen);
+        printf_s("decompressed: %zu\n", dLen);
+        
+        if (dLen != data.len)
+        {
+            printf_s("incorrect decompressed data size: %zu\n", dLen);
+            return false;
+        }
+        if (mem_cmp(data.buf, raw, data.len) != 0)
+        {
+            printf_s("incorrect decompressed data\n");
+            return false;
+        }
+
         runtime->Memory.Free(dst);
+        runtime->Memory.Free(raw);
     }
 
     runtime->Memory.Free(data.buf);
-    printf_s("test compress passed\n");
+    printf_s("test compress single hash candidate passed\n");
     return true;
 }
 
-static bool TestCom_Decompress()
+static bool TestCompressor_NHashCandidate()
 {
     LPSTR path = "..\\src\\runtime.c";
     databuf data;
@@ -68,35 +90,92 @@ static bool TestCom_Decompress()
         return false;
     }
 
-    uint cLen = Compress(NULL, data.buf, data.len, 2048);
-    printf_s("compressed:   %zu\n", cLen);
-    void* dst = runtime->Memory.Alloc(cLen);
-    cLen = Compress(dst, data.buf, data.len, 2048);
-
-    uint dLen = Decompress(NULL, dst, cLen);
-    void* raw = runtime->Memory.Alloc(dLen);
-    dLen = Decompress(raw, dst, cLen);
-    printf_s("decompressed: %zu\n", dLen);
-
-    if (dLen != data.len)
+    uint windows[] = {
+        32, 64, 128, 256, 512, 1024, 1536, 2048, 4096,
+    };
+    for (int i = 0; i < arrlen(windows); i++)
     {
-        printf_s("incorrect decompressed data size: %zu\n", dLen);
-        return false;
-    }
-    if (mem_cmp(data.buf, raw, data.len) != 0)
-    {
-        printf_s("incorrect decompressed data\n");
-        return false;
+        uint cl = DEFAULT_CHAIN_LEN;
+
+        uint cLen = runtime->Compressor.Compress(NULL, data.buf, data.len, windows[i], cl);
+        printf_s("compressed: %zu/%zu, window: %zu\n", cLen, data.len, windows[i]);
+        void* dst = runtime->Memory.Alloc(cLen);
+        cLen = runtime->Compressor.Compress(dst, data.buf, data.len, windows[i], cl);
+        
+        uint dLen = runtime->Compressor.Decompress(NULL, dst, cLen);
+        void* raw = runtime->Memory.Alloc(dLen);
+        dLen = runtime->Compressor.Decompress(raw, dst, cLen);
+        printf_s("decompressed: %zu\n", dLen);
+        
+        if (dLen != data.len)
+        {
+            printf_s("incorrect decompressed data size: %zu\n", dLen);
+            return false;
+        }
+        if (mem_cmp(data.buf, raw, data.len) != 0)
+        {
+            printf_s("incorrect decompressed data\n");
+            return false;
+        }
+
+        runtime->Memory.Free(dst);
+        runtime->Memory.Free(raw);
     }
 
     runtime->Memory.Free(data.buf);
-    runtime->Memory.Free(dst);
-    runtime->Memory.Free(raw);
-    printf_s("test decompress passed\n");
+    printf_s("test compress n hash candidate passed\n");
     return true;
 }
 
-static bool TestCom_Fuzz()
+static bool TestCompressor_BruteForce()
+{
+    LPSTR path = "..\\src\\runtime.c";
+    databuf data;
+    errno errno = runtime->WinFile.ReadFileA(path, &data);
+    if (errno != NO_ERROR)
+    {
+        printf_s("failed to read test file: 0x%X\n", errno);
+        return false;
+    }
+
+    uint windows[] = {
+        32, 64, 128, 256, 512, 1024, 1536, 2048, 4096,
+    };
+    for (int i = 0; i < arrlen(windows); i++)
+    {
+        uint cl = MAXIMUM_CHAIN_LEN;
+
+        uint cLen = runtime->Compressor.Compress(NULL, data.buf, data.len, windows[i], cl);
+        printf_s("compressed: %zu/%zu, window: %zu\n", cLen, data.len, windows[i]);
+        void* dst = runtime->Memory.Alloc(cLen);
+        cLen = runtime->Compressor.Compress(dst, data.buf, data.len, windows[i], cl);
+        
+        uint dLen = runtime->Compressor.Decompress(NULL, dst, cLen);
+        void* raw = runtime->Memory.Alloc(dLen);
+        dLen = runtime->Compressor.Decompress(raw, dst, cLen);
+        printf_s("decompressed: %zu\n", dLen);
+        
+        if (dLen != data.len)
+        {
+            printf_s("incorrect decompressed data size: %zu\n", dLen);
+            return false;
+        }
+        if (mem_cmp(data.buf, raw, data.len) != 0)
+        {
+            printf_s("incorrect decompressed data\n");
+            return false;
+        }
+
+        runtime->Memory.Free(dst);
+        runtime->Memory.Free(raw);
+    }
+
+    runtime->Memory.Free(data.buf);
+    printf_s("test compress brute force passed\n");
+    return true;
+}
+
+static bool TestCompressor_Fuzz()
 {
     uint  size = (uint)(32 * 1024);
     byte* data = runtime->Memory.Alloc(size);
@@ -129,22 +208,57 @@ static bool TestCom_Fuzz()
             }
         }
 
+        // single hash candidate
         void* dst = runtime->Memory.Alloc(size);
-        uint len = Compress(dst, data, size, 512);
+        uint  len = runtime->Compressor.Compress(dst, data, size, 512, MINIMUM_CHAIN_LEN);
         void* raw = runtime->Memory.Alloc(size);
-        len = Decompress(raw, dst, len);
-
+        len = runtime->Compressor.Decompress(raw, dst, len);
         if (len != size)
         {
-            printf_s("incorrect fuzz decompressed data size: %zu\n", len);
+            printf_s("incorrect fuzz decompressed(sh) data size: %zu\n", len);
             return false;
         }
         if (mem_cmp(data, raw, size) != 0)
         {
-            printf_s("incorrect fuzz decompressed data\n");
+            printf_s("incorrect fuzz decompressed(sh) data\n");
             return false;
         }
+        runtime->Memory.Free(dst);
+        runtime->Memory.Free(raw);
 
+        // N hash candidate
+        dst = runtime->Memory.Alloc(size);
+        len = runtime->Compressor.Compress(dst, data, size, 512, DEFAULT_CHAIN_LEN);
+        raw = runtime->Memory.Alloc(size);
+        len = runtime->Compressor.Decompress(raw, dst, len);
+        if (len != size)
+        {
+            printf_s("incorrect fuzz decompressed(nh) data size: %zu\n", len);
+            return false;
+        }
+        if (mem_cmp(data, raw, size) != 0)
+        {
+            printf_s("incorrect fuzz decompressed(nh) data\n");
+            return false;
+        }
+        runtime->Memory.Free(dst);
+        runtime->Memory.Free(raw);
+
+        // brute force
+        dst = runtime->Memory.Alloc(size);
+        len = runtime->Compressor.Compress(dst, data, size, 512, MAXIMUM_CHAIN_LEN);
+        raw = runtime->Memory.Alloc(size);
+        len = runtime->Compressor.Decompress(raw, dst, len);
+        if (len != size)
+        {
+            printf_s("incorrect fuzz decompressed(bf) data size: %zu\n", len);
+            return false;
+        }
+        if (mem_cmp(data, raw, size) != 0)
+        {
+            printf_s("incorrect fuzz decompressed(bf) data\n");
+            return false;
+        }
         runtime->Memory.Free(dst);
         runtime->Memory.Free(raw);
     }
