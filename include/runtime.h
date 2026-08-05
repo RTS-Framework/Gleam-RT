@@ -290,17 +290,43 @@ typedef void (*EraseInstruction_t)(void* buf, uint size);
 
 // about compress module
 //
-// Compress is used to compress data with LZSS.
-// If return value is -1, window size is invalid.
+// Compress is used to compress data using LZSS with configurable parameters.
+//
+// Parameters:
+//   window: sliding window size (128-4096, 0 for default 1024)
+//   chain:  hash chain length for match search
+//     1  = single hash candidate (fastest, worst compression)
+//     N  = N-candidate hash chain (trade-off between speed and compression)
+//     0  = 6-candidate hash chain
+//     16 = brute-force (best compression, slowest)
+//
+// If return value is -1, window size or chain length is invalid.
 // If dst is NULL, calculate the compressed length.
-//
+// 
 // Decompress is used to decompress data with LZSS.
+// If return value is -1, the compressed data is invalid.
 // If dst is NULL, calculate the raw data length.
-//
-// Since the algorithm is relatively simple to implement,
-// it is NOT recommended to compress data exceeding 8MB.
 
-typedef uint (*Compress_t)(void* dst, void* src, uint len, uint window);
+#ifndef COMPRESS_H
+
+#define MAXIMUM_WINDOW_SIZE 4096
+#define DEFAULT_WINDOW_SIZE 1024
+
+// when chain length is MAXIMUM_CHAIN_LEN, it will use brute-force search
+// for the best compression, but it is slowest, otherwise, it will use
+// N-candidate hash chain for trade-off between speed and compression.
+#define MINIMUM_CHAIN_LEN 1
+#define MAXIMUM_CHAIN_LEN 16
+
+// default chain length for Compress:
+// 1  = single hash candidate (fastest, worst compression)
+// 6  = good balance
+// 16 = brute-force (best compression, slowest)
+#define DEFAULT_CHAIN_LEN 6
+
+#endif // COMPRESS_H
+
+typedef uint (*Compress_t)(void* dst, void* src, uint len, uint window, uint chain);
 typedef uint (*Decompress_t)(void* dst, void* src, uint len);
 
 // about serialization module
