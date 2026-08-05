@@ -213,6 +213,8 @@ void MW_SHA256_Sum(SHA256* obj, byte (*hash)[32]);
 void MW_SHA256_Reset(SHA256* obj);
 void MW_SHA256_Free(SHA256* obj);
 
+uint MW_Compress(void* dst, void* src, uint len, uint window, uint chain);
+
 uint MW_MemScanByValue(void* value, uint size, uintptr* results, uint maxItem);
 uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem);
 
@@ -260,6 +262,7 @@ static errno closeHandles(Runtime* runtime);
 static void  interruptInit(Runtime* runtime);
 static void  recoverProcessEnv(Runtime* runtime);
 static void  recoverErrorMode(Runtime* runtime);
+static void  cleanInitStack();
 
 static bool rt_lock();
 static bool rt_unlock();
@@ -333,8 +336,8 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     }
     // set structure address
     uintptr addr = (uintptr)mainMemPage;
-    uintptr runtimeAddr = addr + LAYOUT_RUNTIME_STRUCT + RandUintN(addr, 128);
-    uintptr moduleAddr  = addr + LAYOUT_RUNTIME_MODULE + RandUintN(addr, 128);
+    uintptr runtimeAddr = addr + LAYOUT_RUNTIME_STRUCT + RandUintN(0, 128);
+    uintptr moduleAddr  = addr + LAYOUT_RUNTIME_MODULE + RandUintN(0, 128);
     // initialize structure
     Runtime* runtime = (Runtime*)runtimeAddr;
     mem_init(runtime, sizeof(Runtime));
@@ -424,6 +427,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     {
         interruptInit(runtime);
         cleanRuntimeResource(runtime, true);
+        cleanInitStack();
         SetLastErrno(errno);
         return NULL;
     }
@@ -578,7 +582,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Crypto.EraseBuffer      = GetFuncAddr(&EraseBuffer);
     module->Crypto.EraseInstruction = GetFuncAddr(&EraseInstruction);
     // compress module
-    module->Compressor.Compress   = GetFuncAddr(&Compress);
+    module->Compressor.Compress   = GetFuncAddr(&MW_Compress);
     module->Compressor.Decompress = GetFuncAddr(&Decompress);
     // serialization module
     module->Serialization.Serialize   = GetFuncAddr(&Serialize);
@@ -633,6 +637,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Data.Mutex = runtime->hMutex;
     // copy M pointer to runtime
     runtime->RuntimeM = module;
+    cleanInitStack();
     return module;
 }
 
@@ -661,6 +666,8 @@ static void loadOptionFromStub(Runtime_Opts* opts)
     opts->NotEraseInstruction = *(byte*)(data + OPT_OFFSET_NOT_ERASE_INSTRUCTION) == 0;
     opts->NotAdjustProtect    = *(byte*)(data + OPT_OFFSET_NOT_ADJUST_PROTECT) == 0;
     opts->TrackCurrentThread  = *(byte*)(data + OPT_OFFSET_TRACK_CURRENT_THREAD) == 0;
+    // erase data in the large stack
+    mem_init(data, sizeof(data));
 }
 
 static bool checkOptionConflict(Runtime_Opts* opts)
@@ -854,6 +861,9 @@ static void buildRuntimeInformation(Runtime* runtime)
     info->Version = RUNTIME_VERSION;
     info->Size    = (uint32)size;
     info->Flags   = 0;
+
+    // erase data in the large stack
+    mem_init(&ctx, sizeof(ctx));
 }
 
 static void* calculateEpilogue()
@@ -1034,7 +1044,6 @@ static errno initSubmodules(Runtime* runtime)
         .VirtualFree            = runtime->VirtualFree,
         .VirtualProtect         = runtime->VirtualProtect,
         .VirtualQuery           = runtime->VirtualQuery,
-        .FlushInstructionCache  = runtime->FlushInstructionCache,
         .SuspendThread          = runtime->SuspendThread,
         .ResumeThread           = runtime->ResumeThread,
         .GetThreadContext       = runtime->GetThreadContext,
@@ -1740,6 +1749,56 @@ static void recoverErrorMode(Runtime* runtime)
     runtime->SetErrorMode(runtime->ErrorMode);
 }
 
+// ============================================================================
+// cleanInitStack - scrub stack data left behind by runtime initialization
+// ============================================================================
+//
+// Purpose
+//   The InitRuntime() initialization chain reads and decrypts a lot of
+//   sensitive data, leaving temporary copies on the stack: decrypted
+//   Option_Stub data, module handles, API addresses, internal Runtime
+//   pointers, hashes, etc. Once those functions return, the data does not
+//   disappear by itself; it stays inside the "released" stack frames and can
+//   be read by a debugger, a memory scanner, or another thread in the same
+//   process. This function pushes a 2048 byte stack frame and zeroes the
+//   whole region, wiping out those residual traces.
+//
+// 
+// How it works
+//   The x86/x64 stack grows downward. When this function is called, the
+//   compiler allocates a 2048 byte local array just below the caller's
+//   current stack pointer. That region overlaps the stack space previously
+//   used by nested calls (initSubmodules, loadOptionFromStub, each
+//   submodule init, initAPIRedirector, etc.). mem_init() zeroes the whole
+//   block, so the old frame data is overwritten.
+// 
+// Coverage and limitations
+//   - It covers this function's own frame plus the recently used region
+//     below it; local variables of the caller (InitRuntime) at higher
+//     addresses are not covered.
+//   - It handles the stack only, not the heap (heap data is cleaned by each
+//     submodule), and it provides no read protection. It guards against
+//     residual data, not against malicious reads.
+//   - 2048 is an empirical value chosen from the current maximum nesting
+//     depth of the initialization call chain; if deeper initialization
+//     calls are added later, this value should be re-evaluated.
+//   - After this function returns, the caller must not rely on any local
+//     state that lived in this region.
+// 
+// Division of labor with related erasure mechanisms
+//   - eraseArgumentStub()  : erases the argument stub instructions.
+//   - eraseRuntimeMethod() : erases the initialization-related method range.
+//   - cleanInitStack()     : scrubs residual data from the stack.
+
+#pragma optimize("", off)
+__declspec(noinline)
+static void cleanInitStack()
+{
+    byte data[2048];
+    mem_init(data, sizeof(data));
+}
+#pragma optimize("", on)
+
 __declspec(noinline)
 static void setRuntimePointer(Runtime* runtime)
 {
@@ -2094,6 +2153,8 @@ void MW_SHA256Hash(void* data, uint len, byte (*hash)[32])
     SHA256_Init(&ctx);
     SHA256_Write(&ctx, data, len);
     SHA256_Sum(&ctx, hash);
+    // erase data in the large stack
+    mem_init(&ctx, sizeof(ctx));
 }
 
 __declspec(noinline)
@@ -2123,6 +2184,30 @@ void MW_SHA256_Free(SHA256* obj)
     Runtime* runtime = getRuntimePointer();
 
     runtime->MemoryTracker->Free(obj);
+}
+
+__declspec(noinline)
+uint MW_Compress(void* dst, void* src, uint len, uint window, uint chain)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    if (chain == MAXIMUM_CHAIN_LEN)
+    {
+        return Compress(NULL, dst, src, len, window, chain);
+    }
+    if (chain == 0)
+    {
+        chain = DEFAULT_CHAIN_LEN;
+    }
+    if (chain > MAXIMUM_CHAIN_LEN)
+    {
+        return (uint)(-1);
+    }
+    uint size = sizeof(uint16) * HASH_SIZE * chain;
+    void* hashTable = runtime->MemoryTracker->Alloc(size);
+    uint n = Compress(hashTable, dst, src, len, window, chain);
+    runtime->MemoryTracker->Free(hashTable);
+    return n;
 }
 
 __declspec(noinline)
@@ -2567,8 +2652,12 @@ static void* getLazyAPIRedirector(HMODULE hModule, LPCSTR lpProcName)
         {
             continue;
         }
+        // erase data in the large stack
+        mem_init(dllName, sizeof(dllName));
         return item.api;
     }
+    // erase data in the large stack
+    mem_init(dllName, sizeof(dllName));
     return NULL;
 }
 
@@ -2777,6 +2866,8 @@ errno RT_SleepHR(DWORD dwMilliseconds)
 #ifndef RELEASE_MODE
     dwMilliseconds = 5 + (DWORD)RandUintN(0, 50);
 #endif
+
+    // dwMilliseconds = 1;
 
     errno error = NO_ERROR;
     for (;;)
