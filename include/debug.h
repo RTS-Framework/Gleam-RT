@@ -4,29 +4,8 @@
 #include "build.h"
 #include "c_types.h"
 
-#ifdef RELEASE_MODE
-    #define NAME_RT_MUTEX_GLOBAL     NULL
-    #define NAME_RT_DETECTOR_MUTEX   NULL
-    #define NAME_RT_LT_MUTEX_GLOBAL  NULL
-    #define NAME_RT_MT_MUTEX_GLOBAL  NULL
-    #define NAME_RT_TT_MUTEX_GLOBAL  NULL
-    #define NAME_RT_TT_TIMER_SLEEP   NULL
-    #define NAME_RT_RT_MUTEX_GLOBAL  NULL
-    #define NAME_RT_AS_MUTEX_GLOBAL  NULL
-    #define NAME_RT_IS_MUTEX_GLOBAL  NULL
-    #define NAME_RT_WIN_HTTP_MUTEX   NULL
-    #define NAME_RT_WIN_CRYPTO_MUTEX NULL
-    #define NAME_RT_WD_MUTEX_GLOBAL  NULL
-    #define NAME_RT_WD_MUTEX_STATUS  NULL
-    #define NAME_RT_WD_EVENT_STOP    NULL
-    #define NAME_RT_WD_TIMER_SLEEP   NULL
-    #define NAME_RT_SM_MUTEX_GLOBAL  NULL
-    #define NAME_RT_SM_MUTEX_STATUS  NULL
-    #define NAME_RT_SM_EVENT_STOP    NULL
-    #define NAME_RT_SM_TIMER_SLEEP   NULL
-    #define NAME_RT_SD_TIMER_SLEEP   NULL
-#else
-#ifdef _WIN64
+#ifdef ENABLE_DEBUGGER
+  #ifdef _WIN64
     #define NAME_RT_MUTEX_GLOBAL     "RT_Core_Global-x64"
     #define NAME_RT_DETECTOR_MUTEX   "RT_Detector-x64"
     #define NAME_RT_LT_MUTEX_GLOBAL  "RT_LibraryTracker_Global-x64"
@@ -47,7 +26,7 @@
     #define NAME_RT_SM_EVENT_STOP    "RT_Sysmon_Stop-x64"
     #define NAME_RT_SM_TIMER_SLEEP   "RT_Sysmon_Sleep-x64"
     #define NAME_RT_SD_TIMER_SLEEP   "RT_Shield_Sleep-x64"
-#elif _WIN32
+  #elif _WIN32
     #define NAME_RT_MUTEX_GLOBAL     "RT_Core_Global-x86"
     #define NAME_RT_DETECTOR_MUTEX   "RT_Detector-x86"
     #define NAME_RT_LT_MUTEX_GLOBAL  "RT_LibraryTracker_Global-x86"
@@ -68,24 +47,45 @@
     #define NAME_RT_SM_EVENT_STOP    "RT_Sysmon_Stop-x86"
     #define NAME_RT_SM_TIMER_SLEEP   "RT_Sysmon_Sleep-x86"
     #define NAME_RT_SD_TIMER_SLEEP   "RT_Shield_Sleep-x86"
-#endif
-#endif // RELEASE_MODE
+  #endif
+#else
+    #define NAME_RT_MUTEX_GLOBAL     NULL
+    #define NAME_RT_DETECTOR_MUTEX   NULL
+    #define NAME_RT_LT_MUTEX_GLOBAL  NULL
+    #define NAME_RT_MT_MUTEX_GLOBAL  NULL
+    #define NAME_RT_TT_MUTEX_GLOBAL  NULL
+    #define NAME_RT_TT_TIMER_SLEEP   NULL
+    #define NAME_RT_RT_MUTEX_GLOBAL  NULL
+    #define NAME_RT_AS_MUTEX_GLOBAL  NULL
+    #define NAME_RT_IS_MUTEX_GLOBAL  NULL
+    #define NAME_RT_WIN_HTTP_MUTEX   NULL
+    #define NAME_RT_WIN_CRYPTO_MUTEX NULL
+    #define NAME_RT_WD_MUTEX_GLOBAL  NULL
+    #define NAME_RT_WD_MUTEX_STATUS  NULL
+    #define NAME_RT_WD_EVENT_STOP    NULL
+    #define NAME_RT_WD_TIMER_SLEEP   NULL
+    #define NAME_RT_SM_MUTEX_GLOBAL  NULL
+    #define NAME_RT_SM_MUTEX_STATUS  NULL
+    #define NAME_RT_SM_EVENT_STOP    NULL
+    #define NAME_RT_SM_TIMER_SLEEP   NULL
+    #define NAME_RT_SD_TIMER_SLEEP   NULL
+#endif // ENABLE_DEBUGGER
 
 // for test PE Loader
-#ifdef RELEASE_MODE
-    #define NAME_LDR_MUTEX_GLOBAL NULL
-    #define NAME_LDR_MUTEX_STATUS NULL
-#else
-#ifdef _WIN64
+#ifdef ENABLE_DEBUGGER
+  #ifdef _WIN64
     #define NAME_LDR_MUTEX_GLOBAL "x64_LDR_Global"
     #define NAME_LDR_MUTEX_STATUS "x64_LDR_Status"
-#elif _WIN32
+  #elif _WIN32
     #define NAME_LDR_MUTEX_GLOBAL "x86_LDR_Global"
     #define NAME_LDR_MUTEX_STATUS "x86_LDR_Status"
-#endif
-#endif // RELEASE_MODE
+  #endif
+#else
+    #define NAME_LDR_MUTEX_GLOBAL NULL
+    #define NAME_LDR_MUTEX_STATUS NULL
+#endif // ENABLE_DEBUGGER
 
-#ifndef RELEASE_MODE
+#ifdef ENABLE_DEBUGGER
 
 bool InitDebugger();
 
@@ -103,6 +103,6 @@ void dbg_log(char* mod, char* fmt, ...);
 
 #define dbg_log(mod, fmt, ...)
 
-#endif // RELEASE_MODE
+#endif // ENABLE_DEBUGGER
 
 #endif // DEBUG_H
