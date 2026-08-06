@@ -63,12 +63,20 @@ func TestRuntime(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Sleep", func(t *testing.T) {
-		now := time.Now()
+		mem, _, en := syscall.SyscallN(Runtime.Memory.Alloc, 8192)
+		if mem == 0 {
+			t.Fatal(en)
+		}
 
+		now := time.Now()
 		err = Runtime.Sleep(time.Second)
 		require.NoError(t, err)
-
 		require.GreaterOrEqual(t, time.Since(now).Milliseconds(), int64(1000))
+
+		ret, _, en := syscall.SyscallN(Runtime.Memory.Free, mem)
+		if ret != 1 {
+			t.Fatal(en)
+		}
 	})
 
 	t.Run("Options", func(t *testing.T) {
