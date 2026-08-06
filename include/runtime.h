@@ -309,6 +309,8 @@ typedef void (*EraseInstruction_t)(void* buf, uint size);
 
 #ifndef COMPRESS_H
 
+// about search window size.
+#define MINIMUM_WINDOW_SIZE 128
 #define MAXIMUM_WINDOW_SIZE 4096
 #define DEFAULT_WINDOW_SIZE 1024
 
@@ -317,11 +319,6 @@ typedef void (*EraseInstruction_t)(void* buf, uint size);
 // N-candidate hash chain for trade-off between speed and compression.
 #define MINIMUM_CHAIN_LEN 1
 #define MAXIMUM_CHAIN_LEN 16
-
-// default chain length for Compress:
-// 1  = single hash candidate (fastest, worst compression)
-// 6  = good balance
-// 16 = brute-force (best compression, slowest)
 #define DEFAULT_CHAIN_LEN 6
 
 #endif // COMPRESS_H
