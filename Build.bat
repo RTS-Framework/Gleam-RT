@@ -22,6 +22,10 @@ echo ==================== generate builder ====================
 MSBuild.exe Gleam-RT.sln /t:builder /p:Configuration=Release /p:Platform=x86
 MSBuild.exe Gleam-RT.sln /t:builder /p:Configuration=Release /p:Platform=x64
 
+echo =================== generate test dll ====================
+MSBuild.exe Gleam-RT.sln /t:test_dll /p:Configuration=Release /p:Platform=x86
+MSBuild.exe Gleam-RT.sln /t:test_dll /p:Configuration=Release /p:Platform=x64
+
 echo ================= build runtime template =================
 cd builder
 echo --------build template for x86--------
@@ -30,9 +34,7 @@ echo --------build template for x64--------
 "..\x64\Release\builder.exe"
 cd ..
 
-echo =================== generate test dll ====================
-MSBuild.exe Gleam-RT.sln /t:test_dll /p:Configuration=Release /p:Platform=x86
-MSBuild.exe Gleam-RT.sln /t:test_dll /p:Configuration=Release /p:Platform=x64
+echo ================= copy runtime test dll ==================
 copy Release\test_dll.dll     dist\GleamRT_x86.dll
 copy x64\Release\test_dll.dll dist\GleamRT_x64.dll
 
@@ -49,6 +51,11 @@ go run dump.go
 
 echo ================== test runtime package ==================
 call test.bat
+if errorlevel 1 (
+    echo.
+    echo failed to test runtime package!
+    exit /b %ERRORLEVEL%
+)
 
 echo ==========================================================
 echo                 build template finish!
