@@ -5,12 +5,18 @@
 #include "pe_image.h"
 #include "thread.h"
 
+#ifdef DISABLE_CAMOUFLAGE
+
 void* CamouflageStartAddress(HMODULE hModule, void* address)
 {
-#ifdef NOT_CAMOUFLAGE
+    (void)hModule; // skip warning C4189
     return address;
-#endif // NOT_CAMOUFLAGE
+}
 
+#else
+
+void* CamouflageStartAddress(HMODULE hModule, void* address)
+{
     // parse module information
     PE_Image image;
     mem_init(&image, sizeof(image));
@@ -20,11 +26,14 @@ void* CamouflageStartAddress(HMODULE hModule, void* address)
     {
         return address;
     }
-    // select a random start address in .text
+    // calculate search range
     uintptr base  = (uintptr)hModule + image.Text.VirtualAddress;
     uintptr range = image.Text.SizeOfRawData;
     uintptr begin = base + RandUintN(0, range);
     uintptr end   = base + image.Text.SizeOfRawData;
+    // erase data in the large stack
+    mem_init(&image, sizeof(image));
+    // select a random start address in .text
     for (uintptr addr = begin; addr < end; addr++)
     {
         byte b = *(byte*)addr;
@@ -61,3 +70,5 @@ void* CamouflageStartAddress(HMODULE hModule, void* address)
     // if not found, return the random start address
     return (void*)begin;
 }
+
+#endif // DISABLE_CAMOUFLAGE
