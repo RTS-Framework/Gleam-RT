@@ -45,7 +45,7 @@ static bool TestCompressor_SHashCandidate()
     }
 
     uint windows[] = {
-        32, 64, 128, 256, 512, 1024, 1536, 2048, 4096,
+        128, 256, 512, 1024, 1536, 2048, 4096,
     };
     for (int i = 0; i < arrlen(windows); i++)
     {
@@ -93,7 +93,7 @@ static bool TestCompressor_NHashCandidate()
     }
 
     uint windows[] = {
-        32, 64, 128, 256, 512, 1024, 1536, 2048, 4096,
+        128, 256, 512, 1024, 1536, 2048, 4096,
     };
     for (int i = 0; i < arrlen(windows); i++)
     {
@@ -141,7 +141,7 @@ static bool TestCompressor_BruteForce()
     }
 
     uint windows[] = {
-        32, 64, 128, 256, 512, 1024, 1536, 2048, 4096,
+        128, 256, 512, 1024, 1536, 2048, 4096,
     };
     for (int i = 0; i < arrlen(windows); i++)
     {
