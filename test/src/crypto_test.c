@@ -151,7 +151,7 @@ static bool TestObfuscateBuffer()
     }
     printHexBytes(data, sizeof(data));
 
-    uint64 key = RandUint64(0);
+    uint key = RandUint(0);
     ObfuscateBuffer(data, sizeof(data), key);
     printHexBytes(data, sizeof(data));
 
@@ -177,7 +177,7 @@ static bool TestIlluminateBuffer()
     byte buf[256];
     mem_copy(buf, data, sizeof(data));
 
-    uint64 key = RandUint64(0);
+    uint key = RandUint(0);
     ObfuscateBuffer(buf, sizeof(buf), key);
     IlluminateBuffer(buf, sizeof(buf), key);
     if (!mem_equal(buf, data, sizeof(data)))
