@@ -33,6 +33,8 @@ void EncryptBuffer(void* buf, uint size, byte* key, byte* iv)
     byte sbox[256];
     initSBox(sbox, key, iv);
     encryptBuffer(buf, size, key, iv, sbox);
+    // erase data in the large stack
+    mem_init(sbox, sizeof(sbox));
 }
 
 static void encryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
@@ -267,6 +269,8 @@ void DecryptBuffer(void* buf, uint size, byte* key, byte* iv)
     initSBox(sbox, key, iv);
     inverseSBox(sbox);
     decryptBuffer(buf, size, key, iv, sbox);
+    // erase data in the large stack
+    mem_init(sbox, sizeof(sbox));
 }
 
 static void decryptBuffer(byte* buf, uint size, byte* key, byte* iv, byte* sbox)
@@ -624,9 +628,9 @@ void ObfuscateBuffer(void* buf, uint size, uint key)
         buffer[i] = sbox[buffer[i]];
     }
     // cache-aware sliding shuffle
-    uint range = 64; // common cache line size
-    uint step  = 8;
-    for (uint i = 0; i < size - range; i += step)
+    intx range = 64; // common cache line size
+    intx step  = 8;
+    for (intx i = 0; i < (intx)size - range; i += step)
     {
         // select swap target
         uint j = i + seed1 % range;
@@ -638,7 +642,7 @@ void ObfuscateBuffer(void* buf, uint size, uint key)
         seed1 = XORShift(seed1);
     }
     // partial second substitution
-    uint pct = 1 + (seed2 % 5);
+    uint pct = 1 + (seed2 % 8);
     uint cnt = (size * pct) / 100;
     for (uint i = 0; i < cnt; i++)
     {
@@ -646,6 +650,8 @@ void ObfuscateBuffer(void* buf, uint size, uint key)
         uint idx = seed2 % size;
         buffer[idx] = sbox[buffer[idx]];
     }
+    // erase data in the large stack
+    mem_init(sbox, sizeof(sbox));
 }
 
 void IlluminateBuffer(void* buf, uint size, uint key)
@@ -664,7 +670,7 @@ void IlluminateBuffer(void* buf, uint size, uint key)
     initObfuscateSBox(sbox, seed0);
     inverseSBox(sbox);
     // reverse partial second substitution
-    uint pct = 1 + (seed2 % 5);
+    uint pct = 1 + (seed2 % 8);
     uint cnt = (size * pct) / 100;
     for (uint i = 0; i < cnt; i++)
     {
@@ -673,9 +679,9 @@ void IlluminateBuffer(void* buf, uint size, uint key)
         buffer[idx] = sbox[buffer[idx]];
     }
     // advance to the final seed
-    uint range = 64; // common cache line size
-    uint step  = 8;
-    for (uint i = 0; i < size - range; i += step)
+    intx range = 64; // common cache line size
+    intx step  = 8;
+    for (intx i = 0; i < (intx)size - range; i += step)
     {
         seed1 = XORShift(seed1);
     }
@@ -697,6 +703,8 @@ void IlluminateBuffer(void* buf, uint size, uint key)
     {
         buffer[i] = sbox[buffer[i]];
     }
+    // erase data in the large stack
+    mem_init(sbox, sizeof(sbox));
 }
 
 __declspec(noinline)
@@ -848,6 +856,8 @@ void SubstituteBuffer(void* buf, uint size)
     {
         buffer[i] = sbox[buffer[i]];
     }
+    // erase data in the large stack
+    mem_init(sbox, sizeof(sbox));
 }
 
 void ShuffleBuffer(void* buf, uint size)
