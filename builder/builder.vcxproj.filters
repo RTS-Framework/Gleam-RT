@@ -306,5 +306,8 @@
     <MASM Include="..\asm\shield_stub.asm">
       <Filter>Assembly</Filter>
     </MASM>
+    <MASM Include="..\asm\msvc\lldiv.asm">
+      <Filter>Assembly\MSVC</Filter>
+    </MASM>
   </ItemGroup>
 </Project>

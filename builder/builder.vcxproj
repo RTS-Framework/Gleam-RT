@@ -131,6 +131,7 @@
     <ClInclude Include="..\include\lib_match.h" />
     <ClInclude Include="..\include\lib_encode.h" />
     <ClInclude Include="..\include\lib_hash.h" />
+    <ClInclude Include="..\include\pe_image.h" />
     <ClInclude Include="..\include\hash_api.h" />
     <ClInclude Include="..\include\hash_mod.h" />
     <ClInclude Include="..\include\list_md.h" />
@@ -140,7 +141,6 @@
     <ClInclude Include="..\include\compress.h" />
     <ClInclude Include="..\include\serialize.h" />
     <ClInclude Include="..\include\mem_scanner.h" />
-    <ClInclude Include="..\include\pe_image.h" />
     <ClInclude Include="..\include\thread.h" />
     <ClInclude Include="..\include\win_api.h" />
     <ClInclude Include="..\include\errno.h" />
@@ -173,16 +173,16 @@
     <ClCompile Include="..\src\lib_match.c" />
     <ClCompile Include="..\src\lib_encode.c" />
     <ClCompile Include="..\src\lib_hash.c" />
-    <ClCompile Include="..\src\rel_addr.c" />
+    <ClCompile Include="..\src\pe_image.c" />
     <ClCompile Include="..\src\hash_api.c" />
     <ClCompile Include="..\src\hash_mod.c" />
     <ClCompile Include="..\src\list_md.c" />
+    <ClCompile Include="..\src\rel_addr.c" />
     <ClCompile Include="..\src\random.c" />
     <ClCompile Include="..\src\crypto.c" />
     <ClCompile Include="..\src\compress.c" />
     <ClCompile Include="..\src\serialize.c" />
     <ClCompile Include="..\src\mem_scanner.c" />
-    <ClCompile Include="..\src\pe_image.c" />
     <ClCompile Include="..\src\thread.c" />
     <ClCompile Include="..\src\win_api.c" />
     <ClCompile Include="..\src\errno.c" />
@@ -202,6 +202,9 @@
     <ClCompile Include="..\src\shield.c" />
   </ItemGroup>
   <ItemGroup>
+    <MASM Include="..\asm\msvc\lldiv.asm">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </MASM>
     <MASM Include="..\asm\msvc\llmul.asm">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </MASM>
