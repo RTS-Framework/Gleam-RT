@@ -1,6 +1,6 @@
 #include "build.h"
 
-#ifndef RELEASE_MODE
+#ifdef ENABLE_DEBUGGER
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -76,4 +76,6 @@ void dbg_log(char* mod, char* fmt, ...)
     dbg_unlock();
 }
 
+#else
+#pragma warning(disable: 4206)
 #endif
