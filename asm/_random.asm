@@ -39,7 +39,7 @@ _GenerateSeed@0 proc
   ror eax, 3
   add eax, esp
 
-  ; build eax with xor shift
+  ; build eax with xor-rotate mixing
   push esi
   mov esi, eax
   rol eax, 13
@@ -52,7 +52,7 @@ _GenerateSeed@0 proc
   xor eax, esi
   pop esi
 
-  ; build edx with xor shift
+  ; build edx with xor-rotate mixing
   mov edx, eax
   rol edx, 13
   xor edx, eax
@@ -117,7 +117,7 @@ GenerateSeed proc
   add rax, 8192
   xor r9, rax
 
-  ; build rax with xor shift
+  ; build rax with xor-rotate mixing
   mov rcx, rax
   rol rax, 13
   xor rax, rcx
