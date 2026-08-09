@@ -122,7 +122,7 @@ static LPSTR getProcedureName(HMODULE hModule, void* procedure)
     // calculate the text section range
     uintptr begin = base + image.Text.VirtualAddress;
     uintptr end = begin + image.Text.VirtualSize;
-    if (proc < begin || proc > end)
+    if (proc < begin || proc >= end)
     {
         return NULL;
     }
@@ -132,11 +132,14 @@ static LPSTR getProcedureName(HMODULE hModule, void* procedure)
     // get export directory structure
     Image_ExportDirectory* dir = (Image_ExportDirectory*)(base + EAT.VirtualAddress);
     // process EAT arrays
-    uint32* nameTable = (uint32*)(base + dir->AddressOfNames);
     uint32* funcTable = (uint32*)(base + dir->AddressOfFunctions);
+    uint32* nameTable = (uint32*)(base + dir->AddressOfNames);
     uint16* ordiTable = (uint16*)(base + dir->AddressOfNameOrdinals);
+    uint32  numNames  = dir->NumberOfNames;
+    // erase data in the large stack
+    mem_init(&image, sizeof(image));
     // compare the exported function address
-    for (uint32 i = 0; i < dir->NumberOfNames; i++)
+    for (uint32 i = 0; i < numNames; i++)
     {
         // name[i] -> ordinal[i] -> funcRVA[ordinal]
         uint32 funcRVA = funcTable[ordiTable[i]];
