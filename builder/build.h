@@ -1,10 +1,10 @@
 #ifndef BUILD_H
 #define BUILD_H
 
-// RELEASE_MODE:   remove debug modules for generate template
-// NOT_CAMOUFLAGE: disable all modules about camouflage for debug
+#define BUILD_MODE
 
-#define RELEASE_MODE
-// #define NOT_CAMOUFLAGE
+// DISABLE_CAMOUFLAGE: disable all modules about camouflage for debug
+
+// #define DISABLE_CAMOUFLAGE
 
 #endif // BUILD_H
