@@ -6,9 +6,6 @@
 #define MIN_MATCH_LENGTH 3
 #define MAX_MATCH_LENGTH 18
 
-#define HASH_BITS 12
-#define HASH_SIZE (1 << HASH_BITS)
-
 static uint sHashCandidate(void* ht, byte* dst, byte* src, intx len, intx win);
 static uint nHashCandidate(void* ht, byte* dst, byte* src, intx len, intx win, intx chain);
 static uint bruteForce(byte* dst, byte* src, intx len, intx win);
@@ -20,14 +17,6 @@ static intx   resolveCandidate(uint16 stored, intx dataPtr);
 
 uint Compress(void* ht, void* dst, void* src, uint len, uint window, uint chain)
 {
-    if (window > MAXIMUM_WINDOW_SIZE)
-    {
-        return (uint)(-1);
-    }
-    if (chain > MAXIMUM_CHAIN_LEN)
-    {
-        return (uint)(-1);
-    }
     if (window == 0)
     {
         window = DEFAULT_WINDOW_SIZE;
@@ -35,6 +24,14 @@ uint Compress(void* ht, void* dst, void* src, uint len, uint window, uint chain)
     if (chain == 0)
     {
         chain = DEFAULT_CHAIN_LEN;
+    }
+    if (window < MINIMUM_WINDOW_SIZE || window > MAXIMUM_WINDOW_SIZE)
+    {
+        return (uint)(-1);
+    }
+    if (chain > MAXIMUM_CHAIN_LEN)
+    {
+        return (uint)(-1);
     }
     byte* d = (byte*)dst;
     byte* s = (byte*)src;
@@ -331,7 +328,7 @@ static uint bruteForce(byte* dst, byte* src, intx len, intx win)
                     matchLen++;
                 }
                 intx newOffset = winLen - absPos - 1;
-                // prefer longer matches; equal length prefer nearer (smaller offset)
+                // prefer longer matches; equal length -> prefer nearer (smaller offset)
                 if (matchLen > bestLen || (matchLen == bestLen && newOffset < bestOff))
                 {
                     bestLen = matchLen;
