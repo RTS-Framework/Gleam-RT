@@ -120,8 +120,8 @@ void* FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
     // get export directory structure
     Image_ExportDirectory* dir = (Image_ExportDirectory*)(dllBase + EAT.VirtualAddress);
     // process EAT arrays
-    uint32* nameTable = (uint32*)(dllBase + dir->AddressOfNames);
     uint32* funcTable = (uint32*)(dllBase + dir->AddressOfFunctions);
+    uint32* nameTable = (uint32*)(dllBase + dir->AddressOfNames);
     uint16* ordiTable = (uint16*)(dllBase + dir->AddressOfNameOrdinals);
     // try to get function RVA
     uint32 funcRVA = 0;
@@ -207,6 +207,8 @@ void* FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
     // build module and procedure hash
     uint mHash = CalcModHash_A(dllName, key);
     uint pHash = CalcProcHash(procName, key);
+    // erase data in the large stack
+    mem_init(dllName, sizeof(dllName));
     return FindAPI_MHL(pml, mHash, pHash, key);
 }
 
