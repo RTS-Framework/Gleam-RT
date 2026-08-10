@@ -121,6 +121,10 @@ uint Base64_Encode(void* src, uint len, byte* dst)
         break;
       }
     }
+
+    // erase data in the large stack
+    mem_init(enc, sizeof(enc));
+    mem_init(dec, sizeof(dec));
     return outLen;
 }
 
@@ -157,19 +161,24 @@ uint Base64_Decode(byte* src, uint len, void* dst)
     byte* out = (byte*)dst;
     uint i = 0;
     uint j = 0;
+
+    bool success = true;
     while (i < len)
     {
         if (src[i + 0] == '=' || src[i + 1] == '=')
         {
-            return (uint)(-1);
+            success = false;
+            break;
         }
         if (src[i + 2] == '=' && src[i + 3] != '=')
         {
-            return (uint)(-1);
+            success = false;
+            break;
         }
         if ((src[i + 2] == '=' || src[i + 3] == '=') && (i + 4 != len))
         {
-            return (uint)(-1);
+            success = false;
+            break;
         }
 
         byte a = dec[src[i + 0]];
@@ -187,15 +196,18 @@ uint Base64_Decode(byte* src, uint len, void* dst)
 
         if (a == 0xFF || b == 0xFF)
         {
-            return (uint)(-1);
+            success = false;
+            break;
         }
         if (src[i + 2] != '=' && c == 0xFF)
         {
-            return (uint)(-1);
+            success = false;
+            break;
         }
         if (src[i + 3] != '=' && d == 0xFF)
         {
-            return (uint)(-1);
+            success = false;
+            break;
         }
 
         uint v = ((uint)a << 18) | ((uint)b << 12) | ((uint)c << 6) | d;
@@ -212,6 +224,15 @@ uint Base64_Decode(byte* src, uint len, void* dst)
             out[j++] = (byte)(v >> 0);
         }
         i += 4;
+    }
+
+    // erase data in the large stack
+    mem_init(enc, sizeof(enc));
+    mem_init(dec, sizeof(dec));
+
+    if (!success)
+    {
+        return (uint)(-1);
     }
     return outLen;
 }
