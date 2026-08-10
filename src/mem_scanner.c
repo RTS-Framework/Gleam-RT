@@ -36,7 +36,10 @@ uint MemScanByValue(MemScan_Ctx* ctx, void* value, uint size, uintptr* results, 
         .Protect = PAGE_READWRITE,
         .Type    = MEM_PRIVATE,
     };
-    return MemScanByConfig(ctx, &config, results, maxItem);
+    uint num = MemScanByConfig(ctx, &config, results, maxItem);
+    // erase data in the large stack
+    mem_init(pattern, sizeof(pattern));
+    return num;
 }
 
 uint MemScanByConfig(MemScan_Ctx* ctx, MemScan_Cfg* config, uintptr* results, uint maxItem)
@@ -120,19 +123,22 @@ uint MemScanByConfig(MemScan_Ctx* ctx, MemScan_Cfg* config, uintptr* results, ui
         {
             if (numResults >= maxItem)
             {
+                // erase data in the large stack
+                mem_init(condition, sizeof(condition));
+                mem_init(fastValue, sizeof(fastValue));
                 return numResults;
             }
-            integer rem = (integer)(address + size) - (integer)addr;
-            if (rem < (integer)numCond)
+            intx rem = (intx)(address + size) - (intx)addr;
+            if (rem < (intx)numCond)
             {
                 break;
             }
-            integer offset;
+            intx offset;
             if (canFast)
             {
                 offset = MatchBytes((byte*)addr, rem, fastValue, numCond);
             } else {
-                offset = (integer)scanRegion(addr, rem, condition, numCond);
+                offset = (intx)scanRegion(addr, rem, condition, numCond);
             }
             if (offset == -1)
             {
@@ -149,6 +155,10 @@ uint MemScanByConfig(MemScan_Ctx* ctx, MemScan_Cfg* config, uintptr* results, ui
         }
         address += size;
     }
+
+    // erase data in the large stack
+    mem_init(condition, sizeof(condition));
+    mem_init(fastValue, sizeof(fastValue));
     return numResults;
 }
 
