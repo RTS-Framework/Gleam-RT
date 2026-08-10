@@ -22,14 +22,18 @@ void SHA256_Init(SHA256_Ctx *ctx)
     ctx->bitlen  = 0;
     ctx->datalen = 0;
 
-    ctx->state[0] = 0x6A09E667;
-    ctx->state[1] = 0xBB67AE85;
-    ctx->state[2] = 0x3C6EF372;
-    ctx->state[3] = 0xA54FF53A;
-    ctx->state[4] = 0x510E527F;
-    ctx->state[5] = 0x9B05688C;
-    ctx->state[6] = 0x1F83D9AB;
-    ctx->state[7] = 0x5BE0CD19;
+    uint32 init[] =
+    {
+        0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+        0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
+    };
+    for (int i = 0; i < arrlen(ctx->state); i++)
+    {
+        ctx->state[i] = init[i];
+    }
+
+    // erase data in the large stack
+    mem_init(init, sizeof(init));
 }
 
 __declspec(noinline)
@@ -144,4 +148,8 @@ void SHA256_transform(SHA256_Ctx* ctx, byte* data)
     ctx->state[5] += f;
     ctx->state[6] += g;
     ctx->state[7] += h;
+
+    // erase data in the large stack
+    mem_init(k, sizeof(k));
+    mem_init(m, sizeof(m));
 }
