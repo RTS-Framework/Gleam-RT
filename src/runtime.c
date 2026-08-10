@@ -286,20 +286,22 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         return NULL;
     }
     // load runtime options
+    Runtime_Opts opt;
     if (opts == NULL)
     {
-        Runtime_Opts opt;
         loadOptionFromStub(&opt);
         opts = &opt;
     }
     if (!checkOptionConflict(opts))
     {
+        mem_init(&opt, sizeof(opt));
         SetLastErrno(ERR_RUNTIME_OPTION_CONFLICT);
         return NULL;
     }
     // check argument stub for calculate Epilogue
     if (!isValidArgumentStub())
     {
+        mem_init(&opt, sizeof(opt));
         SetLastErrno(ERR_RUNTIME_INVALID_ARG_STUB);
         return NULL;
     }
@@ -311,6 +313,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     // check image pinning hash
     if (!processImagePinning(PML, imageBase, opts->ImagePinningHash))
     {
+        mem_init(&opt, sizeof(opt));
         SetLastErrno(ERR_RUNTIME_IMAGE_PINNING);
         return NULL;
     }
@@ -318,12 +321,14 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     HMODULE hKernel32 = getKernel32Address(PML);
     if (hKernel32 == NULL)
     {
+        mem_init(&opt, sizeof(opt));
         SetLastErrno(ERR_RUNTIME_NO_KERNEL32_ADDR);
         return NULL;
     }
     HMODULE hNtdll = getNtdllAddress(PML);
     if (hNtdll == NULL)
     {
+        mem_init(&opt, sizeof(opt));
         SetLastErrno(ERR_RUNTIME_NO_NTDLL_ADDR);
         return NULL;
     }
@@ -331,6 +336,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     void* mainMemPage = allocateMainMemoryPage(PML, hKernel32);
     if (mainMemPage == NULL)
     {
+        mem_init(&opt, sizeof(opt));
         SetLastErrno(ERR_RUNTIME_ALLOC_MAIN_MEM_PAGE);
         return NULL;
     }
@@ -343,6 +349,9 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     mem_init(runtime, sizeof(Runtime));
     // copy runtime option
     mem_copy(&runtime->Options, opts, sizeof(Runtime_Opts));
+    // NOT use variable opts after this
+    // MUST use runtime->Options.Field
+    mem_init(&opt, sizeof(opt));
     // build runtime information
     buildRuntimeInformation(runtime);
     // store process environment
@@ -402,7 +411,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         break;
     }
     // if failed to initialize runtime, erase argument stub.
-    if (errno > ERR_RUNTIME_ADJUST_PROTECT || opts->NotAdjustProtect)
+    if (errno > ERR_RUNTIME_ADJUST_PROTECT || runtime->Options.NotAdjustProtect)
     {
         eraseArgumentStub(runtime);
     }
@@ -432,7 +441,7 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         return NULL;
     }
     // compare the hash after initialized.
-    if (opts->NotEraseInstruction)
+    if (runtime->Options.NotEraseInstruction)
     {
         // store the old hash before rebuild info
         byte hash[32];
@@ -443,6 +452,8 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         {
             panic(PANIC_UNREACHABLE_CODE);
         }
+        // erase hash in stack
+        mem_init(hash, sizeof(hash));
     }
     // create methods for runtime
     Runtime_M* module = (Runtime_M*)moduleAddr;
@@ -706,10 +717,13 @@ static bool isValidArgumentStub()
     uint  fsz = sizeof(uint16) + sizeof(uint32);
     byte* key = header + ARG_OFFSET_CRYPTO_KEY;
     XORBuffer(buf, fsz, key, ARG_CRYPTO_KEY_SIZE);
-    // check the number of argument
+    // parse stub fields
     uint16 numArgs  = *(uint16*)(header + ARG_OFFSET_NUM_ARGS);
     uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
     uint32 checksum = *(uint32*)(header + ARG_OFFSET_CHECKSUM);
+    // erase data in the large stack
+    mem_init(header, sizeof(header));
+    // check the number of argument
     if (numArgs > ARG_MAX_NUM_ARGUMENTS)
     {
         return false;
@@ -745,6 +759,8 @@ static uint32 calcArgumentStubSize()
     byte* key = header + ARG_OFFSET_CRYPTO_KEY;
     XORBuffer(buf, fsz, key, ARG_CRYPTO_KEY_SIZE);
     uint32 argsSize = *(uint32*)(header + ARG_OFFSET_ARGS_SIZE);
+    // erase data in the large stack
+    mem_init(header, sizeof(header));
     return ARG_HEADER_SIZE + argsSize;
 }
 
@@ -984,6 +1000,9 @@ static bool initRuntimeAPI(Runtime* runtime)
     runtime->SetErrorMode           = list[0x1A].proc;
     runtime->SleepEx                = list[0x1B].proc;
     runtime->ExitProcess            = list[0x1C].proc;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -1549,6 +1568,10 @@ static bool initAPIRedirector(Runtime* runtime)
         runtime->NtdllRDR[i].src = proc;
         runtime->NtdllRDR[i].dst = item.api;
     }
+
+    // erase data in the large stack
+    mem_init(kernel32, sizeof(kernel32));
+    mem_init(ntdll, sizeof(ntdll));
     return true;
 }
 
@@ -1909,7 +1932,7 @@ void* RT_realloc(void* ptr, uint size)
     } else {
         cap = size * 5 / 4; // size *= 1.25
     }
-    void* newPtr = RT_malloc(size);
+    void* newPtr = RT_malloc(cap);
     if (newPtr == NULL)
     {
         return NULL;
@@ -2001,6 +2024,9 @@ errno RT_lock_mods()
         }
     }
     dbg_lock();
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return errno;
 }
 
@@ -2037,6 +2063,9 @@ errno RT_unlock_mods()
         }
     }
     dbg_unlock();
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return errno;
 }
 
@@ -2527,8 +2556,12 @@ static void* getRuntimeMethods(LPCSTR lpProcName)
         {
             continue;
         }
+        // erase data in the large stack
+        mem_init(list, sizeof(list));
         return item.method;
     }
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return NULL;
 }
 
@@ -2653,10 +2686,12 @@ static void* getLazyAPIRedirector(HMODULE hModule, LPCSTR lpProcName)
             continue;
         }
         // erase data in the large stack
+        mem_init(list, sizeof(list));
         mem_init(dllName, sizeof(dllName));
         return item.api;
     }
     // erase data in the large stack
+    mem_init(list, sizeof(list));
     mem_init(dllName, sizeof(dllName));
     return NULL;
 }
@@ -2862,12 +2897,10 @@ errno RT_SleepHR(DWORD dwMilliseconds)
         }
     }
 
-    // for test submodule faster
-#ifndef RELEASE_MODE
-    dwMilliseconds = 5 + (DWORD)RandUintN(0, 50);
+    // for check the performance about hide and recover
+#ifdef ENABLE_FAST_SLEEP
+    dwMilliseconds = 1;
 #endif
-
-    // dwMilliseconds = 1;
 
     errno error = NO_ERROR;
     for (;;)
@@ -2909,7 +2942,7 @@ __declspec(noinline)
 static errno hide(Runtime* runtime)
 {
     typedef errno (*submodule_t)();
-    submodule_t submodules[] = {
+    submodule_t mods[] = {
         runtime->ThreadTracker->Suspend,
 
         runtime->Sysmon->Pause,
@@ -2925,14 +2958,16 @@ static errno hide(Runtime* runtime)
         runtime->InMemoryStorage->Encrypt,
     };
     errno err = NO_ERROR;
-    for (int i = 0; i < arrlen(submodules); i++)
+    for (int i = 0; i < arrlen(mods); i++)
     {
-        errno enmod = submodules[i]();
+        errno enmod = mods[i]();
         if (enmod != NO_ERROR && !CAN_IGNORE_ERR(enmod) && err == NO_ERROR)
         {
             err = enmod;
         }
     }
+    // erase data in the large stack
+    mem_init(mods, sizeof(mods));
     return err;
 }
 
@@ -2940,7 +2975,7 @@ __declspec(noinline)
 static errno recover(Runtime* runtime)
 {
     typedef errno (*submodule_t)();
-    submodule_t submodules[] = {
+    submodule_t mods[] = {
         runtime->InMemoryStorage->Decrypt,
         runtime->ArgumentStore->Decrypt,
         runtime->ResourceTracker->Decrypt,
@@ -2953,14 +2988,16 @@ static errno recover(Runtime* runtime)
         runtime->ThreadTracker->Resume,
     };
     errno err = NO_ERROR;
-    for (int i = 0; i < arrlen(submodules); i++)
+    for (int i = 0; i < arrlen(mods); i++)
     {
-        errno enmod = submodules[i]();
+        errno enmod = mods[i]();
         if (enmod != NO_ERROR && !CAN_IGNORE_ERR(enmod) && err == NO_ERROR)
         {
             err = enmod;
         }
     }
+    // erase data in the large stack
+    mem_init(mods, sizeof(mods));
     return err;
 }
 
@@ -3188,6 +3225,8 @@ errno RT_Cleanup()
             err = enmod;
         }
     }
+    // erase data in the large stack
+    mem_init(submodules, sizeof(submodules));
 
     // flush Windows API cache without mutex
     runtime->MemoryTracker->Flush();
@@ -3274,6 +3313,8 @@ errno RT_stop(bool exitThread, uint32 code)
             error = enmod;
         }
     }
+    // erase data in the large stack
+    mem_init(submodules, sizeof(submodules));
 
     recoverProcessEnv(runtime);
 
