@@ -104,8 +104,7 @@ static void  eraseShieldMethod(Context* context);
 static void  cleanShieldResource(Shield* shield);
 static void  setShieldPointer(Shield* shield);
 
-static void   unshuffle(byte* data, uint32 size, uint64 seed);
-static uint64 reverseXORShift64(uint64 seed);
+static void unshuffle(byte* data, uint32 size, uint64 seed);
 
 static errno sd_clean(Shield* shield);
 
@@ -113,8 +112,8 @@ Shield_M* InitShield(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr shieldAddr = addr + LAYOUT_SD_STRUCT + RandUintN(addr, 128);
-    uintptr methodAddr = addr + LAYOUT_SD_METHOD + RandUintN(addr, 128);
+    uintptr shieldAddr = addr + LAYOUT_SD_STRUCT + RandUintN(0, 128);
+    uintptr methodAddr = addr + LAYOUT_SD_METHOD + RandUintN(0, 128);
     // allocate shield memory
     Shield* shield = (Shield*)shieldAddr;
     mem_init(shield, sizeof(Shield));
@@ -202,9 +201,18 @@ static bool initShieldAPI(Shield* shield, Context* context)
         shield->ExitThread     = context->ExitThread;
     }
 
+    // force use copy from context when security mode is enabled
+    if (context->EnableSecurityMode)
+    {
+        shield->VirtualProtect = context->VirtualProtect;
+    }
+
     // copy from context
     shield->SetWaitableTimer = context->SetWaitableTimer;
     shield->CloseHandle      = context->CloseHandle;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -338,6 +346,7 @@ static errno initShieldEnv(Shield* shield, Context* context)
         EraseInstruction((void*)stub, sz);
     }
 
+    // TODO need add a new option? for control adjust protect about runtime body
     // prepare VirtualProtect address
     if (context->NotAdjustProtect)
     {
@@ -381,8 +390,8 @@ static void cleanShieldResource(Shield* shield)
     }
 }
 
-// the next functions until reverseXORShift64 will be linked
-// to another modules, so must move these after eraseShieldMethod
+// this method will be linked to another modules, so must move
+// it after eraseShieldMethod.
 
 __declspec(noinline)
 static void unshuffle(byte* data, uint32 size, uint64 seed)
@@ -392,34 +401,15 @@ static void unshuffle(byte* data, uint32 size, uint64 seed)
     {
         seed = XORShift64(seed);
     }
-    for (uint i = 1; i < size; i++)
+    // reverse shuffle
+    for (uint64 i = 1; i < size; i++)
     {
-        seed = reverseXORShift64(seed);
-        uint j = seed % (uint64)(i + 1);
+        seed = ReverseXORShift64(seed);
+        uint j = (uint)(seed % (i + 1));
         byte t = data[i];
         data[i] = data[j];
         data[j] = t;
     }
-}
-
-__declspec(noinline)
-static uint64 reverseXORShift64(uint64 seed)
-{
-    // reverse seed ^= seed << 17
-    seed ^= seed << 17;
-    seed ^= seed << 34;
-
-    // reverse seed ^= seed >> 7
-    seed ^= seed >> 7;
-    seed ^= seed >> 14;
-    seed ^= seed >> 28;
-    seed ^= seed >> 56;
-
-    // reverse seed ^= seed << 13
-    seed ^= seed << 13;
-    seed ^= seed << 26;
-    seed ^= seed << 52;
-    return seed;
 }
 
 __declspec(noinline)
@@ -490,6 +480,11 @@ errno SD_Sleep(uint32 milliseconds)
 
     // decrypt main memory page
     DecryptBuffer(mmp, MAIN_MEM_PAGE_SIZE, key, iv);
+
+    // erase key data in stack
+    mem_init(&args, sizeof(args));
+    mem_init(key, sizeof(key));
+    mem_init(iv,  sizeof(iv));
     return NO_ERROR;
 }
 
