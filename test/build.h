@@ -1,21 +1,18 @@
 #ifndef BUILD_H
 #define BUILD_H
 
-// RELEASE_MODE:   remove debug modules for generate template
-// PIC_MODE:       run unit tests under runtime PIC instance
-// NOT_CAMOUFLAGE: disable all modules about camouflage for debug
+#define TEST_MODE
 
-// #define RELEASE_MODE
-#define PIC_MODE
-// #define NOT_CAMOUFLAGE
+// ENABLE_DEBUGGER:    enable debugger module for test and debug
+// ENABLE_FAST_SLEEP:  force adjust the RT_SleepHR duration to 1 ms
+// DISABLE_PIC_MODE:   run unit tests under .text instance
+// DISABLE_CAMOUFLAGE: disable all modules about camouflage for debug
+// SMALL_CHUNK_SIZE:   adjust the read chunk size to smaller for test
 
-#ifdef PIC_MODE
-    #define RELEASE_MODE
-#endif // PIC_MODE
-
-// disable special warnings for RELEASE_MODE
-#ifdef RELEASE_MODE
-    #pragma warning(disable: 4206)
-#endif
+// #define ENABLE_DEBUGGER
+// #define ENABLE_FAST_SLEEP
+// #define DISABLE_PIC_MODE
+// #define DISABLE_CAMOUFLAGE
+#define SMALL_CHUNK_SIZE
 
 #endif // BUILD_H
