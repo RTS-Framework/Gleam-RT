@@ -140,9 +140,9 @@ typedef struct {
     UTF16  ProxyURL;       // http://www.example.com:8080
     UTF16  ProxyUser;      // proxy server username
     UTF16  ProxyPass;      // proxy server password
-    uint32 ConnectTimeout; // milliseconds, default is 60s
-    uint32 SendTimeout;    // milliseconds, default is 600s
-    uint32 ReceiveTimeout; // milliseconds, default is 600s
+    uint32 ConnectTimeout; // milliseconds, default is 120s
+    uint32 SendTimeout;    // milliseconds, default is 300s
+    uint32 ReceiveTimeout; // milliseconds, default is 300s
     uint32 MaxBodySize;    // zero is no limit
     uint8  AccessType;     // reference document about WinHttpOpen
 
