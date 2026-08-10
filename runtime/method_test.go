@@ -120,12 +120,11 @@ func TestGetProcAddressEx(t *testing.T) {
 }
 
 func TestGetProcAddressRaw(t *testing.T) {
-	libKernel32, err := windows.LoadLibrary("kernel32.dll")
+	hKernel32, err := windows.LoadLibrary("kernel32.dll")
 	require.NoError(t, err)
-	hKernel32 := uintptr(libKernel32)
 
 	t.Run("common", func(t *testing.T) {
-		VirtualAlloc, err := windows.GetProcAddress(libKernel32, "VirtualAlloc")
+		VirtualAlloc, err := windows.GetProcAddress(hKernel32, "VirtualAlloc")
 		require.NoError(t, err)
 
 		proc, err := GetProcAddressRaw(hKernel32, "VirtualAlloc")

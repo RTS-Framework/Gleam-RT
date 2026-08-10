@@ -108,13 +108,13 @@ func GetProcAddressEx(module windows.Handle, name string, redirect bool) (uintpt
 }
 
 // GetProcAddressRaw is used to call original GetProcAddress.
-func GetProcAddressRaw(hModule uintptr, name string) (uintptr, error) {
+func GetProcAddressRaw(module windows.Handle, name string) (uintptr, error) {
 	namePtr, err := syscall.BytePtrFromString(name)
 	if err != nil {
 		return 0, err
 	}
 	ret, _, err := procGetProcAddressRaw.Call(
-		hModule, uintptr(unsafe.Pointer(namePtr)),
+		uintptr(module), uintptr(unsafe.Pointer(namePtr)),
 	) // #nosec
 	if ret == 0 {
 		en := uintptr(err.(syscall.Errno))
