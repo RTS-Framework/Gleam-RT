@@ -30,20 +30,15 @@ typedef struct {
 
     // for protect RWX region
     bool  isRWX;
-    void* shelter; // TODO update VirtualFree
-
-    // only for rwx region
-    byte key[CRYPTO_KEY_SIZE];
-    byte iv [CRYPTO_IV_SIZE];
+    void* shelter;
+    uint  key;
 } memRegion;
 
 typedef struct {
     uintptr address;
     uint32  protect;
     bool    locked;
-
-    byte key[CRYPTO_KEY_SIZE];
-    byte iv [CRYPTO_IV_SIZE];
+    uint    key;
 } memPage;
 
 typedef struct {
@@ -228,7 +223,7 @@ static bool decryptPage(MemoryTracker* tracker, memPage* page);
 static bool isEmptyPage(MemoryTracker* tracker, memPage* page);
 static bool encryptRWXRegion(MemoryTracker* tracker, memRegion* region);
 static bool decryptRWXRegion(MemoryTracker* tracker, memRegion* region);
-static void deriveKey(MemoryTracker* tracker, memPage* page, byte* key);
+static uint deriveKey(MemoryTracker* tracker, uint key);
 static bool encryptHeapBlocks();
 static bool decryptHeapBlocks();
 static bool eraseHeapBlocks();
@@ -411,6 +406,9 @@ static bool initTrackerAPI(MemoryTracker* tracker, Context* context)
     tracker->ReleaseMutex        = context->ReleaseMutex;
     tracker->WaitForSingleObject = context->WaitForSingleObject;
     tracker->CloseHandle         = context->CloseHandle;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -519,11 +517,6 @@ LPVOID MT_VirtualAlloc(LPVOID address, SIZE_T size, DWORD type, DWORD protect)
         {
             // create shelter page for protect RWX memory page
             SIZE_T shelterSize = size + 1024 + RandUintN(0, (uint)(64 * 4096));
-            shelter = tracker->VirtualAlloc(address, shelterSize, type, PAGE_READWRITE);
-            if (shelter == NULL)
-            {
-                break;
-            }
             shelter = tracker->VirtualAlloc(address, shelterSize, type, PAGE_READWRITE);
             if (shelter == NULL)
             {
@@ -677,7 +670,9 @@ BOOL MT_VirtualFree(LPVOID address, SIZE_T size, DWORD type)
         }
         if (!freePage((uintptr)address, size, type))
         {
+        #ifdef TEST_MODE
             break;
+        #endif
         }
         success = true;
         break;
@@ -2835,12 +2830,9 @@ static bool encryptPage(MemoryTracker* tracker, memPage* page)
     {
         return false;
     }
-    // generate new key and IV
-    RandBuffer(page->key, CRYPTO_KEY_SIZE);
-    RandBuffer(page->iv, CRYPTO_IV_SIZE);
-    byte key[CRYPTO_KEY_SIZE];
-    deriveKey(tracker, page, key);
-    ObfuscateBuffer((byte*)(page->address), tracker->PageSize, *(uint64*)key);
+    page->key = (uint)GenerateSeed();
+    uint key = deriveKey(tracker, page->key);
+    ObfuscateBuffer((byte*)(page->address), tracker->PageSize, key);
     return true;
 }
 
@@ -2850,9 +2842,8 @@ static bool decryptPage(MemoryTracker* tracker, memPage* page)
     {
         return true;
     }
-    byte key[CRYPTO_KEY_SIZE];
-    deriveKey(tracker, page, key);
-    IlluminateBuffer((byte*)(page->address), tracker->PageSize, *(uint64*)key);
+    uint key = deriveKey(tracker, page->key);
+    IlluminateBuffer((byte*)(page->address), tracker->PageSize, key);
     if (!recoverPageProtect(tracker, page))
     {
         return false;
@@ -2878,19 +2869,20 @@ static bool isEmptyPage(MemoryTracker* tracker, memPage* page)
 static bool encryptRWXRegion(MemoryTracker* tracker, memRegion* region)
 {
     void* addr = (void*)(region->address);
-    // copy data to shelter and encrypt it
+    // obfuscate the raw data
+    region->key = (uint)GenerateSeed();
+    uint key = deriveKey(tracker, region->key);
+    ObfuscateBuffer(addr, region->size, key);
+    // copy data to shelter
     mem_copy(region->shelter, addr, region->size);
-    RandBuffer(region->key, CRYPTO_KEY_SIZE);
-    RandBuffer(region->iv, CRYPTO_IV_SIZE);
-    EncryptBuffer(region->shelter, region->size, region->key, region->iv);
     // fill garbage instructions to it
     mem_init(addr, region->size);
-    uint64 seed = (uint64)(addr);
     uint decoySize = region->size;
     if (decoySize > 4096)
     {
         decoySize = 4096;
     }
+    uint64 seed = (uint64)(addr);
     decoySize = RandUintN(seed, decoySize);
     FillInstruction(addr, decoySize, seed);
     // adjust memory page protect
@@ -2907,22 +2899,20 @@ static bool decryptRWXRegion(MemoryTracker* tracker, memRegion* region)
     {
         return false;
     }
-    // copy cipher data from shelter to page and decrypt them
+    // copy cipher data from shelter to page
     mem_copy(addr, region->shelter, region->size);
-    DecryptBuffer(addr, region->size, region->key, region->iv);
+    // illuminate the data
+    uint key = deriveKey(tracker, region->key);
+    IlluminateBuffer(addr, region->size, key);
     return true;
 }
 
-static void deriveKey(MemoryTracker* tracker, memPage* page, byte* key)
+static uint deriveKey(MemoryTracker* tracker, uint key)
 {
-    // copy original key
-    mem_copy(key, page->key, CRYPTO_KEY_SIZE);
-    // cover some bytes
-    uintptr addr = (uintptr)page;
-    addr += ((uintptr)tracker) << (sizeof(addr) / 2);
-    addr += ((uintptr)tracker->VirtualAlloc) >> 4;
-    addr += ((uintptr)tracker->VirtualFree)  >> 6;
-    mem_copy(key + 4, &addr, sizeof(addr));
+    key += ((uintptr)tracker) << (sizeof(key) / 2);
+    key ^= ((uintptr)tracker->VirtualAlloc) >> 4;
+    key += ((uintptr)tracker->VirtualFree)  >> 6;
+    return key;
 }
 
 static bool encryptHeapBlocks()
