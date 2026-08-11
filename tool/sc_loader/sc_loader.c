@@ -18,8 +18,9 @@ uint EntryPoint()
     GetFileSizeEx_t GetFileSizeEx = FindAPI_A("kernel32.dll", "GetFileSizeEx");
     ReadFile_t      ReadFile      = FindAPI_A("kernel32.dll", "ReadFile");
     CloseHandle_t   CloseHandle   = FindAPI_A("kernel32.dll", "CloseHandle");
+    Sleep_t         Sleep         = FindAPI_A("kernel32.dll", "Sleep");
 
-    // read shellcode from file
+    // read shellcode from the fixed file path
 #ifdef _WIN64
     LPCSTR fileName = "test_x64.bin";
 #elif _WIN32
@@ -61,5 +62,8 @@ uint EntryPoint()
     {
         return 6;
     }
+
+    // wait some time for check resource leak
+    Sleep(30 * 1000);
     return exitCode;
 }
