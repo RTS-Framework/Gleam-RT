@@ -16,10 +16,7 @@
 #include "debug.h"
 
 typedef struct {
-    // store options
-    bool NotEraseInstruction;
-
-    // API addresses
+    // API address
     MultiByteToWideChar_t MultiByteToWideChar;
     WideCharToMultiByte_t WideCharToMultiByte;
 
@@ -50,13 +47,11 @@ WinBase_M* InitWinBase(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr moduleAddr = addr + LAYOUT_WB_STRUCT + RandUintN(addr, 128);
-    uintptr methodAddr = addr + LAYOUT_WB_METHOD + RandUintN(addr, 128);
+    uintptr moduleAddr = addr + LAYOUT_WB_STRUCT + RandUintN(0, 128);
+    uintptr methodAddr = addr + LAYOUT_WB_METHOD + RandUintN(0, 128);
     // allocate module memory
     WinBase* module = (WinBase*)moduleAddr;
     mem_init(module, sizeof(WinBase));
-    // store options
-    module->NotEraseInstruction = context->NotEraseInstruction;
     // initialize module
     errno errno = NO_ERROR;
     for (;;)
@@ -90,6 +85,7 @@ WinBase_M* InitWinBase(Context* context)
     return method;
 }
 
+__declspec(noinline)
 static bool initModuleAPI(WinBase* module, Context* context)
 {
     typedef struct {
@@ -119,9 +115,13 @@ static bool initModuleAPI(WinBase* module, Context* context)
     }
     module->MultiByteToWideChar = list[0].proc;
     module->WideCharToMultiByte = list[1].proc;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
+__declspec(noinline)
 static bool initModuleEnv(WinBase* module, Context* context)
 {
     module->malloc  = context->mt_malloc;
@@ -131,6 +131,7 @@ static bool initModuleEnv(WinBase* module, Context* context)
     return true;
 }
 
+__declspec(noinline)
 static void eraseModuleMethod(Context* context)
 {
     if (context->NotEraseInstruction)
@@ -143,17 +144,17 @@ static void eraseModuleMethod(Context* context)
     EraseInstruction((void*)begin, size);
 }
 
+__declspec(noinline)
 static void setModulePointer(WinBase* module)
 {
     *(WinBase**)(POINTER_OFFSET_WIN_BASE) = module;
 }
 
-#pragma optimize("", off)
+__declspec(noinline)
 static WinBase* getModulePointer()
 {
     return *(WinBase**)POINTER_OFFSET_WIN_BASE;
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 UTF16 WB_ANSIToUTF16(ANSI s)
