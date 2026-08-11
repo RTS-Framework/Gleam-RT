@@ -24,16 +24,10 @@ typedef struct {
 } thread;
 
 typedef struct {
-    // store options
-    bool NotEraseInstruction;
-
-    // process environment
-    PML* PML;
-
     // process exe image base
     HMODULE ImageBase;
 
-    // API addresses
+    // API address
     CreateThread_t         CreateThread;
     ExitThread_t           ExitThread;
     SuspendThread_t        SuspendThread;
@@ -53,7 +47,7 @@ typedef struct {
     DuplicateHandle_t      DuplicateHandle;
     CloseHandle_t          CloseHandle;
 
-    // runtime methods
+    // runtime method
     rt_lock_mods_t   RT_LockMods;
     rt_unlock_mods_t RT_UnlockMods;
 
@@ -133,15 +127,11 @@ ThreadTracker_M* InitThreadTracker(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr trackerAddr = addr + LAYOUT_TT_STRUCT + RandUintN(addr, 128);
-    uintptr moduleAddr  = addr + LAYOUT_TT_MODULE + RandUintN(addr, 128);
+    uintptr trackerAddr = addr + LAYOUT_TT_STRUCT + RandUintN(0, 128);
+    uintptr moduleAddr  = addr + LAYOUT_TT_MODULE + RandUintN(0, 128);
     // allocate tracker memory
     ThreadTracker* tracker = (ThreadTracker*)trackerAddr;
     mem_init(tracker, sizeof(ThreadTracker));
-    // store options
-    tracker->NotEraseInstruction = context->NotEraseInstruction;
-    // store process environment
-    tracker->PML = context->PML;
     // store process image base
     tracker->ImageBase = context->ImageBase;
     // initialize tracker
@@ -262,6 +252,9 @@ static bool initTrackerAPI(ThreadTracker* tracker, Context* context)
     tracker->WaitForSingleObject  = context->WaitForSingleObject;
     tracker->DuplicateHandle      = context->DuplicateHandle;
     tracker->CloseHandle          = context->CloseHandle;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -317,7 +310,7 @@ static void eraseTrackerMethod(Context* context)
     uintptr begin = (uintptr)(GetFuncAddr(&initTrackerAPI));
     uintptr end   = (uintptr)(GetFuncAddr(&eraseTrackerMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
@@ -356,12 +349,11 @@ static void setTrackerPointer(ThreadTracker* tracker)
     *(ThreadTracker**)(POINTER_OFFSET_THREAD_TRACKER) = tracker;
 }
 
-#pragma optimize("", off)
+__declspec(noinline)
 static ThreadTracker* getTrackerPointer()
 {
     return *(ThreadTracker**)(POINTER_OFFSET_THREAD_TRACKER);
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 HANDLE TT_CreateThread(
@@ -389,6 +381,11 @@ HANDLE tt_createThread(
     DWORD  threadID;
     HANDLE hThread = NULL;
 
+    // use "mem_init" for prevent incorrect compiler
+    // optimize and generate incorrect template
+    CONTEXT ctx;
+    mem_init(&ctx, sizeof(CONTEXT));
+
     bool success = false;
     for (;;)
     {
@@ -404,11 +401,6 @@ HANDLE tt_createThread(
         {
             break;
         }
-
-        // use "mem_init" for prevent incorrect compiler
-        // optimize and generate incorrect template
-        CONTEXT ctx;
-        mem_init(&ctx, sizeof(CONTEXT));
 
         // hijack RCX/EAX for set the actual thread start address
         // When use CREATE_SUSPENDED, the RIP/EIP will be set to
@@ -471,6 +463,9 @@ HANDLE tt_createThread(
         success = true;
         break;
     }
+
+    // erase data in the large stack
+    mem_init(&ctx, sizeof(CONTEXT));
 
     if (!TT_Unlock())
     {
@@ -1475,11 +1470,14 @@ static bool suspendThread(ThreadTracker* tracker, HANDLE hThread)
     // must get the thread context because SuspendThread only
     // requests a suspend. GetThreadContext actually blocks
     // until it's suspended.
+    //
+    // due to the suspended thread maybe terminated by another
+    // thread, so we ignore the return value of GetThreadContext.
     CONTEXT ctx;
     mem_init(&ctx, sizeof(CONTEXT));
     ctx.ContextFlags = CONTEXT_INTEGER;
     tracker->GetThreadContext(hThread, &ctx);
-    // due to the suspended thread maybe terminated by another
-    // thread, so we ignore the return value of GetThreadContext.
+    // erase data in the large stack
+    mem_init(&ctx, sizeof(CONTEXT));
     return true;
 }
