@@ -540,6 +540,8 @@ static void inverseSBox(byte* sbox)
     {
         sbox[buf[i]] = (byte)i;
     }
+    // erase data in the large stack
+    mem_init(buf, sizeof(buf));
 }
 
 static byte ror(byte value, uint8 bits)
@@ -629,7 +631,7 @@ void ObfuscateBuffer(void* buf, uint size, uint key)
     }
     // cache-aware sliding shuffle
     intx range = 64; // common cache line size
-    intx step  = 8;
+    intx step  = 2 + (seed1 % 4);
     for (intx i = 0; i < (intx)size - range; i += step)
     {
         // select swap target
@@ -680,7 +682,7 @@ void IlluminateBuffer(void* buf, uint size, uint key)
     }
     // advance to the final seed
     intx range = 64; // common cache line size
-    intx step  = 8;
+    intx step  = 2 + (seed1 % 4);
     for (intx i = 0; i < (intx)size - range; i += step)
     {
         seed1 = XORShift(seed1);
