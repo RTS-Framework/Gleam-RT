@@ -29,7 +29,7 @@ bool TestLibMatch()
 static bool TestMatch_MatchByte()
 {
     byte s[] = { 1, 2, 3, 4 };
-    integer n = sizeof(s);
+    intx n = sizeof(s);
 
     if (MatchByte(s, n, 1) != 0)
     {
@@ -54,7 +54,7 @@ static bool TestMatch_MatchByte()
 static bool TestMatch_MatchBytes()
 {
     byte s[] = { 1, 2, 3, 4 };
-    integer n = sizeof(s);
+    intx n = sizeof(s);
     
     byte s0[] = { 0 };
     if (MatchBytes(s, n, s0, 0) != 0)

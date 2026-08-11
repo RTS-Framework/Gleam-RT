@@ -123,13 +123,13 @@ bool TestRuntime_EnableSecurityMode()
 
 static bool initRuntime(Runtime_Opts* opts)
 {
-#ifdef PIC_MODE
+#ifdef DISABLE_PIC_MODE
+    runtime = InitRuntime(NULL, opts);
+#else
     typedef Runtime_M* (*InitRuntime_t)(void* boot, Runtime_Opts* opts);
     InitRuntime_t initRuntime = loadInstance();
     runtime = initRuntime(NULL, opts);
-#else
-    runtime = InitRuntime(NULL, opts);
-#endif // PIC_MODE
+#endif // DISABLE_PIC_MODE
     if (runtime == NULL)
     {
         printf_s("failed to initialize runtime: 0x%X\n", GetLastErrno());
