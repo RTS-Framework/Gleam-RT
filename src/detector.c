@@ -110,8 +110,8 @@ Detector_M* InitDetector(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr detectorAddr = addr + LAYOUT_DT_STRUCT + RandUintN(addr, 128);
-    uintptr methodAddr   = addr + LAYOUT_DT_MODULE + RandUintN(addr, 128);
+    uintptr detectorAddr = addr + LAYOUT_DT_STRUCT + RandUintN(0, 128);
+    uintptr methodAddr   = addr + LAYOUT_DT_MODULE + RandUintN(0, 128);
     // allocate detector memory
     Detector* detector = (Detector*)detectorAddr;
     mem_init(detector, sizeof(Detector));
@@ -196,6 +196,9 @@ static bool initDetectorAPI(Detector* detector, Context* context)
     detector->ReleaseMutex        = context->ReleaseMutex;
     detector->WaitForSingleObject = context->WaitForSingleObject;
     detector->CloseHandle         = context->CloseHandle;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -487,7 +490,7 @@ static bool detectEmulator()
 #endif
     if (FindAPI_MAL(detector->GetPML(), detector->hNtdll, pHash, hKey) != NULL)
     {
-        detector->InSandbox += 100;
+        detector->InEmulator += 100;
         return true;
     }
     return true;
