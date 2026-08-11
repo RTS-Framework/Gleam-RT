@@ -124,6 +124,8 @@ static LPSTR getProcedureName(HMODULE hModule, void* procedure)
     uintptr end = begin + image.Text.VirtualSize;
     if (proc < begin || proc >= end)
     {
+        // erase data in the large stack
+        mem_init(&image, sizeof(image));
         return NULL;
     }
     // get RVA of export address tables(EAT)
