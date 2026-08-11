@@ -14,16 +14,13 @@
 #include "win_file.h"
 #include "debug.h"
 
-#ifdef RELEASE_MODE
-    #define CHUNK_SIZE 4096
-#else
+#ifdef SMALL_CHUNK_SIZE
     #define CHUNK_SIZE 64
+#else
+    #define CHUNK_SIZE 4096
 #endif
 
 typedef struct {
-    // store option
-    bool NotEraseInstruction;
-
     // API address
     CreateFileA_t   CreateFileA;
     CreateFileW_t   CreateFileW;
@@ -60,13 +57,11 @@ WinFile_M* InitWinFile(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr moduleAddr = addr + LAYOUT_WF_STRUCT + RandUintN(addr, 128);
-    uintptr methodAddr = addr + LAYOUT_WF_METHOD + RandUintN(addr, 128);
+    uintptr moduleAddr = addr + LAYOUT_WF_STRUCT + RandUintN(0, 128);
+    uintptr methodAddr = addr + LAYOUT_WF_METHOD + RandUintN(0, 128);
     // allocate module memory
     WinFile* module = (WinFile*)moduleAddr;
     mem_init(module, sizeof(WinFile));
-    // store options
-    module->NotEraseInstruction = context->NotEraseInstruction;
     // initialize module
     errno errno = NO_ERROR;
     for (;;)
@@ -141,6 +136,9 @@ static bool initModuleAPI(WinFile* module, Context* context)
     module->WriteFile     = list[4].proc;
 
     module->CloseHandle = context->CloseHandle;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
