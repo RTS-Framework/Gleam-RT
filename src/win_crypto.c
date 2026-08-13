@@ -16,9 +16,6 @@
 #include "debug.h"
 
 typedef struct {
-    // store option
-    bool NotEraseInstruction;
-
     // store HashAPI with spoof call
     FindAPI_MA_t FindAPI_MA;
 
@@ -100,13 +97,11 @@ WinCrypto_M* InitWinCrypto(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr moduleAddr = addr + LAYOUT_WC_STRUCT + RandUintN(addr, 128);
-    uintptr methodAddr = addr + LAYOUT_WC_METHOD + RandUintN(addr, 128);
+    uintptr moduleAddr = addr + LAYOUT_WC_STRUCT + RandUintN(0, 128);
+    uintptr methodAddr = addr + LAYOUT_WC_METHOD + RandUintN(0, 128);
     // allocate module memory
     WinCrypto* module = (WinCrypto*)moduleAddr;
     mem_init(module, sizeof(WinCrypto));
-    // store options
-    module->NotEraseInstruction = context->NotEraseInstruction;
     // store HashAPI method
     module->FindAPI_MA = context->FindAPI_MA;
     // initialize module
@@ -363,6 +358,9 @@ static bool findWinCryptoAPI()
     module->CryptDestroyKey       = list[0x0E].proc;
     module->CryptSignHashA        = list[0x0F].proc;
     module->CryptVerifySignatureA = list[0x10].proc;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -594,8 +592,13 @@ errno WC_HMAC(ALG_ID aid, databuf* data, databuf* key, databuf* hash)
         if (!module->CryptImportKey(
             hProv, buf, sizeof(buf), NULL, CRYPT_IPSEC_HMAC_KEY, &hKey
         )){
+            // erase key data in stack
+            mem_init(buf, sizeof(buf));
             break;
         }
+        // erase key data in stack
+        mem_init(buf, sizeof(buf));
+        // create hash object
         if (!module->CryptCreateHash(hProv, CALG_HMAC, hKey, 0, &hHash))
         {
             break;
@@ -712,8 +715,12 @@ errno WC_AESEncrypt(databuf* data, databuf* key, databuf* output)
         // import AES key to context
         if (!module->CryptImportKey(hProv, buf, sizeof(buf), NULL, 0, &hKey))
         {
+            // erase key data in stack
+            mem_init(buf, sizeof(buf));
             break;
         }
+        // erase key data in stack
+        mem_init(buf, sizeof(buf));
         // set mode and padding method
         DWORD dwParam = CRYPT_MODE_CBC;
         if (!module->CryptSetKeyParam(hKey, KP_MODE, (BYTE*)(&dwParam), 0))
@@ -833,8 +840,12 @@ errno WC_AESDecrypt(databuf* data, databuf* key, databuf* output)
         // import AES key to context
         if (!module->CryptImportKey(hProv, buf, sizeof(buf), NULL, 0, &hKey))
         {
+            // erase key data in stack
+            mem_init(buf, sizeof(buf));
             break;
         }
+        // erase key data in stack
+        mem_init(buf, sizeof(buf));
         // set mode and padding method
         DWORD dwParam = CRYPT_MODE_CBC;
         if (!module->CryptSetKeyParam(hKey, KP_MODE, (BYTE*)(&dwParam), 0))
