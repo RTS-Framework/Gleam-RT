@@ -15,4 +15,9 @@
 // #define DISABLE_CAMOUFLAGE
 #define SMALL_CHUNK_SIZE
 
+// if enable debugger, must disable pic mode
+#ifdef ENABLE_DEBUGGER
+  #define DISABLE_PIC_MODE
+#endif
+
 #endif // BUILD_H
