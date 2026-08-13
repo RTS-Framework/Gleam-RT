@@ -20,7 +20,6 @@
 typedef struct {
     // store option
     bool DisableWatchdog;
-    bool NotEraseInstruction;
 
     // API address
     SuspendThread_t          SuspendThread;
@@ -85,7 +84,7 @@ static void eraseWatchdogMethod(Context* context);
 static void cleanWatchdogResource(Watchdog* watchdog);
 static void setWatchdogPointer(Watchdog* watchdog);
 
-static uint  wd_watcher();
+static uint  wd_watcher(LPVOID lpParam);
 static uint  wd_sleep(uint32 milliseconds);
 static errno wd_stop();
 static bool  wd_is_enabled();
@@ -101,14 +100,13 @@ Watchdog_M* InitWatchdog(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr watchdogAddr = addr + LAYOUT_WD_STRUCT + RandUintN(addr, 128);
-    uintptr methodAddr   = addr + LAYOUT_WD_METHOD + RandUintN(addr, 128);
+    uintptr watchdogAddr = addr + LAYOUT_WD_STRUCT + RandUintN(0, 128);
+    uintptr methodAddr   = addr + LAYOUT_WD_METHOD + RandUintN(0, 128);
     // allocate watchdog memory
     Watchdog* watchdog = (Watchdog*)watchdogAddr;
     mem_init(watchdog, sizeof(Watchdog));
-    // store options
-    watchdog->DisableWatchdog     = context->DisableWatchdog;
-    watchdog->NotEraseInstruction = context->NotEraseInstruction;
+    // store option
+    watchdog->DisableWatchdog = context->DisableWatchdog;
     // initialize watchdog
     errno errno = NO_ERROR;
     for (;;)
@@ -192,6 +190,9 @@ static bool initWatchdogAPI(Watchdog* watchdog, Context* context)
     watchdog->WaitForSingleObject    = context->WaitForSingleObject;
     watchdog->WaitForMultipleObjects = context->WaitForMultipleObjects;
     watchdog->CloseHandle            = context->CloseHandle;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -240,7 +241,7 @@ static void eraseWatchdogMethod(Context* context)
     uintptr begin = (uintptr)(GetFuncAddr(&initWatchdogAPI));
     uintptr end   = (uintptr)(GetFuncAddr(&eraseWatchdogMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
@@ -277,7 +278,7 @@ static Watchdog* getWatchdogPointer()
 }
 
 __declspec(noinline)
-static uint wd_watcher()
+static uint wd_watcher(LPVOID lpParam)
 {
     Watchdog* watchdog = getWatchdogPointer();
 
@@ -320,7 +321,7 @@ static uint wd_watcher()
 
         if (numFail >= 6)
         {
-            watchdog->RT_Stop(true, ERR_STOP_CODE_TOO_MANY_FAILURE);
+            watchdog->RT_Stop(ERR_STOP_CODE_TOO_MANY_FAILURE);
             return 2;
         }
 
@@ -346,6 +347,8 @@ static uint wd_watcher()
             panic(PANIC_UNREACHABLE_CODE);
         }
     }
+
+    (void)lpParam; // ignored
 }
 
 __declspec(noinline)
@@ -725,6 +728,8 @@ errno WD_Pause()
     {
         return GetLastErrno();
     }
+    // erase data in the large stack
+    mem_init(&ctx, sizeof(CONTEXT));
     return NO_ERROR;
 }
 
