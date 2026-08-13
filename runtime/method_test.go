@@ -67,6 +67,10 @@ func TestInitialize(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestIsExist(t *testing.T) {
+	require.True(t, IsExist())
+}
+
 func TestGetProcAddress(t *testing.T) {
 	hKernel32, err := windows.LoadLibrary("kernel32.dll")
 	require.NoError(t, err)

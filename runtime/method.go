@@ -45,6 +45,11 @@ var (
 	procExitProcess = modGleamRT.NewProc("RT_ExitProcess")
 )
 
+// IsExist is used to detect current program is running above runtime.
+func IsExist() bool {
+	return modGleamRT.Load() == nil
+}
+
 // Initialize is used to call InitRuntime (only for test runtime package).
 func Initialize(opts *Options) error {
 	if opts == nil {
