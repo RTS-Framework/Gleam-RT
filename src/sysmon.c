@@ -21,7 +21,6 @@
 typedef struct {
     // store option
     bool DisableSysmon;
-    bool NotEraseInstruction;
 
     // API address
     SuspendThread_t          SuspendThread;
@@ -79,7 +78,7 @@ static void eraseSysmonMethod(Context* context);
 static void cleanSysmonResource(Sysmon* sysmon);
 static void setSysmonPointer(Sysmon* sysmon);
 
-static uint sm_watcher();
+static uint sm_watcher(LPVOID lpParam);
 static uint sm_watch();
 static uint sm_sleep(uint32 seconds);
 
@@ -93,14 +92,13 @@ Sysmon_M* InitSysmon(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr sysmonAddr = addr + LAYOUT_SM_STRUCT + RandUintN(addr, 128);
-    uintptr methodAddr = addr + LAYOUT_SM_METHOD + RandUintN(addr, 128);
+    uintptr sysmonAddr = addr + LAYOUT_SM_STRUCT + RandUintN(0, 128);
+    uintptr methodAddr = addr + LAYOUT_SM_METHOD + RandUintN(0, 128);
     // allocate sysmon memory
     Sysmon* sysmon = (Sysmon*)sysmonAddr;
     mem_init(sysmon, sizeof(Sysmon));
-    // store options
-    sysmon->DisableSysmon       = context->DisableSysmon;
-    sysmon->NotEraseInstruction = context->NotEraseInstruction;
+    // store option
+    sysmon->DisableSysmon = context->DisableSysmon;
     // initialize sysmon
     errno errno = NO_ERROR;
     for (;;)
@@ -257,7 +255,7 @@ static Sysmon* getSysmonPointer()
 }
 
 __declspec(noinline)
-static uint sm_watcher()
+static uint sm_watcher(LPVOID lpParam)
 {
     Sysmon* sysmon = getSysmonPointer();
 
@@ -298,7 +296,7 @@ static uint sm_watcher()
             // if watchdog is disabled, exit runtime.
             if (!sysmon->WD_IsEnabled())
             {
-                sysmon->RT_Stop(true, ERR_STOP_CODE_WATCHDOG_DISABLED);
+                sysmon->RT_Stop(ERR_STOP_CODE_WATCHDOG_DISABLED);
                 break;
             }
             // if failed to recover, use force kill threads,
@@ -321,7 +319,7 @@ static uint sm_watcher()
         default:
             // if failed to reset program or watchdog
             // is disabled, exit runtime.
-            sysmon->RT_Stop(true, ERR_STOP_CODE_RESET_PROGRAM);
+            sysmon->RT_Stop(ERR_STOP_CODE_RESET_PROGRAM);
             break;
         }
 
@@ -338,6 +336,8 @@ static uint sm_watcher()
             panic(PANIC_UNREACHABLE_CODE);
         }
     }
+
+    (void)lpParam; // ignored
 }
 
 __declspec(noinline)
@@ -544,6 +544,8 @@ errno SM_Pause()
     {
         return GetLastErrno();
     }
+    // erase data in the large stack
+    mem_init(&ctx, sizeof(CONTEXT));
     return NO_ERROR;
 }
 
