@@ -8,7 +8,7 @@ require (
 
 	golang.org/x/sys v0.30.0
 
-	github.com/RTS-Framework/GRT-Develop v1.9.1-0.20260724042059-76827c834101
+	github.com/RTS-Framework/GRT-Develop v1.9.1-0.20260813050036-8ef76af99548
 )
 
 require (
