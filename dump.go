@@ -25,9 +25,9 @@ func dumpASMx86() {
 	builder.WriteString("\r\n")
 	builder.WriteString(".code\r\n")
 	builder.WriteString("\r\n")
-	builder.WriteString("_InitRuntime@4 proc\r\n")
+	builder.WriteString("_InitRuntime@8 proc\r\n")
 	builder.Write(mod)
-	builder.WriteString("_InitRuntime@4 endp\r\n")
+	builder.WriteString("_InitRuntime@8 endp\r\n")
 	builder.WriteString("\r\n")
 	builder.WriteString("end\r\n")
 
