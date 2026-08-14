@@ -5,7 +5,6 @@ package watchdog
 import (
 	"os"
 	"runtime"
-	"syscall"
 	"testing"
 	"time"
 
@@ -14,11 +13,6 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/RTS-Framework/Gleam-RT/runtime"
-)
-
-var (
-	procSetHandler = modGleamRT.NewProc("WD_SetHandler")
-	procSetTimeout = modGleamRT.NewProc("WD_SetTimeout")
 )
 
 func init() {
@@ -46,11 +40,12 @@ func TestMain(m *testing.M) {
 	}
 
 	// for enable watchdog
-	testSetHandler(func() uintptr {
+	SetHandler(func() uintptr {
 		return 0
 	})
-	// set kick timeout
-	_, _, _ = procSetTimeout.Call(500)
+
+	// for check status
+	SetTimeout(500 * time.Millisecond)
 
 	code := m.Run()
 
@@ -75,10 +70,6 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
-}
-
-func testSetHandler(handler interface{}) {
-	_, _, _ = procSetHandler.Call(syscall.NewCallback(handler))
 }
 
 func TestKick(t *testing.T) {
@@ -146,7 +137,8 @@ func TestResetHandler(t *testing.T) {
 		signal <- struct{}{}
 		return 0
 	}
-	testSetHandler(resetHandler)
+	SetHandler(resetHandler)
+	SetTimeout(time.Second)
 
 	err := Enable()
 	require.NoError(t, err)
