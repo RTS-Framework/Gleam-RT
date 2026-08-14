@@ -5,6 +5,7 @@ package watchdog
 import (
 	"fmt"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -15,11 +16,13 @@ import (
 var (
 	modGleamRT = windows.NewLazyDLL("GleamRT.dll")
 
-	procKick      = modGleamRT.NewProc("WD_Kick")
-	procEnable    = modGleamRT.NewProc("WD_Enable")
-	procDisable   = modGleamRT.NewProc("WD_Disable")
-	procIsEnabled = modGleamRT.NewProc("WD_IsEnabled")
-	procStatus    = modGleamRT.NewProc("WD_Status")
+	procSetHandler = modGleamRT.NewProc("WD_SetHandler")
+	procSetTimeout = modGleamRT.NewProc("WD_SetTimeout")
+	procKick       = modGleamRT.NewProc("WD_Kick")
+	procEnable     = modGleamRT.NewProc("WD_Enable")
+	procDisable    = modGleamRT.NewProc("WD_Disable")
+	procIsEnabled  = modGleamRT.NewProc("WD_IsEnabled")
+	procStatus     = modGleamRT.NewProc("WD_Status")
 )
 
 // Status contains watchdog status.
@@ -28,6 +31,16 @@ type Status struct {
 	NumKick   int64 `json:"num_kick"`
 	NumNormal int64 `json:"num_normal"`
 	NumReset  int64 `json:"num_reset"`
+}
+
+// SetHandler is used to set reset handler, it is only for test.
+func SetHandler(handler func() uintptr) {
+	_, _, _ = procSetHandler.Call(syscall.NewCallback(handler))
+}
+
+// SetTimeout is used to set timeout for test faster, it is only for test.
+func SetTimeout(timeout time.Duration) {
+	_, _, _ = procSetTimeout.Call(uintptr(timeout.Milliseconds()))
 }
 
 // Kick is used to kick to the watchdog for report alive.
