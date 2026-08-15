@@ -13,7 +13,7 @@ typedef struct {
     int64 NumSuspend;
 } TT_Status;
 
-typedef HANDLE (*ThdNew_t)(void* address, void* parameter, BOOL track);
+typedef HANDLE (*ThdNew_t)(ThreadProc_t address, LPVOID parameter, BOOL track);
 typedef void   (*ThdExit_t)(uint32 code);
 typedef void   (*ThdSleep_t)(uint32 milliseconds);
 
