@@ -70,7 +70,7 @@ typedef struct {
 
 // methods for API redirector
 HANDLE TT_CreateThread(
-    POINTER lpThreadAttributes, SIZE_T dwStackSize, POINTER lpStartAddress,
+    POINTER lpThreadAttributes, SIZE_T dwStackSize, ThreadProc_t lpStartAddress,
     LPVOID lpParameter, DWORD dwCreationFlags, DWORD* lpThreadId
 );
 void  TT_ExitThread(DWORD dwExitCode);
@@ -84,7 +84,7 @@ DWORD TT_TlsAlloc();
 BOOL  TT_TlsFree(DWORD dwTlsIndex);
 
 // methods for user
-HANDLE TT_ThdNew(void* address, void* parameter, BOOL track);
+HANDLE TT_ThdNew(ThreadProc_t address, LPVOID parameter, BOOL track);
 void   TT_ThdExit(uint32 code);
 void   TT_ThdSleep(uint32 milliseconds);
 BOOL   TT_LockThread(DWORD id);
@@ -103,7 +103,7 @@ errno TT_KillAll();
 errno TT_Clean();
 
 HANDLE tt_createThread(
-    POINTER lpThreadAttributes, SIZE_T dwStackSize, POINTER lpStartAddress,
+    POINTER lpThreadAttributes, SIZE_T dwStackSize, ThreadProc_t lpStartAddress,
     LPVOID lpParameter, DWORD dwCreationFlags, DWORD* lpThreadId, BOOL track
 );
 
@@ -357,7 +357,7 @@ static ThreadTracker* getTrackerPointer()
 
 __declspec(noinline)
 HANDLE TT_CreateThread(
-    POINTER lpThreadAttributes, SIZE_T dwStackSize, POINTER lpStartAddress,
+    POINTER lpThreadAttributes, SIZE_T dwStackSize, ThreadProc_t lpStartAddress,
     LPVOID lpParameter, DWORD dwCreationFlags, DWORD* lpThreadId
 ){
     return tt_createThread(
@@ -368,7 +368,7 @@ HANDLE TT_CreateThread(
 
 __declspec(noinline)
 HANDLE tt_createThread(
-    POINTER lpThreadAttributes, SIZE_T dwStackSize, POINTER lpStartAddress,
+    POINTER lpThreadAttributes, SIZE_T dwStackSize, ThreadProc_t lpStartAddress,
     LPVOID lpParameter, DWORD dwCreationFlags, DWORD* lpThreadId, BOOL track
 ){
     ThreadTracker* tracker = getTrackerPointer();
@@ -831,7 +831,7 @@ static void delTLSIndex(ThreadTracker* tracker, DWORD index)
 }
 
 __declspec(noinline)
-HANDLE TT_ThdNew(void* address, void* parameter, BOOL track)
+HANDLE TT_ThdNew(ThreadProc_t address, LPVOID parameter, BOOL track)
 {
     return tt_createThread(NULL, 0, address, parameter, 0, NULL, track);
 }
