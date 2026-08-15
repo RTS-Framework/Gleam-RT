@@ -113,6 +113,8 @@ typedef HANDLE HLOCAL;
 
 #define CP_ACP 0
 
+typedef DWORD (*ThreadProc_t)(LPVOID lpParameter);
+
 typedef struct {
     DWORD   OEMID;
     DWORD   PageSize;
@@ -419,7 +421,7 @@ typedef HLOCAL (*LocalFree_t)
 
 typedef HANDLE (*CreateThread_t)
 (
-    POINTER lpThreadAttributes, SIZE_T dwStackSize, POINTER lpStartAddress,
+    POINTER lpThreadAttributes, SIZE_T dwStackSize, ThreadProc_t lpStartAddress,
     LPVOID lpParameter, DWORD dwCreationFlags, DWORD* lpThreadId
 );
 
@@ -641,7 +643,7 @@ typedef HANDLE (*CreateWaitableTimerW_t)
 
 typedef HANDLE (*CreateWaitableTimerExA_t)
 (
-    POINTER lpTimerAttributes, LPWSTR lpTimerName, DWORD dwFlags, DWORD dwDesiredAccess
+    POINTER lpTimerAttributes, LPCSTR lpTimerName, DWORD dwFlags, DWORD dwDesiredAccess
 );
 
 typedef HANDLE (*CreateWaitableTimerExW_t)
