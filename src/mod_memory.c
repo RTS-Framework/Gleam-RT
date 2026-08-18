@@ -132,6 +132,10 @@ typedef struct {
     List Heaps;
     byte HeapsKey[CRYPTO_KEY_SIZE];
     byte HeapsIV [CRYPTO_IV_SIZE];
+
+    // metrics
+    int64 TotalAlloc;
+    int64 PeakAlloc;
 } MemoryTracker;
 
 // methods for API redirector
@@ -207,6 +211,8 @@ static void protectPage(uintptr address, uint size, uint32 protect);
 static bool addHeapObject(MemoryTracker* tracker, HANDLE hHeap, uint32 options);
 static bool delHeapObject(MemoryTracker* tracker, HANDLE hHeap);
 static uint calcHeapMark(MemoryTracker* tracker, uintptr addr, uint size);
+static void addTotalAlloc(MemoryTracker* tracker, uint size);
+static void delTotalAlloc(MemoryTracker* tracker, uint size);
 
 static HMODULE getMsvcrtHandle(MemoryTracker* tracker);
 static HMODULE getUcrtbaseHandle(MemoryTracker* tracker);
@@ -544,6 +550,7 @@ LPVOID MT_VirtualAlloc(LPVOID address, SIZE_T size, DWORD type, DWORD protect)
             {
                 break;
             }
+            addTotalAlloc(tracker, size);
         } else {
             memPage = tracker->VirtualAlloc(address, size, type, protect);
             if (memPage == NULL)
@@ -642,6 +649,7 @@ static bool commitPage(MemoryTracker* tracker, uintptr address, uint size, uint3
             return false;
         }
     }
+    addTotalAlloc(tracker, numPage * tracker->PageSize);
     return true;
 }
 #pragma optimize("t", off)
@@ -791,6 +799,7 @@ static bool deletePage(MemoryTracker* tracker, uintptr address, uint size)
         {
             return false;
         }
+        delTotalAlloc(tracker, pageSize);
         num++;
     }
     return true;
@@ -1017,8 +1026,9 @@ LPVOID MT_HeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes)
         // write heap block mark
         uint* tail = (uint*)((uintptr)address + dwBytes);
         *tail = calcHeapMark(tracker, (uintptr)address, dwBytes);
-        // update counter
+        // update metric
         tracker->NumBlocks++;
+        addTotalAlloc(tracker, dwBytes);
         break;
     }
 
@@ -1074,10 +1084,14 @@ LPVOID MT_HeapReAlloc(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem, SIZE_T dwBytes)
         // write new heap block mark
         uint* tail = (uint*)((uintptr)address + dwBytes);
         *tail = calcHeapMark(tracker, (uintptr)address, dwBytes);
-        // update counter
+        // update metric
         if (!marked)
         {
             tracker->NumBlocks++;
+        }
+        if (dwBytes > size)
+        {
+            addTotalAlloc(tracker, dwBytes - size);
         }
         break;
     }
@@ -1133,10 +1147,11 @@ BOOL MT_HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem)
         {
             break;
         }
-        // update counter
+        // update metric
         if (marked)
         {
             tracker->NumBlocks--;
+            delTotalAlloc(tracker, size - BLOCK_MARK_SIZE);
         }
         success = true;
         break;
@@ -1416,8 +1431,9 @@ void* __cdecl MT_msvcrt_malloc(uint size)
         // write heap block mark
         uint* tail = (uint*)((uintptr)address + size);
         *tail = calcHeapMark(tracker, (uintptr)address, size);
-        // update counter
+        // update metric
         tracker->NumBlocks++;
+        addTotalAlloc(tracker, size);
         lastErr = GetLastErrno();
         break;
     }
@@ -1488,8 +1504,9 @@ void* __cdecl MT_msvcrt_calloc(uint num, uint size)
         uint total = (num + BLOCK_MARK_SIZE) * size - BLOCK_MARK_SIZE;
         uint* tail = (uint*)((uintptr)address + total);
         *tail = calcHeapMark(tracker, (uintptr)address, total);
-        // update counter
+        // update metric
         tracker->NumBlocks++;
+        addTotalAlloc(tracker, num * size);
         lastErr = GetLastErrno();
         break;
     }
@@ -1601,10 +1618,14 @@ void* __cdecl MT_msvcrt_realloc(void* ptr, uint size)
         // write heap block mark
         uint* tail = (uint*)((uintptr)address + size);
         *tail = calcHeapMark(tracker, (uintptr)address, size);
-        // update counter
+        // update metric
         if (!marked)
         {
             tracker->NumBlocks++;
+        }
+        if (size > oSize)
+        {
+            addTotalAlloc(tracker, size - oSize);
         }
         lastErr = GetLastErrno();
         break;
@@ -1690,31 +1711,32 @@ void __cdecl MT_msvcrt_free(void* ptr)
             lastErr = GetLastErrno();
             break;
         }
-        // get old size about heap block
-        SIZE_T oSize = msize(ptr);
-        if (oSize == (SIZE_T)(-1))
+        // get size about heap block
+        SIZE_T size = msize(ptr);
+        if (size == (SIZE_T)(-1))
         {
             lastErr = GetLastErrno();
             break;
         }
         // check it is a marked block before free
         bool marked = false;
-        if (oSize >= BLOCK_MARK_SIZE)
+        if (size >= BLOCK_MARK_SIZE)
         {
             uintptr block = (uintptr)ptr;
-            uint bSize = oSize - BLOCK_MARK_SIZE;
+            uint bSize = size - BLOCK_MARK_SIZE;
             uint mark  = *(uint*)(block + bSize);
             if (calcHeapMark(tracker, block, bSize) == mark)
             {
                 marked = true;
             }
         }
-        mem_init(ptr, oSize);
+        mem_init(ptr, size);
         free(ptr);
-        // update counter
+        // update metric
         if (marked)
         {
             tracker->NumBlocks--;
+            delTotalAlloc(tracker, size - BLOCK_MARK_SIZE);
         }
         lastErr = GetLastErrno();
         break;
@@ -1853,8 +1875,9 @@ void* __cdecl MT_ucrtbase_malloc(uint size)
         // write heap block mark
         uint* tail = (uint*)((uintptr)address + size);
         *tail = calcHeapMark(tracker, (uintptr)address, size);
-        // update counter
+        // update metric
         tracker->NumBlocks++;
+        addTotalAlloc(tracker, size);
         lastErr = GetLastErrno();
         break;
     }
@@ -1925,8 +1948,9 @@ void* __cdecl MT_ucrtbase_calloc(uint num, uint size)
         uint total = (num + BLOCK_MARK_SIZE) * size - BLOCK_MARK_SIZE;
         uint* tail = (uint*)((uintptr)address + total);
         *tail = calcHeapMark(tracker, (uintptr)address, total);
-        // update counter
+        // update metric
         tracker->NumBlocks++;
+        addTotalAlloc(tracker, num * size);
         lastErr = GetLastErrno();
         break;
     }
@@ -2043,6 +2067,10 @@ void* __cdecl MT_ucrtbase_realloc(void* ptr, uint size)
         {
             tracker->NumBlocks++;
         }
+        if (size > oSize)
+        {
+            addTotalAlloc(tracker, size - oSize);
+        }
         lastErr = GetLastErrno();
         break;
     }
@@ -2127,31 +2155,32 @@ void __cdecl MT_ucrtbase_free(void* ptr)
             lastErr = GetLastErrno();
             break;
         }
-        // get old size about heap block
-        SIZE_T oSize = msize(ptr);
-        if (oSize == (SIZE_T)(-1))
+        // get size about heap block
+        SIZE_T size = msize(ptr);
+        if (size == (SIZE_T)(-1))
         {
             lastErr = GetLastErrno();
             break;
         }
         // check it is a marked block before free
         bool marked = false;
-        if (oSize >= BLOCK_MARK_SIZE)
+        if (size >= BLOCK_MARK_SIZE)
         {
             uintptr block = (uintptr)ptr;
-            uint bSize = oSize - BLOCK_MARK_SIZE;
+            uint bSize = size - BLOCK_MARK_SIZE;
             uint mark  = *(uint*)(block + bSize);
             if (calcHeapMark(tracker, block, bSize) == mark)
             {
                 marked = true;
             }
         }
-        mem_init(ptr, oSize);
+        mem_init(ptr, size);
         free(ptr);
-        // update counter
+        // update metric
         if (marked)
         {
             tracker->NumBlocks--;
+            delTotalAlloc(tracker, size - BLOCK_MARK_SIZE);
         }
         lastErr = GetLastErrno();
         break;
@@ -2247,6 +2276,22 @@ static uint calcHeapMark(MemoryTracker* tracker, uintptr addr, uint size)
     mark = XORShift(mark ^ addr);
     mark = XORShift(mark);
     return mark + size;
+}
+
+__declspec(noinline)
+static void addTotalAlloc(MemoryTracker* tracker, uint size)
+{
+    tracker->TotalAlloc += (int64)size;
+    if (tracker->TotalAlloc > tracker->PeakAlloc)
+    {
+        tracker->PeakAlloc = tracker->TotalAlloc;
+    }
+}
+
+__declspec(noinline)
+static void delTotalAlloc(MemoryTracker* tracker, uint size)
+{
+    tracker->TotalAlloc -= (int64)size;
 }
 
 __declspec(noinline)
@@ -2609,12 +2654,34 @@ BOOL MT_GetStatus(MT_Status* status)
         return false;
     }
 
+    // count the number of the rwx regions
+    int64 numRWXs = 0;
+    List* regions = &tracker->Regions;
+    uint len = regions->Len;
+    uint idx = 0;
+    for (uint num = 0; num < len; idx++)
+    {
+        memRegion* region = List_Get(regions, idx);
+        if (region->address == 0)
+        {
+            continue;
+        }
+        if (region->isRWX)
+        {
+            numRWXs++;
+        }
+        num++;
+    }
+
     status->NumGlobals = (int64)(tracker->NumGlobals);
     status->NumLocals  = (int64)(tracker->NumLocals);
     status->NumBlocks  = (int64)(tracker->NumBlocks);
     status->NumRegions = (int64)(tracker->Regions.Len);
     status->NumPages   = (int64)(tracker->Pages.Len);
     status->NumHeaps   = (int64)(tracker->Heaps.Len);
+    status->NumRWXs    = numRWXs;
+    status->TotalAlloc = tracker->TotalAlloc;
+    status->PeakAlloc  = tracker->PeakAlloc;
 
     if (!MT_Unlock())
     {
@@ -2713,9 +2780,14 @@ errno MT_Encrypt()
 
     // encrypt heap blocks
     errno errno = NO_ERROR;
-    if (tracker->NumBlocks != 0 && !encryptHeapBlocks())
+    if (tracker->NumBlocks != 0)
     {
-        errno = ERR_MEMORY_ENCRYPT_BLOCK;
+        RandBuffer(tracker->BlocksKey, CRYPTO_KEY_SIZE);
+        RandBuffer(tracker->BlocksIV, CRYPTO_IV_SIZE);
+        if (!encryptHeapBlocks())
+        {
+            errno = ERR_MEMORY_ENCRYPT_BLOCK;
+        }
     }
 
     // encrypt lists

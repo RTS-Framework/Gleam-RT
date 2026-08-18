@@ -51,7 +51,7 @@ typedef struct {
     byte ModulesKey[CRYPTO_KEY_SIZE];
     byte ModulesIV [CRYPTO_IV_SIZE];
 
-    // record the number of call GetProcAddress.
+    // metrics
     int64 NumLoadCalls;
     int64 NumFreeCalls;
 } LibraryTracker;
