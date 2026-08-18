@@ -10,7 +10,10 @@
 typedef struct {
     int64 NumThreads;
     int64 NumTLSIndex;
-    int64 NumSuspend;
+    int64 NumCreated;
+    int64 NumExited;
+    int64 NumLocked;
+    int64 NumSuspended;
 } TT_Status;
 
 typedef HANDLE (*ThdNew_t)(ThreadProc_t address, LPVOID parameter, BOOL track);
