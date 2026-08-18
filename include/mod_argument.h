@@ -24,10 +24,17 @@
 #define ARG_OFFSET_CHECKSUM   (1 + 32 + 2 + 4)
 #define ARG_OFFSET_FIRST_ARG  (1 + 32 + 2 + 4 + 4)
 
+typedef struct {
+    int32 NumItems;
+    int32 NumErased;
+    int64 TotalSize;
+} AS_Status;
+
 typedef BOOL (*ArgGetValue_t)(uint32 id, void* value, uint32* size);
 typedef BOOL (*ArgGetPointer_t)(uint32 id, void** pointer, uint32* size);
 typedef BOOL (*ArgErase_t)(uint32 id);
 typedef void (*ArgEraseAll_t)();
+typedef BOOL (*ArgGetStatus_t)(AS_Status* status);
 
 typedef bool  (*ArgLock_t)();
 typedef bool  (*ArgUnlock_t)();
@@ -41,6 +48,7 @@ typedef struct {
     ArgGetPointer_t GetPointer;
     ArgErase_t      Erase;
     ArgEraseAll_t   EraseAll;
+    ArgGetStatus_t  GetStatus;
 
     // for runtime internal usage
     ArgLock_t    Lock;
