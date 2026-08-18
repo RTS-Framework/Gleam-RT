@@ -16,6 +16,9 @@ typedef struct {
     int64 NumRegions;
     int64 NumPages;
     int64 NumHeaps;
+    int64 NumRWXs;
+    int64 TotalAlloc;
+    int64 PeakAlloc;
 } MT_Status;
 
 typedef void* (*MemAlloc_t)(uint size);
