@@ -38,6 +38,10 @@ typedef struct {
 
     byte Key[CRYPTO_KEY_SIZE];
     byte IV [CRYPTO_IV_SIZE];
+
+    // metric
+    int32 NumErased;
+    int64 TotalSize;
 } ArgumentStore;
 
 // methods for upper module
@@ -45,6 +49,7 @@ BOOL AS_GetValue(uint32 id, void* value, uint32* size);
 BOOL AS_GetPointer(uint32 id, void** pointer, uint32* size);
 BOOL AS_Erase(uint32 id);
 void AS_EraseAll();
+BOOL AS_GetStatus(AS_Status* status);
 
 // methods for runtime
 bool  AS_Lock();
@@ -116,6 +121,7 @@ ArgumentStore_M* InitArgumentStore(Context* context)
     module->GetPointer = GetFuncAddr(&AS_GetPointer);
     module->Erase      = GetFuncAddr(&AS_Erase);
     module->EraseAll   = GetFuncAddr(&AS_EraseAll);
+    module->GetStatus  = GetFuncAddr(&AS_GetStatus);
     // methods for runtime
     module->Lock    = GetFuncAddr(&AS_Lock);
     module->Unlock  = GetFuncAddr(&AS_Unlock);
@@ -206,11 +212,13 @@ static errno loadArguments(ArgumentStore* store, Context* context)
     if (!context->NotEraseInstruction)
     {
         EraseBuffer((byte*)stub, ARG_HEADER_SIZE + size);
-        // set a flag that already erased;
+        // set a flag that already erased
         stub = 0x00;
     }
     dbg_log("[argument]", "mem page: 0x%zX", store->Address);
     dbg_log("[argument]", "num args: %zu", store->NumArgs);
+    // erase data in the large stack
+    mem_init(header, sizeof(header));
     return NO_ERROR;
 }
 
@@ -236,6 +244,8 @@ static errno shiftArguments(ArgumentStore* store, uint32 size)
         addr += OFFSET_ARGUMENT_DATA + asz;
         args += set;
         rem  -= set;
+        // update metric
+        store->TotalSize += asz;
     }
     return NO_ERROR;
 }
@@ -254,6 +264,8 @@ static void illuminateStub(byte* data, uint32 size, byte* key)
     {
         data[i] = sbox[data[i]];
     }
+    // erase data in the large stack
+    mem_init(&sbox, sizeof(sbox));
 }
 
 __declspec(noinline)
@@ -355,6 +367,8 @@ static void inverseSBox(byte* sbox)
     {
         sbox[buf[i]] = (byte)i;
     }
+    // erase data in the large stack
+    mem_init(buf, sizeof(buf));
 }
 
 __declspec(noinline)
@@ -527,6 +541,8 @@ BOOL AS_Erase(uint32 id)
         // erase argument data
         EraseBuffer(addr + OFFSET_ARGUMENT_DATA, (int64)asz);
         found = true;
+        // update metric
+        store->NumErased++;
         break;
     }
 
@@ -563,7 +579,31 @@ void AS_EraseAll()
         addr += OFFSET_ARGUMENT_DATA + asz;
     }
 
+    // update metric
+    store->NumErased = store->NumArgs;
+
     AS_Unlock();
+}
+
+__declspec(noinline)
+BOOL AS_GetStatus(AS_Status* status)
+{
+    ArgumentStore* store = getStorePointer();
+
+    if (!AS_Lock())
+    {
+        return false;
+    }
+
+    status->NumItems  = store->NumArgs;
+    status->NumErased = store->NumErased;
+    status->TotalSize = store->TotalSize;
+
+    if (!AS_Unlock())
+    {
+        return false;
+    }
+    return true;
 }
 
 __declspec(noinline)
