@@ -32,7 +32,7 @@ func main() {
 	data := dumpBytesHex(stub)
 	fmt.Println(data)
 
-	err = os.WriteFile("../asm/inst/argument.inst", []byte(data), 0644)
+	err = os.WriteFile("../asm/inst/argument.inst", []byte(data), 0600)
 	checkError(err)
 }
 

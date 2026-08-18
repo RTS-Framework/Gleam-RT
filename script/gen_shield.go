@@ -31,7 +31,7 @@ func dump(arch string) {
 
 	path := fmt.Sprintf("../asm/inst/shield_%s.inst", arch)
 	data := dumpBytesHex(stub[:shield.StubSize])
-	err = os.WriteFile(path, data, 0644)
+	err = os.WriteFile(path, data, 0600)
 	checkError(err)
 
 	path, err = filepath.Abs(path)
