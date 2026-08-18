@@ -54,8 +54,11 @@ typedef struct {
     // protect data
     HANDLE hMutex;
 
-    // record the number of total SuspendThread
-    int64 NumSuspend;
+    // metrics
+    int64 NumCreated;
+    int64 NumExited;
+    int64 NumLocked;
+    int64 NumSuspended;
 
     // store all threads information
     List Threads;
@@ -507,6 +510,7 @@ void TT_ExitThread(DWORD dwExitCode)
     {
         delThread(tracker, threadID);
     }
+    tracker->NumExited++;
 
     dbg_log("[thread]", "ExitThread: %d, id: %d", dwExitCode, threadID);
 
@@ -538,7 +542,7 @@ DWORD TT_SuspendThread(HANDLE hThread)
             if (getThread(tracker, threadID, &thread))
             {
                 thread->numSuspend++;
-                tracker->NumSuspend++;
+                tracker->NumSuspended++;
             }
         }
     }
@@ -572,7 +576,7 @@ DWORD TT_ResumeThread(HANDLE hThread)
             if (getThread(tracker, threadID, &thread))
             {
                 thread->numSuspend--;
-                tracker->NumSuspend--;
+                tracker->NumSuspended--;
             }
         }
     }
@@ -708,6 +712,7 @@ static bool addThread(ThreadTracker* tracker, DWORD threadID, HANDLE hThread)
         tracker->CloseHandle(dupHandle);
         return false;
     }
+    tracker->NumCreated++;
     return true;
 }
 
@@ -931,6 +936,13 @@ static bool setThreadLocker(DWORD id, bool lock)
         // set thread locker
         thread* thread = List_Get(threads, index);
         thread->locked = lock;
+        // update metric
+        if (lock)
+        {
+            tracker->NumLocked++;
+        } else {
+            tracker->NumLocked--;
+        }
         success = true;
         break;
     }
@@ -952,9 +964,12 @@ BOOL TT_GetStatus(TT_Status* status)
         return false;
     }
 
-    status->NumThreads  = (int64)(tracker->Threads.Len);
-    status->NumTLSIndex = (int64)(tracker->TLSIndex.Len);
-    status->NumSuspend  = (int64)(tracker->NumSuspend);
+    status->NumThreads   = (int64)(tracker->Threads.Len);
+    status->NumTLSIndex  = (int64)(tracker->TLSIndex.Len);
+    status->NumCreated   = tracker->NumCreated;
+    status->NumExited    = tracker->NumExited;
+    status->NumLocked    = tracker->NumLocked;
+    status->NumSuspended = tracker->NumSuspended;
 
     if (!TT_Unlock())
     {
@@ -1044,7 +1059,7 @@ errno TT_Suspend()
         if (suspendThread(tracker, thread->hThread))
         {
             thread->numSuspend++;
-            tracker->NumSuspend++;
+            tracker->NumSuspended++;
         } else {
             delThread(tracker, thread->threadID);
             errno = ERR_THREAD_SUSPEND;
@@ -1116,7 +1131,7 @@ errno TT_Resume()
         if (count != (DWORD)(-1))
         {
             thread->numSuspend--;
-            tracker->NumSuspend--;
+            tracker->NumSuspended--;
         } else {
             delThread(tracker, thread->threadID);
             errno = ERR_THREAD_RESUME;
@@ -1162,7 +1177,7 @@ errno TT_Recover()
             if (count != (DWORD)(-1))
             {
                 thread->numSuspend--;
-                tracker->NumSuspend--;
+                tracker->NumSuspended--;
             } else {
                 errno = ERR_THREAD_RESUME;
             }
@@ -1232,7 +1247,7 @@ errno TT_ForceKill()
     }
 
     // reset counter
-    tracker->NumSuspend = 0;
+    tracker->NumSuspended = 0;
 
     dbg_log("[thread]", "threads: %zu", tracker->Threads.Len);
     return errno;
@@ -1343,7 +1358,7 @@ errno TT_KillAll()
     }
 
     // reset counter
-    tracker->NumSuspend = 0;
+    tracker->NumSuspended = 0;
 
     dbg_log("[thread]", "threads:   %zu", tracker->Threads.Len);
     dbg_log("[thread]", "TLS slots: %zu", tracker->TLSIndex.Len);
