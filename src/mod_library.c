@@ -52,7 +52,8 @@ typedef struct {
     byte ModulesIV [CRYPTO_IV_SIZE];
 
     // record the number of call GetProcAddress.
-    int64 NumProcedures;
+    int64 NumLoadCalls;
+    int64 NumFreeCalls;
 } LibraryTracker;
 
 // methods for API redirector
@@ -62,7 +63,6 @@ HMODULE LT_LoadLibraryExA(LPCSTR lpLibFileName, HANDLE hFile, DWORD dwFlags);
 HMODULE LT_LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dwFlags);
 BOOL    LT_FreeLibrary(HMODULE hLibModule);
 void    LT_FreeLibraryAndExitThread(HMODULE hLibModule, DWORD dwExitCode);
-FARPROC LT_GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
 
 // methods for user
 BOOL LT_LockModule(HMODULE hModule);
@@ -135,7 +135,6 @@ LibraryTracker_M* InitLibraryTracker(Context* context)
     module->LoadLibraryExW           = GetFuncAddr(&LT_LoadLibraryExW);
     module->FreeLibrary              = GetFuncAddr(&LT_FreeLibrary);
     module->FreeLibraryAndExitThread = GetFuncAddr(&LT_FreeLibraryAndExitThread);
-    module->GetProcAddress           = GetFuncAddr(&LT_GetProcAddress);
     // methods for user
     module->LockModule   = GetFuncAddr(&LT_LockModule);
     module->UnlockModule = GetFuncAddr(&LT_UnlockModule);
@@ -196,6 +195,9 @@ static bool initTrackerAPI(LibraryTracker* tracker, Context* context)
     tracker->ReleaseMutex        = context->ReleaseMutex;
     tracker->WaitForSingleObject = context->WaitForSingleObject;
     tracker->CloseHandle         = context->CloseHandle;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -531,44 +533,6 @@ void LT_FreeLibraryAndExitThread(HMODULE hLibModule, DWORD dwExitCode)
     tracker->FreeLibraryAndExitThread(hLibModule, dwExitCode);
 }
 
-// disable optimize for use call, NOT jmp to tracker->GetProcAddress.
-#pragma optimize("", off)
-FARPROC LT_GetProcAddress(HMODULE hModule, LPCSTR lpProcName)
-{
-    LibraryTracker* tracker = getTrackerPointer();
-
-    if (!LT_Lock())
-    {
-        return NULL;
-    }
-
-    FARPROC proc;
-    for (;;)
-    {
-        proc = tracker->GetProcAddress(hModule, lpProcName);
-        if (proc == NULL)
-        {
-            break;
-        }
-        tracker->NumProcedures++;
-        break;
-    }
-
-    if (lpProcName > (LPCSTR)(0xFFFF))
-    {
-        dbg_log("[library]", "GetProcAddress: 0x%zX, %s", hModule, lpProcName);
-    } else {
-        dbg_log("[library]", "GetProcAddress: 0x%zX, %d", hModule, (uint16)lpProcName);
-    }
-
-    if (!LT_Unlock())
-    {
-        return NULL;
-    }
-    return proc;
-}
-#pragma optimize("", on)
-
 __declspec(noinline)
 static bool isGleamRT_A(LPCSTR lpLibFileName)
 {
@@ -603,6 +567,7 @@ static bool addModule(LibraryTracker* tracker, HMODULE hModule)
     {
         module* module = List_Get(modules, index);
         module->counter++;
+        tracker->NumLoadCalls++;
         return true;
     }
     // if it is not exist, add new item
@@ -612,6 +577,7 @@ static bool addModule(LibraryTracker* tracker, HMODULE hModule)
         tracker->FreeLibrary(hModule);
         return false;
     }
+    tracker->NumLoadCalls++;
     return true;
 }
 
@@ -639,6 +605,7 @@ static bool delModule(LibraryTracker* tracker, HMODULE hModule)
     {
         module->hModule = MODULE_UNLOADED;
     }
+    tracker->NumFreeCalls++;
     return true;
 }
 
@@ -723,16 +690,16 @@ BOOL LT_GetStatus(LT_Status* status)
         }
         num++;
     }
-    // count the number of the call GetProcAddress
-    int64 numProcs = tracker->NumProcedures;
+
+    // copy other metrics
+    status->NumModules   = numMods;
+    status->NumLoadCalls = tracker->NumLoadCalls;
+    status->NumFreeCalls = tracker->NumFreeCalls;
 
     if (!LT_Unlock())
     {
         return false;
     }
-
-    status->NumModules    = numMods;
-    status->NumProcedures = numProcs;
     return true;
 }
 
