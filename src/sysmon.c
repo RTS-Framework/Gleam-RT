@@ -23,6 +23,7 @@ typedef struct {
     bool DisableSysmon;
 
     // API address
+    GetTickCount_t           GetTickCount;
     SuspendThread_t          SuspendThread;
     ResumeThread_t           ResumeThread;
     GetThreadContext_t       GetThreadContext;
@@ -34,9 +35,11 @@ typedef struct {
     WaitForMultipleObjects_t WaitForMultipleObjects;
     CloseHandle_t            CloseHandle;
 
-    // copy from runtime methods
+    // copy from runtime internal
     rt_try_lock_mods_t   RT_TryLockMods;
     rt_try_unlock_mods_t RT_TryUnlockMods;
+    rt_add_uptime_t      RT_AddUptime;
+    rt_set_health_t      RT_SetHealth;
 
     // copy from runtime submodules
     TT_RecoverThreads_t   TT_RecoverThreads;
@@ -155,6 +158,7 @@ Sysmon_M* InitSysmon(Context* context)
 __declspec(noinline)
 static bool initSysmonAPI(Sysmon* sysmon, Context* context)
 {
+    sysmon->GetTickCount           = context->GetTickCount;
     sysmon->SuspendThread          = context->SuspendThread;
     sysmon->ResumeThread           = context->ResumeThread;
     sysmon->GetThreadContext       = context->GetThreadContext;
@@ -192,10 +196,12 @@ static bool initSysmonEnv(Sysmon* sysmon, Context* context)
         return false;
     }
     sysmon->hEvent = hEvent;
-    // copy runtime methods
+    // copy runtime internal methods
     sysmon->RT_TryLockMods   = context->try_lock_mods;
     sysmon->RT_TryUnlockMods = context->try_unlock_mods;
-    // copy methods from context
+    sysmon->RT_AddUptime     = context->add_uptime;
+    sysmon->RT_SetHealth     = context->set_health;
+    // copy runtime submodule methods
     sysmon->TT_RecoverThreads   = context->TT_RecoverThreads;
     sysmon->TT_ForceKillThreads = context->TT_ForceKillThreads;
     sysmon->WD_IsEnabled        = context->WD_IsEnabled;
@@ -262,6 +268,9 @@ static uint sm_watcher(LPVOID lpParam)
     int numFail = 0;
     for (;;)
     {
+        // for update runtime uptime
+        DWORD tick = sysmon->GetTickCount();
+
         switch (sm_watch())
         {
         case RESULT_SUCCESS:
@@ -334,6 +343,19 @@ static uint sm_watcher(LPVOID lpParam)
             return 1;
         default:
             panic(PANIC_UNREACHABLE_CODE);
+        }
+
+        // update runtime uptime
+        DWORD delta = sysmon->GetTickCount() - tick;
+        sysmon->RT_AddUptime(delta);
+
+        // update runtime health
+        sm_lock_status();
+        SM_Status status = sysmon->status;
+        sm_unlock_status();
+        if (status.NumPanic != 0)
+        {
+            sysmon->RT_SetHealth(false);
         }
     }
 
