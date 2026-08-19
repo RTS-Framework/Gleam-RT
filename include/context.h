@@ -14,6 +14,9 @@ typedef errno (*rt_unlock_mods_t)();
 typedef void  (*rt_try_lock_mods_t)();
 typedef void  (*rt_try_unlock_mods_t)();
 
+typedef bool (*rt_add_uptime_t)(uint32 delta);
+typedef bool (*rt_set_health_t)(bool healthy);
+
 typedef bool (*rt_flush_api_cache_t)();
 
 typedef void* (*mt_malloc_t)(uint size);
@@ -110,6 +113,10 @@ typedef struct {
     rt_unlock_mods_t     unlock_mods;
     rt_try_lock_mods_t   try_lock_mods;
     rt_try_unlock_mods_t try_unlock_mods;
+
+    // for update runtime metric
+    rt_add_uptime_t add_uptime;
+    rt_set_health_t set_health;
 
     // for flush lazy API cache
     rt_flush_api_cache_t flush_api_cache;
