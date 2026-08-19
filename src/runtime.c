@@ -112,6 +112,11 @@ typedef struct {
     HANDLE ModMutexHandle[9];
     bool   ModMutexStatus[9];
 
+    // runtime metric
+    CO_Status  RMStatus;
+    RT_GetProc RMGetProc;
+    RT_SleepM  RMSleep;
+
     // security module
     Detector_M* Detector;
 
@@ -195,7 +200,11 @@ errno RT_unlock_mods();
 void  RT_try_lock_mods();
 void  RT_try_unlock_mods();
 
-bool  RT_flush_api_cache();
+bool RT_add_uptime(uint32 delta);
+bool RT_set_health(bool healthy);
+
+bool RT_flush_api_cache();
+
 errno RT_stop(bool exitThread, uint32 code);
 
 // HashAPI with spoof call (forge GetProcAddress)
@@ -218,7 +227,11 @@ uint MW_Compress(void* dst, void* src, uint len, uint window, uint chain);
 uint MW_MemScanByValue(void* value, uint size, uintptr* results, uint maxItem);
 uint MW_MemScanByConfig(MemScan_Cfg* config, uintptr* results, uint maxItem);
 
+// runtime internal methods
 static Runtime* getRuntimePointer();
+
+static bool rt_lock();
+static bool rt_unlock();
 
 static void  loadOptionFromStub(Runtime_Opts* opts);
 static bool  checkOptionConflict(Runtime_Opts* opts);
@@ -263,9 +276,6 @@ static void  interruptInit(Runtime* runtime);
 static void  recoverProcessEnv(Runtime* runtime);
 static void  recoverErrorMode(Runtime* runtime);
 static void  cleanInitStack();
-
-static bool rt_lock();
-static bool rt_unlock();
 
 static void* getRuntimeMethods(LPCSTR lpProcName);
 static void* getAPIRedirector(void* proc);
@@ -427,8 +437,8 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         }
     }
     // check initialize elapsed time is too long
-    int32 tick = runtime->GetTickCount();
-    if (tick - runtime->InitTick > 200)
+    DWORD elapsed = runtime->GetTickCount() - runtime->InitTick;
+    if (elapsed > 250)
     {
         errno = ERR_RUNTIME_INIT_TIMEOUT;
     }
@@ -455,6 +465,11 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         // erase hash in stack
         mem_init(hash, sizeof(hash));
     }
+    // update runtime metric
+    runtime->RMStatus.Uptime       = elapsed;
+    runtime->RMStatus.InitElapsed  = elapsed;
+    runtime->RMStatus.SecurityMode = runtime->Options.EnableSecurityMode;
+    runtime->RMStatus.IsHealthy    = true;
     // create methods for runtime
     Runtime_M* module = (Runtime_M*)moduleAddr;
     // hash api
@@ -516,12 +531,14 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Argument.GetPointer = runtime->ArgumentStore->GetPointer;
     module->Argument.Erase      = runtime->ArgumentStore->Erase;
     module->Argument.EraseAll   = runtime->ArgumentStore->EraseAll;
+    module->Argument.Status     = runtime->ArgumentStore->GetStatus;
     // in-memory storage
     module->Storage.SetValue   = runtime->InMemoryStorage->SetValue;
     module->Storage.GetValue   = runtime->InMemoryStorage->GetValue;
     module->Storage.GetPointer = runtime->InMemoryStorage->GetPointer;
     module->Storage.Delete     = runtime->InMemoryStorage->Delete;
     module->Storage.DeleteAll  = runtime->InMemoryStorage->DeleteAll;
+    module->Storage.Status     = runtime->InMemoryStorage->GetStatus;
     // WinBase
     module->WinBase.ANSIToUTF16  = runtime->WinBase->ANSIToUTF16;
     module->WinBase.UTF16ToANSI  = runtime->WinBase->UTF16ToANSI;
@@ -1101,6 +1118,9 @@ static errno initSubmodules(Runtime* runtime)
         .try_lock_mods   = GetFuncAddr(&RT_try_lock_mods),
         .try_unlock_mods = GetFuncAddr(&RT_try_unlock_mods),
 
+        .add_uptime = GetFuncAddr(&RT_add_uptime),
+        .set_health = GetFuncAddr(&RT_set_health),
+
         .flush_api_cache = GetFuncAddr(&RT_flush_api_cache),
 
         // for prevent link to internal "memset"
@@ -1113,13 +1133,12 @@ static errno initSubmodules(Runtime* runtime)
     {
         return err;
     }
-    BOOL success = runtime->Detector->Detect();
+    if (!runtime->Detector->Detect())
+    {
+        return ERR_RUNTIME_DETECT_FAILED;
+    }
     if (context.EnableSecurityMode)
     {
-        if (!success)
-        {
-            return ERR_RUNTIME_DETECT_FAILED;
-        }
         DT_Status status;
         runtime->Detector->GetStatus(&status);
         if (status.IsEnabled && status.SafeRank < 60)
@@ -2102,6 +2121,44 @@ void RT_try_unlock_mods()
 }
 
 __declspec(noinline)
+bool RT_add_uptime(uint32 delta)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    if (!rt_lock())
+    {
+        return false;
+    }
+
+    runtime->RMStatus.Uptime += delta;
+
+    if (!rt_unlock())
+    {
+        return false;
+    }
+    return true;
+}
+
+__declspec(noinline)
+bool RT_set_health(bool healthy)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    if (!rt_lock())
+    {
+        return false;
+    }
+
+    runtime->RMStatus.IsHealthy = healthy;
+
+    if (!rt_unlock())
+    {
+        return false;
+    }
+    return true;
+}
+
+__declspec(noinline)
 bool RT_flush_api_cache()
 {
     Runtime* runtime = getRuntimePointer();
@@ -2388,6 +2445,7 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
             SetLastErrno(ERR_RUNTIME_RT_METHOD_NOT_FOUND);
             return NULL;
         }
+
         return method;
     }
     // get process module list snapshot
@@ -2413,7 +2471,15 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
     // if not found, use native GetProcAddress and try again
     if (proc == NULL)
     {
-        proc = runtime->LibraryTracker->GetProcAddress(hModule, lpProcName);
+        if (lpProcName > (LPCSTR)(0xFFFF))
+        {
+            dbg_log("[runtime]", "{native} GetProcAddress: 0x%zX, %s", hModule, lpProcName);
+        } else {
+            uint16 ordinal = (uint16)(uintptr)(lpProcName);
+            dbg_log("[runtime]", "{native} GetProcAddress: 0x%zX, %d", hModule, ordinal);
+            (void)ordinal; // skip warning C4189
+        }
+        proc = runtime->GetProcAddress(hModule, lpProcName);
         if (proc == NULL)
         {
             return NULL;
@@ -2452,7 +2518,20 @@ void* RT_GetProcAddressRaw(HMODULE hModule, LPCSTR lpProcName)
 {
     Runtime* runtime = getRuntimePointer();
 
-    return runtime->GetProcAddress(hModule, lpProcName);
+    if (!rt_lock())
+    {
+        return NULL;
+    }
+
+    void* proc = runtime->GetProcAddress(hModule, lpProcName);
+
+    runtime->RMGetProc.NumRawProc++;
+
+    if (!rt_unlock())
+    {
+        return NULL;
+    }
+    return proc;
 }
 #pragma optimize("", on)
 
@@ -3158,6 +3237,14 @@ errno RT_GetMetrics(Runtime_Metrics* metrics)
     {
         errno = ERR_RUNTIME_GET_STATUS_RESOURCE;
     }
+    if (!runtime->ArgumentStore->GetStatus(&metrics->Argument))
+    {
+        errno = ERR_RUNTIME_GET_STATUS_ARGUMENT;
+    }
+    if (!runtime->InMemoryStorage->GetStatus(&metrics->Storage))
+    {
+        errno = ERR_RUNTIME_GET_STATUS_STORAGE;
+    }
     if (!runtime->Detector->GetStatus(&metrics->Detector))
     {
         errno = ERR_RUNTIME_GET_STATUS_DETECTOR;
@@ -3174,6 +3261,11 @@ errno RT_GetMetrics(Runtime_Metrics* metrics)
     {
         errno = ERR_RUNTIME_GET_STATUS_SHIELD;
     }
+
+    // copy runtime metric
+    mem_copy(&metrics->Core,    &runtime->RMStatus,  sizeof(CO_Status));
+    mem_copy(&metrics->GetProc, &runtime->RMGetProc, sizeof(RT_GetProc));
+    mem_copy(&metrics->Sleep,   &runtime->RMSleep,   sizeof(RT_SleepM));
 
     if (!rt_unlock())
     {
