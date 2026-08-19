@@ -78,6 +78,9 @@ typedef struct {
     uint16 InEmulator;
     uint16 InVirtualMachine;
     uint16 IsAccelerated;
+
+    // metric
+    int64 NumDetectCalls;
 } Detector;
 
 // methods for user
@@ -345,6 +348,7 @@ BOOL DT_Detect()
         detector->isDetected = true;
         break;
     }
+    detector->NumDetectCalls++;
 
     if (!DT_Unlock())
     {
@@ -613,6 +617,8 @@ BOOL DT_GetStatus(DT_Status* status)
         rank = 0;
     }
     status->SafeRank = rank;
+
+    status->NumDetectCalls = detector->NumDetectCalls;
 
     if (!DT_Unlock())
     {
