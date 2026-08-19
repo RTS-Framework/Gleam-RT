@@ -6,11 +6,17 @@
 #include "errno.h"
 #include "context.h"
 
+typedef struct {
+    int64 NumItems;
+    int64 TotalSize;
+} IS_Status;
+
 typedef BOOL (*ImsSetValue_t)(int id, void* value, uint size);
 typedef BOOL (*ImsGetValue_t)(int id, void* value, uint* size);
 typedef BOOL (*ImsGetPointer_t)(int id, void** pointer, uint* size);
 typedef BOOL (*ImsDelete_t)(int id);
 typedef BOOL (*ImsDeleteAll_t)();
+typedef BOOL (*ImsGetStatus_t)(IS_Status* status);
 
 typedef bool  (*ImsLock_t)();
 typedef bool  (*ImsUnlock_t)();
@@ -25,6 +31,7 @@ typedef struct {
     ImsGetPointer_t GetPointer;
     ImsDelete_t     Delete;
     ImsDeleteAll_t  DeleteAll;
+    ImsGetStatus_t  GetStatus;
 
     // for runtime internal usage
     ImsLock_t    Lock;
