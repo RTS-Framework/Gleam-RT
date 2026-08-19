@@ -17,7 +17,8 @@
 #define HMODULE_GLEAM_RT ((HMODULE)(0x00001234))
 typedef struct {
     int64 NumModules;
-    int64 NumProcedures;
+    int64 NumLoadCalls;
+    int64 NumFreeCalls;
 } LT_Status;
 #endif // MOD_LIBRARY_H
 
@@ -35,6 +36,9 @@ typedef struct {
     int64 NumRegions;
     int64 NumPages;
     int64 NumHeaps;
+    int64 NumRWXs;
+    int64 TotalAlloc;
+    int64 PeakAlloc;
 } MT_Status;
 #endif // MOD_MEMORY_H
 
@@ -54,11 +58,14 @@ typedef BOOL  (*MemFreeAllMu_t)();
 typedef struct {
     int64 NumThreads;
     int64 NumTLSIndex;
-    int64 NumSuspend;
+    int64 NumCreated;
+    int64 NumExited;
+    int64 NumLocked;
+    int64 NumSuspended;
 } TT_Status;
 #endif // MOD_THREAD_H
 
-typedef HANDLE (*ThdNew_t)(void* address, void* parameter, BOOL track);
+typedef HANDLE (*ThdNew_t)(ThreadProc_t address, LPVOID parameter, BOOL track);
 typedef void   (*ThdExit_t)();
 typedef BOOL   (*ThdLockThread_t)(DWORD id);
 typedef BOOL   (*ThdUnlockThread_t)(DWORD id);
@@ -94,19 +101,36 @@ typedef BOOL (*ResGetStatus_t)(RT_Status* status);
 typedef BOOL (*ResFreeAllMu_t)();
 
 // about argument store
+#ifndef MOD_ARGUMENT_H
+typedef struct {
+    int32 NumItems;
+    int32 NumErased;
+    int64 TotalSize;
+} AS_Status;
+#endif // MOD_ARGUMENT_H
+
 // GetValue: if value is NULL, size must not NULL for receive argument size.
 typedef BOOL (*ArgGetValue_t)(uint32 id, void* value, uint32* size);
 typedef BOOL (*ArgGetPointer_t)(uint32 id, void** pointer, uint32* size);
 typedef BOOL (*ArgErase_t)(uint32 id);
 typedef void (*ArgEraseAll_t)();
+typedef BOOL (*ArgGetStatus_t)(AS_Status* status);
 
 // about in-memory storage
+#ifndef MOD_STORAGE_H
+typedef struct {
+    int64 NumItems;
+    int64 TotalSize;
+} IS_Status;
+#endif // MOD_STORAGE_H
+
 // GetValue: if value is NULL, size must not NULL for receive data size.
 typedef BOOL (*ImsSetValue_t)(int id, void* value, uint size);
 typedef BOOL (*ImsGetValue_t)(int id, void* value, uint* size);
 typedef BOOL (*ImsGetPointer_t)(int id, void** pointer, uint* size);
 typedef BOOL (*ImsDelete_t)(int id);
 typedef BOOL (*ImsDeleteAll_t)();
+typedef BOOL (*ImsGetStatus_t)(IS_Status* status);
 
 // about WinBase
 // The buffer allocated from methods must call Runtime_M.Memory.Free().
@@ -403,6 +427,7 @@ typedef struct {
     BOOL  InVirtualMachine;
     BOOL  IsAccelerated;
     int32 SafeRank;
+    int64 NumDetectCalls;
 } DT_Status;
 #endif // DETECTOR_H
 
@@ -506,14 +531,46 @@ typedef struct {
 } Runtime_Info;
 
 typedef struct {
-    LT_Status Library;
-    MT_Status Memory;
-    TT_Status Thread;
-    RT_Status Resource;
-    DT_Status Detector;
-    WD_Status Watchdog;
-    SM_Status Sysmon;
-    SD_Status Shield;
+    int64 Uptime;       // ms
+    int64 InitElapsed;  // ms
+    BOOL  SecurityMode;
+    BOOL  IsHealthy;
+} CO_Status;
+
+typedef struct {
+    int64 NumCalls;
+    int64 NumRedirect;
+    int64 NumFallback;
+    int64 NumRTMethod;
+    int64 NumRawProc;
+} RT_GetProc;
+
+typedef struct {
+    int64 NumCalls;
+    int32 LastPreElapsed;   // ms
+    int32 LastPostElapsed;  // ms
+    int64 TotalPreElapsed;  // ms
+    int64 TotalPostElapsed; // ms
+    int32 MinPreElapsed;    // ms
+    int32 MaxPreElapsed;    // ms
+    int32 MinPostElapsed;   // ms
+    int32 MaxPostElapsed;   // ms
+} RT_SleepM;
+
+typedef struct {
+    LT_Status  Library;
+    MT_Status  Memory;
+    TT_Status  Thread;
+    RT_Status  Resource;
+    AS_Status  Argument;
+    IS_Status  Storage;
+    DT_Status  Detector;
+    WD_Status  Watchdog;
+    SM_Status  Sysmon;
+    SD_Status  Shield;
+    CO_Status  Core;
+    RT_GetProc GetProc;
+    RT_SleepM  Sleep;
 } Runtime_Metrics;
 
 typedef errno (*RTSleepHR_t)(uint32 milliseconds);
@@ -601,6 +658,7 @@ typedef struct {
         ArgGetPointer_t GetPointer;
         ArgErase_t      Erase;
         ArgEraseAll_t   EraseAll;
+        ArgGetStatus_t  Status;
     } Argument;
 
     struct {
@@ -609,6 +667,7 @@ typedef struct {
         ImsGetPointer_t GetPointer;
         ImsDelete_t     Delete;
         ImsDeleteAll_t  DeleteAll;
+        ImsGetStatus_t  Status;
     } Storage;
 
     struct {
