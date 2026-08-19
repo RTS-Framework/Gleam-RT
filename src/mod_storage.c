@@ -29,10 +29,7 @@ typedef struct {
 } imsItem;
 
 typedef struct {
-    // store options
-    bool NotEraseInstruction;
-
-    // API addresses
+    // API address
     VirtualAlloc_t        VirtualAlloc;
     VirtualFree_t         VirtualFree;
     ReleaseMutex_t        ReleaseMutex;
@@ -54,6 +51,7 @@ BOOL IMS_GetValue(int id, void* value, uint* size);
 BOOL IMS_GetPointer(int id, void** pointer, uint* size);
 BOOL IMS_Delete(int id);
 BOOL IMS_DeleteAll();
+BOOL IMS_GetStatus(IS_Status* status);
 
 // methods for runtime
 bool  IMS_Lock();
@@ -79,13 +77,11 @@ InMemoryStorage_M* InitInMemoryStorage(Context* context)
 {
     // set structure address
     uintptr addr = context->MainMemPage;
-    uintptr storageAddr = addr + LAYOUT_IS_STRUCT + RandUintN(addr, 128);
-    uintptr moduleAddr  = addr + LAYOUT_IS_MODULE + RandUintN(addr, 128);
+    uintptr storageAddr = addr + LAYOUT_IS_STRUCT + RandUintN(0, 128);
+    uintptr moduleAddr  = addr + LAYOUT_IS_MODULE + RandUintN(0, 128);
     // allocate storage memory
     InMemoryStorage* storage = (InMemoryStorage*)storageAddr;
     mem_init(storage, sizeof(InMemoryStorage));
-    // store options
-    storage->NotEraseInstruction = context->NotEraseInstruction;
     // initialize storage
     errno errno = NO_ERROR;
     for (;;)
@@ -118,6 +114,7 @@ InMemoryStorage_M* InitInMemoryStorage(Context* context)
     module->GetPointer = GetFuncAddr(&IMS_GetPointer);
     module->Delete     = GetFuncAddr(&IMS_Delete);
     module->DeleteAll  = GetFuncAddr(&IMS_DeleteAll);
+    module->GetStatus  = GetFuncAddr(&IMS_GetStatus);
     // methods for runtime
     module->Lock    = GetFuncAddr(&IMS_Lock);
     module->Unlock  = GetFuncAddr(&IMS_Unlock);
@@ -195,12 +192,11 @@ static void setStoragePointer(InMemoryStorage* storage)
     *(InMemoryStorage**)(POINTER_OFFSET_IN_MEMORY_STORAGE) = storage;
 }
 
-#pragma optimize("", off)
+__declspec(noinline)
 static InMemoryStorage* getStoragePointer()
 {
     return *(InMemoryStorage**)POINTER_OFFSET_IN_MEMORY_STORAGE;
 }
-#pragma optimize("", on)
 
 __declspec(noinline)
 BOOL IMS_SetValue(int id, void* value, uint size)
@@ -492,6 +488,9 @@ static bool addItem(int id, void* data, uint size)
         {
             break;
         }
+        // erase data in the large stack
+        mem_init(item.key, sizeof(item.key));
+        mem_init(item.iv,  sizeof(item.iv));
         success = true;
         break;
     }
@@ -576,6 +575,39 @@ static bool delItem(int id)
         return false;
     }
     return List_Delete(items, idx);
+}
+
+__declspec(noinline)
+BOOL IMS_GetStatus(IS_Status* status)
+{
+    InMemoryStorage* storage = getStoragePointer();
+
+    if (!IMS_Lock())
+    {
+        return false;
+    }
+
+    List* items = &storage->Items;
+
+    uint len = items->Len;
+    uint idx = 0;
+    for (uint num = 0; num < len; idx++)
+    {
+        imsItem* item = List_Get(items, idx);
+        if (item->id == 0)
+        {
+            continue;
+        }
+        status->NumItems++;
+        status->TotalSize += item->size;
+        num++;
+    }
+
+    if (!IMS_Unlock())
+    {
+        return false;
+    }
+    return true;
 }
 
 __declspec(noinline)
