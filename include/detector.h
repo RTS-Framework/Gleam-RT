@@ -15,6 +15,7 @@ typedef struct {
     BOOL  InVirtualMachine;
     BOOL  IsAccelerated;
     int32 SafeRank;
+    int64 NumDetectCalls;
 } DT_Status;
 
 typedef BOOL (*DetDetect_t)();
