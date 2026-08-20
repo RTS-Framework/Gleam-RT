@@ -8,6 +8,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
 var (
@@ -18,7 +20,14 @@ var (
 	procGetPointer = modGleamRT.NewProc("IS_GetPointer")
 	procDelete     = modGleamRT.NewProc("IS_Delete")
 	procDeleteAll  = modGleamRT.NewProc("IS_DeleteAll")
+	procGetStatus  = modGleamRT.NewProc("IS_GetStatus")
 )
+
+// Status contains in-memory storage status.
+type Status struct {
+	NumItems  int `json:"num_items"`
+	TotalSize int `json:"total_size"`
+}
 
 // SetValue is used to store value to in-memory storage by id.
 func SetValue(id int, value []byte) error {
@@ -98,4 +107,19 @@ func DeleteAll() error {
 		return fmt.Errorf("failed to call storage.DeleteAll: 0x%08X", en)
 	}
 	return nil
+}
+
+// GetStatus is used to get storage status.
+func GetStatus() (*Status, error) {
+	var status metric.ASStatus
+	ret, _, err := procGetStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
+	if ret == 0 {
+		en := uintptr(err.(syscall.Errno))
+		return nil, fmt.Errorf("failed to call storage.GetStatus: 0x%08X", en)
+	}
+	s := Status{
+		NumItems:  int(status.NumItems),
+		TotalSize: int(status.TotalSize),
+	}
+	return &s, nil
 }

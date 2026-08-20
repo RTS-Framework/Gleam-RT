@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 
@@ -168,4 +169,13 @@ func TestDeleteAll(t *testing.T) {
 	val, err := GetValue(0)
 	require.EqualError(t, err, "failed to call storage.GetValue: 0xC6000105")
 	require.Nil(t, val)
+}
+
+func TestGetStatus(t *testing.T) {
+	status, err := GetStatus()
+	require.NoError(t, err)
+
+	require.Zero(t, status.NumItems)
+	require.Zero(t, status.TotalSize)
+	spew.Dump(status)
 }
