@@ -46,6 +46,7 @@ type Options struct {
 }
 
 // RuntimeM contains exported methods of runtime.
+// Only the Data section is data, otherwise method.
 type RuntimeM struct {
 	HashAPI struct {
 		FindModMH  uintptr
@@ -120,6 +121,7 @@ type RuntimeM struct {
 		GetPointer uintptr
 		Erase      uintptr
 		EraseAll   uintptr
+		Status     uintptr
 	}
 
 	Storage struct {
@@ -128,6 +130,7 @@ type RuntimeM struct {
 		GetPointer uintptr
 		Delete     uintptr
 		DeleteAll  uintptr
+		Status     uintptr
 	}
 
 	WinBase struct {
@@ -274,15 +277,15 @@ type RuntimeM struct {
 	}
 
 	Env struct {
-		GetTEB uintptr
-		GetPEB uintptr
-		GetPML uintptr
+		TEB uintptr
+		PEB uintptr
+		PML uintptr
 	}
 
 	DLL struct {
-		GetMainEXE  uintptr
-		GetKernel32 uintptr
-		GetNtdll    uintptr
+		MainEXE  uintptr
+		Kernel32 uintptr
+		Ntdll    uintptr
 	}
 
 	Raw struct {
