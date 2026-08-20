@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 
@@ -143,4 +144,14 @@ func TestEraseAll(t *testing.T) {
 		EraseAll()
 		EraseAll()
 	})
+}
+
+func TestGetStatus(t *testing.T) {
+	status, err := GetStatus()
+	require.NoError(t, err)
+
+	require.Equal(t, 4, status.NumItems)
+	require.Equal(t, 4, status.NumErased)
+	require.Equal(t, 21, status.TotalSize)
+	spew.Dump(status)
 }

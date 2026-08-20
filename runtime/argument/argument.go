@@ -3,9 +3,13 @@
 package argument
 
 import (
+	"fmt"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/RTS-Framework/GRT-Develop/metric"
 )
 
 var (
@@ -15,7 +19,15 @@ var (
 	procGetPointer = modGleamRT.NewProc("AS_GetPointer")
 	procErase      = modGleamRT.NewProc("AS_Erase")
 	procEraseAll   = modGleamRT.NewProc("AS_EraseAll")
+	procGetStatus  = modGleamRT.NewProc("AS_GetStatus")
 )
+
+// Status contains argument store status.
+type Status struct {
+	NumItems  int `json:"num_items"`
+	NumErased int `json:"num_erased"`
+	TotalSize int `json:"total_size"`
+}
 
 // GetValue is used to get argument value by id.
 func GetValue(id uint32) ([]byte, bool) {
@@ -63,4 +75,20 @@ func Erase(id uint32) bool {
 // EraseAll is used to erase all arguments.
 func EraseAll() {
 	_, _, _ = procEraseAll.Call()
+}
+
+// GetStatus is used to get argument status.
+func GetStatus() (*Status, error) {
+	var status metric.ASStatus
+	ret, _, err := procGetStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
+	if ret == 0 {
+		en := uintptr(err.(syscall.Errno))
+		return nil, fmt.Errorf("failed to call argument.GetStatus: 0x%08X", en)
+	}
+	s := Status{
+		NumItems:  int(status.NumItems),
+		NumErased: int(status.NumErased),
+		TotalSize: int(status.TotalSize),
+	}
+	return &s, nil
 }
