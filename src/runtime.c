@@ -113,9 +113,9 @@ typedef struct {
     bool   ModMutexStatus[9];
 
     // runtime metric
-    CO_Status  RMStatus;
-    RT_GetProc RMGetProc;
-    RT_SleepM  RMSleep;
+    RT_Core   RMCore;
+    RT_Proc   RMProc;
+    RT_SleepM RMSleep;
 
     // security module
     Detector_M* Detector;
@@ -159,6 +159,7 @@ void* RT_FindAPI_W(uint16* module, byte* procedure);
 
 void* RT_GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
 void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect);
+void* RT_GetProcAddressStub(HMODULE hModule, LPCSTR lpProcName, BOOL redirect);
 void* RT_GetProcAddressRaw(HMODULE hModule, LPCSTR lpProcName);
 
 TEB* RT_GetTEB();
@@ -284,6 +285,9 @@ static void* getLazyAPIRedirector(HMODULE hModule, LPCSTR lpProcName);
 static errno sleep(Runtime* runtime, uint32 milliseconds);
 static errno hide(Runtime* runtime);
 static errno recover(Runtime* runtime);
+
+static void addPreSleepElapsed(int32 milliseconds);
+static void addPostSleepElapsed(int32 milliseconds);
 
 static void eraseMemory(uintptr address, uintptr size);
 static void epilogue();
@@ -466,10 +470,10 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         mem_init(hash, sizeof(hash));
     }
     // update runtime metric
-    runtime->RMStatus.Uptime       = elapsed;
-    runtime->RMStatus.InitElapsed  = elapsed;
-    runtime->RMStatus.SecurityMode = runtime->Options.EnableSecurityMode;
-    runtime->RMStatus.IsHealthy    = true;
+    runtime->RMCore.Uptime       = elapsed;
+    runtime->RMCore.InitElapsed  = elapsed;
+    runtime->RMCore.SecurityMode = runtime->Options.EnableSecurityMode;
+    runtime->RMCore.IsHealthy    = true;
     // create methods for runtime
     Runtime_M* module = (Runtime_M*)moduleAddr;
     // hash api
@@ -641,13 +645,13 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Shield._Sleep = runtime->Shield->Sleep;
     module->Shield._Stop  = runtime->Shield->Stop;
     // about process environment
-    module->Env.GetTEB = GetFuncAddr(&RT_GetTEB);
-    module->Env.GetPEB = GetFuncAddr(&RT_GetPEB);
-    module->Env.GetPML = GetFuncAddr(&RT_GetPML);
+    module->Env.TEB = GetFuncAddr(&RT_GetTEB);
+    module->Env.PEB = GetFuncAddr(&RT_GetPEB);
+    module->Env.PML = GetFuncAddr(&RT_GetPML);
     // about immutable module handle
-    module->DLL.GetMainEXE  = GetFuncAddr(&RT_GetMainEXE);
-    module->DLL.GetKernel32 = GetFuncAddr(&RT_GetKernel32);
-    module->DLL.GetNtdll    = GetFuncAddr(&RT_GetNtdll);
+    module->DLL.MainEXE  = GetFuncAddr(&RT_GetMainEXE);
+    module->DLL.Kernel32 = GetFuncAddr(&RT_GetKernel32);
+    module->DLL.Ntdll    = GetFuncAddr(&RT_GetNtdll);
     // {THE TRUTH OF THE WORLD} && [THE END OF THE WORLD] :(
     module->Raw.GetProcAddress = GetFuncAddr(&RT_GetProcAddressRaw);
     module->Raw.ExitProcess    = GetFuncAddr(&RT_ExitProcess);
@@ -2130,7 +2134,7 @@ bool RT_add_uptime(uint32 delta)
         return false;
     }
 
-    runtime->RMStatus.Uptime += delta;
+    runtime->RMCore.Uptime += delta;
 
     if (!rt_unlock())
     {
@@ -2149,7 +2153,7 @@ bool RT_set_health(bool healthy)
         return false;
     }
 
-    runtime->RMStatus.IsHealthy = healthy;
+    runtime->RMCore.IsHealthy = healthy;
 
     if (!rt_unlock())
     {
@@ -2431,6 +2435,27 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
 {
     Runtime* runtime = getRuntimePointer();
 
+    if (!rt_lock())
+    {
+        return NULL;
+    }
+
+    void* proc = RT_GetProcAddressStub(hModule, lpProcName, redirect);
+
+    runtime->RMProc.NumCalls++;
+
+    if (!rt_unlock())
+    {
+        return NULL;
+    }
+    return proc;
+}
+
+__declspec(noinline)
+void* RT_GetProcAddressStub(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
+{
+    Runtime* runtime = getRuntimePointer();
+
     if (hModule == NULL)
     {
         SetLastErrno(ERR_RUNTIME_INVALID_HMODULE);
@@ -2445,7 +2470,7 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
             SetLastErrno(ERR_RUNTIME_RT_METHOD_NOT_FOUND);
             return NULL;
         }
-
+        runtime->RMProc.NumRTMethod++;
         return method;
     }
     // get process module list snapshot
@@ -2484,6 +2509,7 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
         {
             return NULL;
         }
+        runtime->RMProc.NumFallback++;
     }
     if (!redirect)
     {
@@ -2493,9 +2519,10 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
     void* rdr = getAPIRedirector(proc);
     if (rdr != NULL)
     {
+        runtime->RMProc.NumRedirect++;
         return rdr;
     }
-    // if lpProcName is a ordinal, get procedure name
+    // if lpProcName is a ordinal, try to get procedure name
     if (lpProcName <= (LPCSTR)(0xFFFF))
     {
         lpProcName = GetProcedureName(pml, hModule, proc);
@@ -2504,9 +2531,11 @@ void* RT_GetProcAddressEx(HMODULE hModule, LPCSTR lpProcName, BOOL redirect)
             return proc;
         }
     }
+    // check lazy api redirector is exists
     rdr = getLazyAPIRedirector(hModule, lpProcName);
     if (rdr != NULL)
     {
+        runtime->RMProc.NumRedirect++;
         return rdr;
     }
     return proc;
@@ -2525,7 +2554,7 @@ void* RT_GetProcAddressRaw(HMODULE hModule, LPCSTR lpProcName)
 
     void* proc = runtime->GetProcAddress(hModule, lpProcName);
 
-    runtime->RMGetProc.NumRawProc++;
+    runtime->RMProc.NumRawProc++;
 
     if (!rt_unlock())
     {
@@ -2953,6 +2982,27 @@ errno RT_SleepHR(DWORD dwMilliseconds)
 {
     Runtime* runtime = getRuntimePointer();
 
+    // if sleep duration is too small, call the simulation
+    // of the kernel32.Sleep
+    // because some developer may be use the short sleep
+    // for implement the thread synchronization
+    if (dwMilliseconds < 100)
+    {
+        RT_Sleep(dwMilliseconds);
+        return NO_ERROR;
+    }
+
+    // make sure the sleep time is a multiple of 1s
+    dwMilliseconds = (dwMilliseconds / 1000) * 1000;
+    if (dwMilliseconds == 0)
+    {
+        dwMilliseconds = 1000;
+    }
+    // for check the performance about hide and recover
+#ifdef ENABLE_FAST_SLEEP
+    dwMilliseconds = 1;
+#endif
+
     if (!rt_lock())
     {
         return ERR_RUNTIME_LOCK;
@@ -2963,44 +3013,36 @@ errno RT_SleepHR(DWORD dwMilliseconds)
         return errlm;
     }
 
-    if (dwMilliseconds <= 100)
-    {
-        // prevent sleep too frequent
-        dwMilliseconds = 100;
-    } else {
-        // make sure the sleep time is a multiple of 1s
-        dwMilliseconds = (dwMilliseconds / 1000) * 1000;
-        if (dwMilliseconds == 0)
-        {
-            dwMilliseconds = 1000;
-        }
-    }
-
-    // for check the performance about hide and recover
-#ifdef ENABLE_FAST_SLEEP
-    dwMilliseconds = 1;
-#endif
-
     errno error = NO_ERROR;
     for (;;)
     {
-        errno err = hide(runtime);
+        DWORD tick = runtime->GetTickCount();
+        errno err  = hide(runtime);
         if (err != NO_ERROR && error == NO_ERROR)
         {
             error = err;
         }
+        DWORD delta = runtime->GetTickCount() - tick;
+        addPreSleepElapsed(delta);
+
         err = sleep(runtime, dwMilliseconds);
         if (err != NO_ERROR && error == NO_ERROR)
         {
             error = err;
         }
+
+        tick = runtime->GetTickCount();
         err = recover(runtime);
         if (err != NO_ERROR && error == NO_ERROR)
         {
             error = err;
         }
+        delta = runtime->GetTickCount() - tick;
+        addPostSleepElapsed(delta);
+
         break;
     }
+    runtime->RMSleep.NumCalls++;
 
     // detect environment after each sleep
     runtime->Detector->Detect();
@@ -3089,6 +3131,42 @@ static errno sleep(Runtime* runtime, uint32 milliseconds)
         return errno;
     }
     return NO_ERROR;
+}
+
+__declspec(noinline)
+static void addPreSleepElapsed(int32 milliseconds)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    runtime->RMSleep.LastPreElapsed   = milliseconds;
+    runtime->RMSleep.TotalPreElapsed += milliseconds;
+
+    if (milliseconds < runtime->RMSleep.MinPreElapsed)
+    {
+        runtime->RMSleep.MinPreElapsed = milliseconds;
+    }
+    if (milliseconds > runtime->RMSleep.MaxPreElapsed)
+    {
+        runtime->RMSleep.MaxPreElapsed = milliseconds;
+    }
+}
+
+__declspec(noinline)
+static void addPostSleepElapsed(int32 milliseconds)
+{
+    Runtime* runtime = getRuntimePointer();
+
+    runtime->RMSleep.LastPostElapsed   = milliseconds;
+    runtime->RMSleep.TotalPostElapsed += milliseconds;
+
+    if (milliseconds < runtime->RMSleep.MinPostElapsed)
+    {
+        runtime->RMSleep.MinPostElapsed = milliseconds;
+    }
+    if (milliseconds > runtime->RMSleep.MaxPostElapsed)
+    {
+        runtime->RMSleep.MaxPostElapsed = milliseconds;
+    }
 }
 
 __declspec(noinline)
@@ -3263,9 +3341,9 @@ errno RT_GetMetrics(Runtime_Metrics* metrics)
     }
 
     // copy runtime metric
-    mem_copy(&metrics->Core,    &runtime->RMStatus,  sizeof(CO_Status));
-    mem_copy(&metrics->GetProc, &runtime->RMGetProc, sizeof(RT_GetProc));
-    mem_copy(&metrics->Sleep,   &runtime->RMSleep,   sizeof(RT_SleepM));
+    mem_copy(&metrics->Core,  &runtime->RMCore,  sizeof(RT_Core));
+    mem_copy(&metrics->Proc,  &runtime->RMProc,  sizeof(RT_Proc));
+    mem_copy(&metrics->Sleep, &runtime->RMSleep, sizeof(RT_SleepM));
 
     if (!rt_unlock())
     {
