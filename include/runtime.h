@@ -535,7 +535,7 @@ typedef struct {
     int64 InitElapsed;  // ms
     BOOL  SecurityMode;
     BOOL  IsHealthy;
-} CO_Status;
+} RT_Core;
 
 typedef struct {
     int64 NumCalls;
@@ -543,7 +543,7 @@ typedef struct {
     int64 NumFallback;
     int64 NumRTMethod;
     int64 NumRawProc;
-} RT_GetProc;
+} RT_Proc;
 
 typedef struct {
     int64 NumCalls;
@@ -558,27 +558,27 @@ typedef struct {
 } RT_SleepM;
 
 typedef struct {
-    LT_Status  Library;
-    MT_Status  Memory;
-    TT_Status  Thread;
-    RT_Status  Resource;
-    AS_Status  Argument;
-    IS_Status  Storage;
-    DT_Status  Detector;
-    WD_Status  Watchdog;
-    SM_Status  Sysmon;
-    SD_Status  Shield;
-    CO_Status  Core;
-    RT_GetProc GetProc;
-    RT_SleepM  Sleep;
+    LT_Status Library;
+    MT_Status Memory;
+    TT_Status Thread;
+    RT_Status Resource;
+    AS_Status Argument;
+    IS_Status Storage;
+    DT_Status Detector;
+    WD_Status Watchdog;
+    SM_Status Sysmon;
+    SD_Status Shield;
+    RT_Core   Core;
+    RT_Proc   Proc;
+    RT_SleepM Sleep;
 } Runtime_Metrics;
 
 typedef errno (*RTSleepHR_t)(uint32 milliseconds);
 typedef errno (*RTHide_t)();
 typedef errno (*RTRecover_t)();
-typedef errno (*RTOptions_t)(Runtime_Opts* opts);
-typedef errno (*RTInfo_t)(Runtime_Info* info);
-typedef errno (*RTMetrics_t)(Runtime_Metrics* metrics);
+typedef errno (*RTGetOptions_t)(Runtime_Opts* opts);
+typedef errno (*RTGetInfo_t)(Runtime_Info* info);
+typedef errno (*RTGetMetrics_t)(Runtime_Metrics* metrics);
 typedef errno (*RTCleanup_t)();
 typedef errno (*RTExit_t)();
 typedef void  (*RTStop_t)(uint32 code);
@@ -817,15 +817,15 @@ typedef struct {
     } Shield;
 
     struct {
-        GetTEB_t GetTEB;
-        GetPEB_t GetPEB;
-        GetPML_t GetPML;
+        GetTEB_t TEB;
+        GetPEB_t PEB;
+        GetPML_t PML;
     } Env;
 
     struct {
-        GetDLL_t GetMainEXE;
-        GetDLL_t GetKernel32;
-        GetDLL_t GetNtdll;
+        GetDLL_t MainEXE;
+        GetDLL_t Kernel32;
+        GetDLL_t Ntdll;
     } DLL;
 
     struct {
@@ -834,15 +834,15 @@ typedef struct {
     } Raw;
 
     struct {
-        RTSleepHR_t Sleep;
-        RTHide_t    Hide;
-        RTRecover_t Recover;
-        RTOptions_t Options;
-        RTInfo_t    Info;
-        RTMetrics_t Metrics;
-        RTCleanup_t Cleanup;
-        RTExit_t    Exit;
-        RTStop_t    Stop;
+        RTSleepHR_t    Sleep;
+        RTHide_t       Hide;
+        RTRecover_t    Recover;
+        RTGetOptions_t Options;
+        RTGetInfo_t    Info;
+        RTGetMetrics_t Metrics;
+        RTCleanup_t    Cleanup;
+        RTExit_t       Exit;
+        RTStop_t       Stop;
     } Core;
 
     struct {
