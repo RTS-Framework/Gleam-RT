@@ -11,16 +11,22 @@ type Metrics struct {
 	Memory   MTStatus `json:"memory"`
 	Thread   TTStatus `json:"thread"`
 	Resource RTStatus `json:"resource"`
+	Argument ASStatus `json:"argument"`
+	Storage  ISStatus `json:"storage"`
 	Detector DTStatus `json:"detector"`
 	Watchdog WDStatus `json:"watchdog"`
 	Sysmon   SMStatus `json:"sysmon"`
 	Shield   SDStatus `json:"shield"`
+	Core     RTCore   `json:"core"`
+	Proc     RTProc   `json:"proc"`
+	Sleep    RTSleep  `json:"sleep"`
 }
 
 // LTStatus contains status about library tracker.
 type LTStatus struct {
-	NumModules    int64 `json:"num_modules"`
-	NumProcedures int64 `json:"num_procedures"`
+	NumModules   int64 `json:"num_modules"`
+	NumLoadCalls int64 `json:"num_load_calls"`
+	NumFreeCalls int64 `json:"num_free_calls"`
 }
 
 // MTStatus contains status about memory tracker.
@@ -31,13 +37,19 @@ type MTStatus struct {
 	NumRegions int64 `json:"num_regions"`
 	NumPages   int64 `json:"num_pages"`
 	NumHeaps   int64 `json:"num_heaps"`
+	NumRWXs    int64 `json:"num_rwxs"`
+	TotalAlloc int64 `json:"total_alloc"`
+	PeakAlloc  int64 `json:"peak_alloc"`
 }
 
 // TTStatus contains status about thread tracker.
 type TTStatus struct {
-	NumThreads  int64 `json:"num_threads"`
-	NumTLSIndex int64 `json:"num_tls_index"`
-	NumSuspend  int64 `json:"num_suspend"`
+	NumThreads   int64 `json:"num_threads"`
+	NumTLSIndex  int64 `json:"num_tls_index"`
+	NumCreated   int64 `json:"num_created"`
+	NumExited    int64 `json:"num_exited"`
+	NumLocked    int64 `json:"num_locked"`
+	NumSuspended int64 `json:"num_suspended"`
 }
 
 // RTStatus contains status about resource tracker.
@@ -53,6 +65,19 @@ type RTStatus struct {
 	NumSockets        int64 `json:"num_sockets"`
 }
 
+// ASStatus contains status about argument store.
+type ASStatus struct {
+	NumItems  int `json:"num_items"`
+	NumErased int `json:"num_erased"`
+	TotalSize int `json:"total_size"`
+}
+
+// ISStatus contains status about in-memory storage.
+type ISStatus struct {
+	NumItems  int `json:"num_items"`
+	TotalSize int `json:"total_size"`
+}
+
 // DTStatus contains status about detector.
 type DTStatus struct {
 	IsEnabled        bool  `json:"is_enabled"`
@@ -63,6 +88,7 @@ type DTStatus struct {
 	InVirtualMachine bool  `json:"in_virtual_machine"`
 	IsAccelerated    bool  `json:"is_accelerated"`
 	SafeRank         int32 `json:"safe_rank"`
+	NumDetectCalls   int64 `json:"num_detect_calls"`
 }
 
 // WDStatus contains status about watchdog.
@@ -88,12 +114,43 @@ type SDStatus struct {
 	Source      string  `json:"source"`
 }
 
+// RTCore contains metric about runtime core.
+type RTCore struct {
+	Uptime       int64 `json:"uptime"`
+	InitElapsed  int64 `json:"init_elapsed"`
+	SecurityMode bool  `json:"security_mode"`
+	IsHealthy    bool  `json:"is_healthy"`
+}
+
+// RTProc contains metric about runtime GetProcAddress.
+type RTProc struct {
+	NumCalls    int64 `json:"num_calls"`
+	NumRedirect int64 `json:"num_redirect"`
+	NumFallback int64 `json:"num_fallback"`
+	NumRTMethod int64 `json:"num_rt_method"`
+	NumRawProc  int64 `json:"num_raw_proc"`
+}
+
+// RTSleep contains metric about runtime sleep.
+type RTSleep struct {
+	NumCalls         int64 `json:"num_calls"`
+	LastPreElapsed   int32 `json:"last_pre_elapsed"`
+	LastPostElapsed  int32 `json:"last_post_elapsed"`
+	TotalPreElapsed  int64 `json:"total_pre_elapsed"`
+	TotalPostElapsed int64 `json:"total_post_elapsed"`
+	MinPreElapsed    int32 `json:"min_pre_elapsed"`
+	MaxPreElapsed    int32 `json:"max_pre_elapsed"`
+	MinPostElapsed   int32 `json:"min_post_elapsed"`
+	MaxPostElapsed   int32 `json:"max_post_elapsed"`
+}
+
 // ConvertRawMetrics is used to convert raw runtime metrics to go type.
 func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 	return &Metrics{
 		Library: LTStatus{
-			NumModules:    metrics.Library.NumModules,
-			NumProcedures: metrics.Library.NumProcedures,
+			NumModules:   metrics.Library.NumModules,
+			NumLoadCalls: metrics.Library.NumLoadCalls,
+			NumFreeCalls: metrics.Library.NumFreeCalls,
 		},
 		Memory: MTStatus{
 			NumGlobals: metrics.Memory.NumGlobals,
@@ -102,11 +159,17 @@ func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 			NumRegions: metrics.Memory.NumRegions,
 			NumPages:   metrics.Memory.NumPages,
 			NumHeaps:   metrics.Memory.NumHeaps,
+			NumRWXs:    metrics.Memory.NumRWXs,
+			TotalAlloc: metrics.Memory.TotalAlloc,
+			PeakAlloc:  metrics.Memory.PeakAlloc,
 		},
 		Thread: TTStatus{
-			NumThreads:  metrics.Thread.NumThreads,
-			NumTLSIndex: metrics.Thread.NumTLSIndex,
-			NumSuspend:  metrics.Thread.NumSuspend,
+			NumThreads:   metrics.Thread.NumThreads,
+			NumTLSIndex:  metrics.Thread.NumTLSIndex,
+			NumCreated:   metrics.Thread.NumCreated,
+			NumExited:    metrics.Thread.NumExited,
+			NumLocked:    metrics.Thread.NumLocked,
+			NumSuspended: metrics.Thread.NumSuspended,
 		},
 		Resource: RTStatus{
 			NumMutexs:         metrics.Resource.NumMutexs,
@@ -119,6 +182,15 @@ func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 			NumRegKeys:        metrics.Resource.NumRegKeys,
 			NumSockets:        metrics.Resource.NumSockets,
 		},
+		Argument: ASStatus{
+			NumItems:  int(metrics.Argument.NumItems),
+			NumErased: int(metrics.Argument.NumErased),
+			TotalSize: int(metrics.Argument.TotalSize),
+		},
+		Storage: ISStatus{
+			NumItems:  int(metrics.Storage.NumItems),
+			TotalSize: int(metrics.Storage.TotalSize),
+		},
 		Detector: DTStatus{
 			IsEnabled:        metrics.Detector.IsEnabled.ToBool(),
 			HasDebugger:      metrics.Detector.HasDebugger.ToBool(),
@@ -128,6 +200,7 @@ func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 			InEmulator:       metrics.Detector.InEmulator.ToBool(),
 			IsAccelerated:    metrics.Detector.IsAccelerated.ToBool(),
 			SafeRank:         metrics.Detector.SafeRank,
+			NumDetectCalls:   metrics.Detector.NumDetectCalls,
 		},
 		Watchdog: WDStatus{
 			IsEnabled: metrics.Watchdog.IsEnabled.ToBool(),
@@ -145,6 +218,30 @@ func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 			EntryPoint:  metrics.Shield.EntryPoint,
 			BaseAddress: metrics.Shield.BaseAddress,
 			Source:      shield.ConvertSource(metrics.Shield.Source),
+		},
+		Core: RTCore{
+			Uptime:       metrics.Core.Uptime,
+			InitElapsed:  metrics.Core.InitElapsed,
+			SecurityMode: metrics.Core.SecurityMode.ToBool(),
+			IsHealthy:    metrics.Core.IsHealthy.ToBool(),
+		},
+		Proc: RTProc{
+			NumCalls:    metrics.Proc.NumCalls,
+			NumRedirect: metrics.Proc.NumRedirect,
+			NumFallback: metrics.Proc.NumFallback,
+			NumRTMethod: metrics.Proc.NumRTMethod,
+			NumRawProc:  metrics.Proc.NumRawProc,
+		},
+		Sleep: RTSleep{
+			NumCalls:         metrics.Sleep.NumCalls,
+			LastPreElapsed:   metrics.Sleep.LastPreElapsed,
+			LastPostElapsed:  metrics.Sleep.LastPostElapsed,
+			TotalPreElapsed:  metrics.Sleep.TotalPreElapsed,
+			TotalPostElapsed: metrics.Sleep.TotalPostElapsed,
+			MinPreElapsed:    metrics.Sleep.MinPreElapsed,
+			MaxPreElapsed:    metrics.Sleep.MaxPreElapsed,
+			MinPostElapsed:   metrics.Sleep.MinPostElapsed,
+			MaxPostElapsed:   metrics.Sleep.MaxPostElapsed,
 		},
 	}
 }
