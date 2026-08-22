@@ -1,6 +1,6 @@
 github.com/For-ACGN/monkey v1.0.2 h1:d4rdyndQ5zwvLKPAGn6BrCX55QmxHkqNPBALZEagr88=
-github.com/RTS-Framework/GRT-Develop v1.9.1-0.20260820063042-162517a4dd7a h1:fmPF5CWRLU5sajYhd/wpt1Zwtr/T7A2HIZ/sDxZQZ0A=
-github.com/RTS-Framework/GRT-Develop v1.9.1-0.20260820063042-162517a4dd7a/go.mod h1:2K9ZTg23Wjn2KZ46RczjtQdwKVcfyoDrz9Hw0Ja5Imk=
+github.com/RTS-Framework/GRT-Develop v1.9.1-0.20260822042100-43d9a8afcaff h1:qHtd+buqAljMvfDDWEv0161MHBSB0ubvMaDMazqfx1g=
+github.com/RTS-Framework/GRT-Develop v1.9.1-0.20260822042100-43d9a8afcaff/go.mod h1:2K9ZTg23Wjn2KZ46RczjtQdwKVcfyoDrz9Hw0Ja5Imk=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
