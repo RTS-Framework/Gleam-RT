@@ -552,9 +552,11 @@ typedef struct {
     int64 TotalPreElapsed;  // ms
     int64 TotalPostElapsed; // ms
     int32 MinPreElapsed;    // ms
-    int32 MaxPreElapsed;    // ms
     int32 MinPostElapsed;   // ms
+    int32 MaxPreElapsed;    // ms
     int32 MaxPostElapsed;   // ms
+    int32 AvgPreElapsed;    // ms
+    int32 AvgPostElapsed;   // ms
 } RT_SleepM;
 
 typedef struct {
