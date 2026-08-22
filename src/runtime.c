@@ -289,8 +289,8 @@ static errno recover(Runtime* runtime);
 static void addPreSleepElapsed(int32 milliseconds);
 static void addPostSleepElapsed(int32 milliseconds);
 
-static void eraseMemory(uintptr address, uintptr size);
-static void epilogue();
+static void rs_erase(uintptr address, uintptr size);
+static void rs_epilogue();
 
 Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
 {
@@ -2603,22 +2603,24 @@ static void* getRuntimeMethods(LPCSTR lpProcName)
         { 0x41D042835BA4C499, 0xD74A73D3EE16AE15, AS->GetPointer }, // AS_GetPointer
         { 0xE84B8AF19E5545A2, 0xCE033EAF91F7C68A, AS->Erase      }, // AS_Erase
         { 0xD0E223D64B8DCDD0, 0x1CF6D4FF24ED869B, AS->EraseAll   }, // AS_EraseAll
+        { 0xEF091353A54C024F, 0x06A86B2D442F36C4, AS->GetStatus  }, // AS_GetStatus
         { 0xC6CB35CD39A67EAC, 0x015D074AF57976A1, IS->SetValue   }, // IS_SetValue
         { 0x6337FA1ECA8843D2, 0x36206F50F948F913, IS->GetValue   }, // IS_GetValue
         { 0x773674E47B0053B8, 0x0A681F5428C13912, IS->GetPointer }, // IS_GetPointer
         { 0x0B5E3CDD9E8D1718, 0x96E689FB7E624071, IS->Delete     }, // IS_Delete
         { 0x20EF072CE85923F8, 0x0A63186150433F11, IS->DeleteAll  }, // IS_DeleteAll
+        { 0x1E1856EDCFDDA5E4, 0xCD66F699F3FF7867, IS->GetStatus  }, // IS_GetStatus
         { 0x581F53A28A65268E, 0xED463BBEAA5FD89F, DT->Detect     }, // DT_Detect
-        { 0x186269BED712913B, 0x6D2CF70F8043A826, DT->GetStatus  }, // DT_Status
+        { 0xFB549442A42025E2, 0x2B8AB0BD179B4250, DT->GetStatus  }, // DT_GetStatus
         { 0xD08874D760CA7D86, 0xA4719EDF574FF3BD, WD->SetHandler }, // WD_SetHandler
         { 0x43F0DB91ACB312F1, 0x6188D3AFB7FF35FD, WD->SetTimeout }, // WD_SetTimeout
         { 0xC452D582688E6748, 0x306E7BA258D6F057, WD->Kick       }, // WD_Kick
         { 0x6466D654DC42A2F5, 0xDDF182373074C274, WD->Enable     }, // WD_Enable
         { 0x93B95D821AC7FDBB, 0x292E300258544350, WD->Disable    }, // WD_Disable
         { 0xA203A663F5364056, 0xDE186C4522AF6A07, WD->IsEnabled  }, // WD_IsEnabled
-        { 0xBBAECC7687F42C00, 0xCBEC3C2610B77733, WD->GetStatus  }, // WD_Status
-        { 0x875CE09ECE01D337, 0x437686381E0B5F7B, SM->GetStatus  }, // SM_Status
-        { 0x6B8B3965E7502E5A, 0x08F4BA5980133548, SD->GetStatus  }, // SD_Status
+        { 0xA86FDE488282A161, 0x841E942B8732594B, WD->GetStatus  }, // WD_GetStatus
+        { 0x08BE5269AFFBD475, 0x1B42FB830E389DC3, SM->GetStatus  }, // SM_GetStatus
+        { 0x1EF56550F2022EED, 0x39604BE4E97C1DA8, SD->GetStatus  }, // SD_GetStatus
     };
 #elif _WIN32
     {
@@ -2639,22 +2641,24 @@ static void* getRuntimeMethods(LPCSTR lpProcName)
         { 0xB8A08D9B, 0x7DB3ECC2, AS->GetPointer }, // AS_GetPointer
         { 0x18EF1CF3, 0x978EAC96, AS->Erase      }, // AS_Erase
         { 0xF3F8E721, 0xB6B8CE66, AS->EraseAll   }, // AS_EraseAll
+        { 0xE5718EF2, 0x3A32578F, AS->GetStatus  }, // AS_GetStatus
         { 0x059C9C41, 0x580504E7, IS->SetValue   }, // IS_SetValue
         { 0xCC98B76B, 0x607C67D7, IS->GetValue   }, // IS_GetValue
         { 0x8D311A4E, 0xDCEBC05E, IS->GetPointer }, // IS_GetPointer
         { 0xC0182D65, 0x9990E05B, IS->Delete     }, // IS_Delete
         { 0x985542B3, 0x41D8CA6A, IS->DeleteAll  }, // IS_DeleteAll
+        { 0x5807F4F2, 0xFBF697C8, IS->GetStatus  }, // IS_GetStatus
         { 0xC1D58FC0, 0xB24370DA, DT->Detect     }, // DT_Detect
-        { 0xA07B9091, 0x52CE44B2, DT->GetStatus  }, // DT_Status
+        { 0x501A173A, 0x871A6960, DT->GetStatus  }, // DT_GetStatus
         { 0x7F44D8EC, 0x5B3C26E3, WD->SetHandler }, // WD_SetHandler
         { 0x5BEBCA2A, 0xF523475E, WD->SetTimeout }, // WD_SetTimeout
         { 0x22071C46, 0x98C6F05B, WD->Kick       }, // WD_Kick
         { 0xD43187BC, 0x6247B19C, WD->Enable     }, // WD_Enable
         { 0x2BFE9370, 0x0E5A84B4, WD->Disable    }, // WD_Disable
         { 0x219D299A, 0xBFCD277B, WD->IsEnabled  }, // WD_IsEnabled
-        { 0x39DED160, 0x0134B86F, WD->GetStatus  }, // WD_Status
-        { 0x7DD1B99E, 0x7F4B2915, SM->GetStatus  }, // SM_Status
-        { 0xD78DECB9, 0xFF2DA0F1, SD->GetStatus  }, // SD_Status
+        { 0x5210B9A0, 0xB6838D89, WD->GetStatus  }, // WD_GetStatus
+        { 0xB59E4AC9, 0x7BDB4375, SM->GetStatus  }, // SM_GetStatus
+        { 0x728F99BA, 0xEEB2905C, SD->GetStatus  }, // SD_GetStatus
     };
 #endif
     for (int i = 0; i < arrlen(list); i++)
@@ -3013,6 +3017,10 @@ errno RT_SleepHR(DWORD dwMilliseconds)
         return errlm;
     }
 
+    // must update this metric field first for
+    // calculate the sleep average elapsed time
+    runtime->RMSleep.NumCalls++;
+
     errno error = NO_ERROR;
     for (;;)
     {
@@ -3022,7 +3030,7 @@ errno RT_SleepHR(DWORD dwMilliseconds)
         {
             error = err;
         }
-        DWORD delta = runtime->GetTickCount() - tick;
+        DWORD delta = runtime->GetTickCount() - tick + 1;
         addPreSleepElapsed(delta);
 
         err = sleep(runtime, dwMilliseconds);
@@ -3037,12 +3045,10 @@ errno RT_SleepHR(DWORD dwMilliseconds)
         {
             error = err;
         }
-        delta = runtime->GetTickCount() - tick;
+        delta = runtime->GetTickCount() - tick + 1;
         addPostSleepElapsed(delta);
-
         break;
     }
-    runtime->RMSleep.NumCalls++;
 
     // detect environment after each sleep
     runtime->Detector->Detect();
@@ -3138,17 +3144,24 @@ static void addPreSleepElapsed(int32 milliseconds)
 {
     Runtime* runtime = getRuntimePointer();
 
-    runtime->RMSleep.LastPreElapsed   = milliseconds;
-    runtime->RMSleep.TotalPreElapsed += milliseconds;
+    RT_SleepM* sleep = &runtime->RMSleep;
 
-    if (milliseconds < runtime->RMSleep.MinPreElapsed)
+    sleep->LastPreElapsed   = milliseconds;
+    sleep->TotalPreElapsed += milliseconds;
+
+    if (sleep->MinPreElapsed == 0)
     {
-        runtime->RMSleep.MinPreElapsed = milliseconds;
+        sleep->MinPreElapsed = milliseconds;
     }
-    if (milliseconds > runtime->RMSleep.MaxPreElapsed)
+    if (milliseconds < sleep->MinPreElapsed)
     {
-        runtime->RMSleep.MaxPreElapsed = milliseconds;
+        sleep->MinPreElapsed = milliseconds;
     }
+    if (milliseconds > sleep->MaxPreElapsed)
+    {
+        sleep->MaxPreElapsed = milliseconds;
+    }
+    sleep->AvgPreElapsed = (int32)(sleep->TotalPreElapsed / sleep->NumCalls);
 }
 
 __declspec(noinline)
@@ -3156,17 +3169,24 @@ static void addPostSleepElapsed(int32 milliseconds)
 {
     Runtime* runtime = getRuntimePointer();
 
-    runtime->RMSleep.LastPostElapsed   = milliseconds;
-    runtime->RMSleep.TotalPostElapsed += milliseconds;
+    RT_SleepM* sleep = &runtime->RMSleep;
 
-    if (milliseconds < runtime->RMSleep.MinPostElapsed)
+    sleep->LastPostElapsed   = milliseconds;
+    sleep->TotalPostElapsed += milliseconds;
+
+    if (sleep->MinPostElapsed == 0)
     {
-        runtime->RMSleep.MinPostElapsed = milliseconds;
+        sleep->MinPostElapsed = milliseconds;
     }
-    if (milliseconds > runtime->RMSleep.MaxPostElapsed)
+    if (milliseconds < sleep->MinPostElapsed)
     {
-        runtime->RMSleep.MaxPostElapsed = milliseconds;
+        sleep->MinPostElapsed = milliseconds;
     }
+    if (milliseconds > sleep->MaxPostElapsed)
+    {
+        sleep->MaxPostElapsed = milliseconds;
+    }
+    sleep->AvgPostElapsed = (int32)(sleep->TotalPostElapsed / sleep->NumCalls);
 }
 
 __declspec(noinline)
@@ -3517,7 +3537,7 @@ errno RT_stop(bool exitThread, uint32 code)
 
     if (runtime->Options.NotEraseInstruction)
     {
-        eraseMemory((uintptr)(runtime->MainMemPage), MAIN_MEM_PAGE_SIZE);
+        rs_erase((uintptr)(runtime->MainMemPage), MAIN_MEM_PAGE_SIZE);
         return error;
     }
 
@@ -3531,10 +3551,10 @@ errno RT_stop(bool exitThread, uint32 code)
     // erase runtime instruction except these 
     uintptr begin = (uintptr)(GetFuncAddr(&InitRuntime));
     uintptr end   = (uintptr)(GetFuncAddr(&RT_Exit));
-    eraseMemory(begin, end - begin);
-    begin = (uintptr)(GetFuncAddr(&epilogue));
+    rs_erase(begin, end - begin);
+    begin = (uintptr)(GetFuncAddr(&rs_epilogue));
     end   = (uintptr)(GetFuncAddr(&Argument_Stub));
-    eraseMemory(begin, end - begin);
+    rs_erase(begin, end - begin);
 
     // not call recoverPageProtect because
     // this function has been erased
@@ -3552,15 +3572,17 @@ errno RT_stop(bool exitThread, uint32 code)
         }
     }
 
-    eraseMemory((uintptr)(runtime->MainMemPage), MAIN_MEM_PAGE_SIZE);
+    rs_erase((uintptr)(runtime->MainMemPage), MAIN_MEM_PAGE_SIZE);
     return error;
 }
+
+// these functions are provide to RT_stop.
 
 // prevent it be linked to other functions.
 #pragma optimize("", off)
 
 __declspec(noinline)
-static void eraseMemory(uintptr address, uintptr size)
+static void rs_erase(uintptr address, uintptr size)
 {
     byte* buf = (byte*)address;
     for (uint i = 0; i < size; i++)
@@ -3571,7 +3593,7 @@ static void eraseMemory(uintptr address, uintptr size)
 
 #pragma warning(push)
 #pragma warning(disable: 4189)
-static void epilogue()
+static void rs_epilogue()
 {
     byte var = 1;
     return;
