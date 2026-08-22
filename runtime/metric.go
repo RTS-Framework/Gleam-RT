@@ -139,9 +139,11 @@ type RTSleep struct {
 	TotalPreElapsed  int64 `json:"total_pre_elapsed"`
 	TotalPostElapsed int64 `json:"total_post_elapsed"`
 	MinPreElapsed    int32 `json:"min_pre_elapsed"`
-	MaxPreElapsed    int32 `json:"max_pre_elapsed"`
 	MinPostElapsed   int32 `json:"min_post_elapsed"`
+	MaxPreElapsed    int32 `json:"max_pre_elapsed"`
 	MaxPostElapsed   int32 `json:"max_post_elapsed"`
+	AvgPreElapsed    int32 `json:"avg_pre_elapsed"`
+	AvgPostElapsed   int32 `json:"avg_post_elapsed"`
 }
 
 // ConvertRawMetrics is used to convert raw runtime metrics to go type.
@@ -239,9 +241,11 @@ func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 			TotalPreElapsed:  metrics.Sleep.TotalPreElapsed,
 			TotalPostElapsed: metrics.Sleep.TotalPostElapsed,
 			MinPreElapsed:    metrics.Sleep.MinPreElapsed,
-			MaxPreElapsed:    metrics.Sleep.MaxPreElapsed,
 			MinPostElapsed:   metrics.Sleep.MinPostElapsed,
+			MaxPreElapsed:    metrics.Sleep.MaxPreElapsed,
 			MaxPostElapsed:   metrics.Sleep.MaxPostElapsed,
+			AvgPreElapsed:    metrics.Sleep.AvgPreElapsed,
+			AvgPostElapsed:   metrics.Sleep.AvgPostElapsed,
 		},
 	}
 }
