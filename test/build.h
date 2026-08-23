@@ -10,7 +10,7 @@
 // SMALL_CHUNK_SIZE:   adjust the read chunk size to smaller for test
 
 // #define ENABLE_DEBUGGER
-// #define ENABLE_FAST_SLEEP
+#define ENABLE_FAST_SLEEP
 // #define DISABLE_PIC_MODE
 // #define DISABLE_CAMOUFLAGE
 #define SMALL_CHUNK_SIZE
