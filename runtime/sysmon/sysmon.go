@@ -15,7 +15,7 @@ import (
 var (
 	modGleamRT = windows.NewLazyDLL("GleamRT.dll")
 
-	procStatus = modGleamRT.NewProc("SM_Status")
+	procGetStatus = modGleamRT.NewProc("SM_GetStatus")
 )
 
 // Status contains sysmon status.
@@ -29,10 +29,10 @@ type Status struct {
 // GetStatus is used to get sysmon status.
 func GetStatus() (*Status, error) {
 	var status metric.SMStatus
-	ret, _, err := procStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
+	ret, _, err := procGetStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
 	if ret == 0 {
 		en := uintptr(err.(syscall.Errno))
-		return nil, fmt.Errorf("failed to call sysmon.Status: 0x%08X", en)
+		return nil, fmt.Errorf("failed to call sysmon.GetStatus: 0x%08X", en)
 	}
 	s := Status{
 		IsEnabled:  status.IsEnabled.ToBool(),
