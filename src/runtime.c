@@ -145,7 +145,7 @@ typedef struct {
     Runtime_M* RuntimeM;
 } Runtime;
 
-// export methods about Runtime
+// export methods about Runtime except Stub
 void* RT_FindMod_MH(uint  module, uint key);
 void* RT_FindAPI_MA(void* module, uint procedure, uint key);
 void* RT_FindAPI_MH(uint  module, uint procedure, uint key);
@@ -187,6 +187,7 @@ errno RT_GetMetrics(Runtime_Metrics* metrics);
 errno RT_Cleanup();
 errno RT_Exit();
 void  RT_Stop(uint32 code);
+errno RT_StopStub(bool exitThread, uint32 code);
 
 // internal methods for Runtime submodules
 void* RT_malloc(uint size);
@@ -205,8 +206,6 @@ bool RT_add_uptime(uint32 delta);
 bool RT_set_health(bool healthy);
 
 bool RT_flush_api_cache();
-
-errno RT_stop(bool exitThread, uint32 code);
 
 // HashAPI with spoof call (forge GetProcAddress)
 void* SC_FindAPI_MA(void* module, uint procedure, uint key);
@@ -233,6 +232,8 @@ static Runtime* getRuntimePointer();
 
 static bool rt_lock();
 static bool rt_unlock();
+static bool rt_try_lock();
+static void rt_try_unlock();
 
 static void  loadOptionFromStub(Runtime_Opts* opts);
 static bool  checkOptionConflict(Runtime_Opts* opts);
@@ -1874,6 +1875,23 @@ static bool rt_unlock()
     return runtime->ReleaseMutex(runtime->hMutex);
 }
 
+__declspec(noinline)
+static bool rt_try_lock()
+{
+    Runtime* runtime = getRuntimePointer();
+
+    DWORD event = runtime->WaitForSingleObject(runtime->hMutex, 1000);
+    return event == WAIT_OBJECT_0 || event == WAIT_ABANDONED;
+}
+
+__declspec(noinline)
+static void rt_try_unlock()
+{
+    Runtime* runtime = getRuntimePointer();
+
+    runtime->ReleaseMutex(runtime->hMutex);
+}
+
 // +---------+----------+-------------+
 // |  size   | capacity | user buffer |
 // +---------+----------+-------------+
@@ -2124,22 +2142,22 @@ void RT_try_unlock_mods()
     }
 }
 
+// must use try to lock runtime above these methods about metric,
+// because it maybe collide with sysmon when call RT_Stop.
+
 __declspec(noinline)
 bool RT_add_uptime(uint32 delta)
 {
     Runtime* runtime = getRuntimePointer();
 
-    if (!rt_lock())
+    if (!rt_try_lock())
     {
         return false;
     }
 
     runtime->RMCore.Uptime += delta;
 
-    if (!rt_unlock())
-    {
-        return false;
-    }
+    rt_try_unlock();
     return true;
 }
 
@@ -2148,17 +2166,14 @@ bool RT_set_health(bool healthy)
 {
     Runtime* runtime = getRuntimePointer();
 
-    if (!rt_lock())
+    if (!rt_try_lock())
     {
         return false;
     }
 
     runtime->RMCore.IsHealthy = healthy;
 
-    if (!rt_unlock())
-    {
-        return false;
-    }
+    rt_try_unlock();
     return true;
 }
 
@@ -3439,17 +3454,17 @@ errno RT_Cleanup()
 __declspec(noinline)
 errno RT_Exit()
 {
-    return RT_stop(false, 0);
+    return RT_StopStub(false, 0);
 }
 
 __declspec(noinline)
 void RT_Stop(uint32 code)
 {
-    RT_stop(true, code);
+    RT_StopStub(true, code);
 }
 
 __declspec(noinline)
-errno RT_stop(bool exitThread, uint32 code)
+errno RT_StopStub(bool exitThread, uint32 code)
 {
     Runtime* runtime = getRuntimePointer();
 
@@ -3576,7 +3591,7 @@ errno RT_stop(bool exitThread, uint32 code)
     return error;
 }
 
-// these functions are provide to RT_stop.
+// these functions are provide to RT_StopStub.
 
 // prevent it be linked to other functions.
 #pragma optimize("", off)
