@@ -22,7 +22,7 @@ var (
 	procEnable     = modGleamRT.NewProc("WD_Enable")
 	procDisable    = modGleamRT.NewProc("WD_Disable")
 	procIsEnabled  = modGleamRT.NewProc("WD_IsEnabled")
-	procStatus     = modGleamRT.NewProc("WD_Status")
+	procGetStatus  = modGleamRT.NewProc("WD_GetStatus")
 )
 
 // Status contains watchdog status.
@@ -35,11 +35,17 @@ type Status struct {
 
 // SetHandler is used to set reset handler, it is only for test.
 func SetHandler(handler func() uintptr) {
+	if IsEnabled() {
+		panic("cannot set handler after watchdog enabled")
+	}
 	_, _, _ = procSetHandler.Call(syscall.NewCallback(handler))
 }
 
 // SetTimeout is used to set timeout for test faster, it is only for test.
 func SetTimeout(timeout time.Duration) {
+	if IsEnabled() {
+		panic("cannot set handler after watchdog enabled")
+	}
 	_, _, _ = procSetTimeout.Call(uintptr(timeout.Milliseconds()))
 }
 
@@ -79,10 +85,10 @@ func IsEnabled() bool {
 // GetStatus is used to get watchdog status.
 func GetStatus() (*Status, error) {
 	var status metric.WDStatus
-	ret, _, err := procStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
+	ret, _, err := procGetStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
 	if ret == 0 {
 		en := uintptr(err.(syscall.Errno))
-		return nil, fmt.Errorf("failed to call watchdog.Status: 0x%08X", en)
+		return nil, fmt.Errorf("failed to call watchdog.GetStatus: 0x%08X", en)
 	}
 	s := Status{
 		IsEnabled: status.IsEnabled.ToBool(),
