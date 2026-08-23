@@ -3,6 +3,7 @@
 package gleamrt
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 	"testing"
@@ -67,8 +68,12 @@ func TestInitialize(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestIsExist(t *testing.T) {
-	require.True(t, IsExist())
+func TestIsLoadDLL(t *testing.T) {
+	require.True(t, IsLoadDLL())
+}
+
+func TestIsOnRuntime(t *testing.T) {
+	require.False(t, IsOnRuntime())
 }
 
 func TestGetProcAddress(t *testing.T) {
@@ -95,6 +100,12 @@ func TestGetProcAddress(t *testing.T) {
 		require.EqualError(t, err, "failed to call GetProcAddress: 0xFF000302")
 		require.Zero(t, proc)
 	})
+
+	metrics, err := GetMetrics()
+	require.NoError(t, err)
+
+	require.NotZero(t, metrics.Proc.NumCalls)
+	require.NotZero(t, metrics.Proc.NumRedirect)
 }
 
 func TestGetProcAddressEx(t *testing.T) {
@@ -121,6 +132,12 @@ func TestGetProcAddressEx(t *testing.T) {
 		require.EqualError(t, err, "failed to call GetProcAddressEx: 0x0000007F")
 		require.Zero(t, proc)
 	})
+
+	metrics, err := GetMetrics()
+	require.NoError(t, err)
+
+	require.NotZero(t, metrics.Proc.NumCalls)
+	require.NotZero(t, metrics.Proc.NumRedirect)
 }
 
 func TestGetProcAddressRaw(t *testing.T) {
@@ -141,6 +158,68 @@ func TestGetProcAddressRaw(t *testing.T) {
 		require.EqualError(t, err, "failed to call GetProcAddressRaw: 0x0000007F")
 		require.Zero(t, proc)
 	})
+
+	metrics, err := GetMetrics()
+	require.NoError(t, err)
+
+	require.Equal(t, int64(2), metrics.Proc.NumRawProc)
+}
+
+func TestGetRuntimeMethod(t *testing.T) {
+	hGleamRT := windows.Handle(modGleamRT.Handle())
+
+	for _, proc := range []string{
+		"RT_GetProcAddress",
+		"RT_GetProcAddressEx",
+		"RT_GetProcAddressRaw",
+
+		"RT_GetTEB",
+		"RT_GetPEB",
+		"RT_GetPML",
+
+		"RT_GetOptions",
+		"RT_GetRuntimeM",
+		"RT_GetInfo",
+		"RT_GetMetrics",
+		"RT_SleepHR",
+
+		"RT_Sleep",
+		"RT_ExitProcess",
+
+		"AS_GetValue",
+		"AS_GetPointer",
+		"AS_Erase",
+		"AS_EraseAll",
+		"AS_GetStatus",
+
+		"IS_SetValue",
+		"IS_GetValue",
+		"IS_GetPointer",
+		"IS_Delete",
+		"IS_DeleteAll",
+		"IS_GetStatus",
+
+		"DT_Detect",
+		"DT_GetStatus",
+
+		"WD_SetHandler",
+		"WD_SetTimeout",
+		"WD_Kick",
+		"WD_Enable",
+		"WD_Disable",
+		"WD_IsEnabled",
+		"WD_GetStatus",
+
+		"SM_GetStatus",
+
+		"SD_GetStatus",
+	} {
+		dllProcAddr := modGleamRT.NewProc(proc).Addr()
+		getProcAddr, err := windows.GetProcAddress(hGleamRT, proc)
+		require.NoError(t, err, proc)
+		require.Equal(t, dllProcAddr, getProcAddr)
+		fmt.Printf("%s: 0x%X\n", proc, dllProcAddr)
+	}
 }
 
 func TestGetTEB(t *testing.T) {
