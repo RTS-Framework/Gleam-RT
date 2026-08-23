@@ -602,7 +602,9 @@ errno SM_Stop()
         if (sysmon->SetEvent(sysmon->hEvent))
         {
             // wait watcher thread exit
-            if (sysmon->WaitForSingleObject(sysmon->hThread, 1000) != WAIT_OBJECT_0)
+            // the wait time must > 3s because the watcher
+            // maybe call method that try to lock runtime
+            if (sysmon->WaitForSingleObject(sysmon->hThread, 5000) != WAIT_OBJECT_0)
             {
                 errno = ERR_SYSMON_WAIT_THREAD;
             }
