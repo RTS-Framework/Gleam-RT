@@ -16,7 +16,7 @@ import (
 var (
 	modGleamRT = windows.NewLazyDLL("GleamRT.dll")
 
-	procStatus = modGleamRT.NewProc("SD_Status")
+	procGetStatus = modGleamRT.NewProc("SD_GetStatus")
 )
 
 // Status contains shield status.
@@ -29,10 +29,10 @@ type Status struct {
 // GetStatus is used to get shield status.
 func GetStatus() (*Status, error) {
 	var status metric.SDStatus
-	ret, _, err := procStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
+	ret, _, err := procGetStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
 	if ret == 0 {
 		en := uintptr(err.(syscall.Errno))
-		return nil, fmt.Errorf("failed to call shield.Status: 0x%08X", en)
+		return nil, fmt.Errorf("failed to call shield.GetStatus: 0x%08X", en)
 	}
 	s := Status{
 		EntryPoint:  status.EntryPoint,
