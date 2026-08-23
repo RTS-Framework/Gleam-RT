@@ -102,7 +102,7 @@ static bool TestMemory_Virtual()
         printf_s("failed to recover: 0x%X\n", errno);
         return false;
     }
-    errno = runtime->Core.Sleep(100);
+    errno = runtime->Core.Sleep(500);
     if (errno != NO_ERROR)
     {
         printf_s("failed to call Core.Sleep: 0x%X\n", errno);
@@ -160,7 +160,7 @@ static bool TestMemory_Heap()
         printf_s("failed to free heap with zero size 0x%X\n", GetLastErrno());
         return false;
     }
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
 
     // test HeapReAlloc
     mem = HeapAlloc(hHeap, 0, 16);
@@ -211,7 +211,7 @@ static bool TestMemory_Heap()
         printf_s("failed to free heap with zero size 0x%X\n", GetLastErrno());
         return false;
     }
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
 
     // test HeapFree
     if (!HeapFree(hHeap, 0, NULL))
@@ -219,7 +219,7 @@ static bool TestMemory_Heap()
         printf_s("failed to free heap with NULL0x%X\n", GetLastErrno());
         return false;
     }
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
 
     // compare the redirected function address
     HeapAlloc_t   RtlAllocateHeap   = runtime->Library.GetProc(hNtdll, "RtlAllocateHeap");
@@ -370,16 +370,16 @@ static bool TestMemory_msvcrt()
         return false;
     }
 
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
     free(test2);
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
     free(test3);
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
 
     // not free
     test1 = malloc(8);
     *test1 = 0x1234;
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
 
     if (!runtime->Library.Free(hMsvcrt))
     {
@@ -418,16 +418,16 @@ static bool TestMemory_ucrtbase()
         return false;
     }
 
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
     free(test2);
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
     free(test3);
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
 
     // not free
     test1 = malloc(8);
     *test1 = 0x1234;
-    runtime->Core.Sleep(10);
+    runtime->Core.Sleep(100);
 
     if (!runtime->Library.Free(hUcrtbase))
     {
