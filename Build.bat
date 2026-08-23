@@ -54,6 +54,7 @@ call test.bat
 if errorlevel 1 (
     echo.
     echo failed to test runtime package!
+    pause
     exit /b %ERRORLEVEL%
 )
 
