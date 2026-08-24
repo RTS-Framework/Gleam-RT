@@ -134,6 +134,7 @@ type RTProc struct {
 // RTSleep contains metric about runtime sleep.
 type RTSleep struct {
 	NumCalls         int64 `json:"num_calls"`
+	LastError        int32 `json:"last_error"`
 	LastPreElapsed   int32 `json:"last_pre_elapsed"`
 	LastPostElapsed  int32 `json:"last_post_elapsed"`
 	TotalPreElapsed  int64 `json:"total_pre_elapsed"`
@@ -236,6 +237,7 @@ func ConvertRawMetrics(metrics *metric.Metrics) *Metrics {
 		},
 		Sleep: RTSleep{
 			NumCalls:         metrics.Sleep.NumCalls,
+			LastError:        metrics.Sleep.LastError,
 			LastPreElapsed:   metrics.Sleep.LastPreElapsed,
 			LastPostElapsed:  metrics.Sleep.LastPostElapsed,
 			TotalPreElapsed:  metrics.Sleep.TotalPreElapsed,
