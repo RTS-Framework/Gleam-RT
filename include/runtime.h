@@ -547,6 +547,8 @@ typedef struct {
 
 typedef struct {
     int64 NumCalls;
+    errno LastError;
+    int32 Reserved;
     int32 LastPreElapsed;   // ms
     int32 LastPostElapsed;  // ms
     int64 TotalPreElapsed;  // ms
