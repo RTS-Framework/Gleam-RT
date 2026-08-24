@@ -73,5 +73,6 @@ func TestGetStatus(t *testing.T) {
 	require.NoError(t, err)
 
 	require.True(t, status.IsEnabled)
+	require.Equal(t, int64(2), status.NumDetectCalls)
 	spew.Dump(status)
 }

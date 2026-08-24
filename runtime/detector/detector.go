@@ -15,8 +15,8 @@ import (
 var (
 	modGleamRT = windows.NewLazyDLL("GleamRT.dll")
 
-	procDetect = modGleamRT.NewProc("DT_Detect")
-	procStatus = modGleamRT.NewProc("DT_Status")
+	procDetect    = modGleamRT.NewProc("DT_Detect")
+	procGetStatus = modGleamRT.NewProc("DT_GetStatus")
 )
 
 // Status contains detector status.
@@ -29,6 +29,7 @@ type Status struct {
 	InEmulator       bool  `json:"in_emulator"`
 	IsAccelerated    bool  `json:"is_accelerated"`
 	SafeRank         int32 `json:"safe_rank"`
+	NumDetectCalls   int64 `json:"num_detect_calls"`
 }
 
 // Detect is used to detect current environment.
@@ -44,10 +45,10 @@ func Detect() error {
 // GetStatus is used to get detector status.
 func GetStatus() (*Status, error) {
 	var status metric.DTStatus
-	ret, _, err := procStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
+	ret, _, err := procGetStatus.Call(uintptr(unsafe.Pointer(&status))) // #nosec
 	if ret == 0 {
 		en := uintptr(err.(syscall.Errno))
-		return nil, fmt.Errorf("failed to call detector.Status: 0x%08X", en)
+		return nil, fmt.Errorf("failed to call detector.GetStatus: 0x%08X", en)
 	}
 	s := Status{
 		IsEnabled:        status.IsEnabled.ToBool(),
@@ -58,6 +59,7 @@ func GetStatus() (*Status, error) {
 		InEmulator:       status.InEmulator.ToBool(),
 		IsAccelerated:    status.IsAccelerated.ToBool(),
 		SafeRank:         status.SafeRank,
+		NumDetectCalls:   status.NumDetectCalls,
 	}
 	return &s, nil
 }
