@@ -223,7 +223,7 @@ HANDLE RT_CreateWaitableTimerW(
     POINTER lpTimerAttributes, BOOL bManualReset, LPCWSTR lpTimerName
 );
 HANDLE RT_CreateWaitableTimerExA(
-    POINTER lpTimerAttributes, LPWSTR lpTimerName, DWORD dwFlags, DWORD dwDesiredAccess
+    POINTER lpTimerAttributes, LPCSTR lpTimerName, DWORD dwFlags, DWORD dwDesiredAccess
 );
 HANDLE RT_CreateWaitableTimerExW(
     POINTER lpTimerAttributes, LPCWSTR lpTimerName, DWORD dwFlags, DWORD dwDesiredAccess
@@ -553,6 +553,9 @@ static bool initTrackerAPI(ResourceTracker* tracker, Context* context)
     tracker->CloseHandle         = context->CloseHandle;
     tracker->ReleaseMutex        = context->ReleaseMutex;
     tracker->WaitForSingleObject = context->WaitForSingleObject;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
     return true;
 }
 
@@ -1081,7 +1084,7 @@ HANDLE RT_CreateWaitableTimerW(
 
 __declspec(noinline)
 HANDLE RT_CreateWaitableTimerExA(
-    POINTER lpTimerAttributes, LPWSTR lpTimerName, DWORD dwFlags, DWORD dwDesiredAccess
+    POINTER lpTimerAttributes, LPCSTR lpTimerName, DWORD dwFlags, DWORD dwDesiredAccess
 ){
     ResourceTracker* tracker = getTrackerPointer();
 
@@ -3233,6 +3236,9 @@ static void tryToFindAPI()
     tracker->RegCloseKey = list[0x01].proc;
     tracker->shutdown    = list[0x02].proc;
     tracker->closesocket = list[0x03].proc;
+
+    // erase data in the large stack
+    mem_init(list, sizeof(list));
 }
 
 static errno doWSACleanup()
