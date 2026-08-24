@@ -68,11 +68,8 @@ static void setStorePointer(ArgumentStore* store);
 
 static errno loadArguments(ArgumentStore* store, Context* context);
 static errno shiftArguments(ArgumentStore* store, uint32 size);
-static void  illuminateStub(byte* data, uint32 size, byte* key);
-static void  decryptStub(byte* data, uint32 size, byte* key);
-static void  initSBox(byte* sbox, uint64 seed);
-static void  inverseSBox(byte* sbox);
 static void  unshuffle(byte* data, uint32 size, uint64 seed);
+static void  decryptStub(byte* data, uint32 size, byte* key);
 static byte  ror(byte value, uint8 bits);
 static byte  rol(byte value, uint8 bits);
 
@@ -198,7 +195,8 @@ static errno loadArguments(ArgumentStore* store, Context* context)
     // decrypted arguments
     if (size > ARG_ALGO_SWITCH_SIZE)
     {
-        illuminateStub(dst, size, key);
+        uint64 seed = *(uint64*)key;
+        unshuffle(dst, size, seed);
     } else {
         decryptStub(dst, size, key);
     }
@@ -248,24 +246,6 @@ static errno shiftArguments(ArgumentStore* store, uint32 size)
         store->TotalSize += asz;
     }
     return NO_ERROR;
-}
-
-__declspec(noinline)
-static void illuminateStub(byte* data, uint32 size, byte* key)
-{
-    uint64 seed = *(uint64*)key;
-    // generate S-box from seed
-    byte sbox[256];
-    initSBox(sbox, seed);
-    inverseSBox(sbox);
-    unshuffle(data, size, seed);
-    // substitute data
-    for (uint i = 0; i < size; i++)
-    {
-        data[i] = sbox[data[i]];
-    }
-    // erase data in the large stack
-    mem_init(&sbox, sizeof(sbox));
 }
 
 __declspec(noinline)
@@ -336,40 +316,8 @@ static void cleanStoreResource(ArgumentStore* store)
     }
 }
 
-// the next functions until unshuffle will be linked
-// to another modules, so must move these after eraseStoreMethod
-
-#pragma optimize("", off)
-static void initSBox(byte* sbox, uint64 seed)
-{
-    // initialize S-Box byte array
-    for (int i = 0; i < 256; i++)
-    {
-        sbox[i] = (byte)i;
-    }
-    for (uint i = 255; i > 0; i--)
-    {
-        uint j = seed % (uint64)(i + 1);
-        byte t = sbox[i];
-        sbox[i] = sbox[j];
-        sbox[j] = t;
-        seed = XORShift64(seed);
-    }
-}
-#pragma optimize("", on)
-
-__declspec(noinline)
-static void inverseSBox(byte* sbox)
-{
-    byte buf[256];
-    mem_copy(buf, sbox, sizeof(buf));
-    for (int i = 0; i < 256; i++)
-    {
-        sbox[buf[i]] = (byte)i;
-    }
-    // erase data in the large stack
-    mem_init(buf, sizeof(buf));
-}
+// the function will be linked to another modules,
+// so must move these after eraseStoreMethod
 
 __declspec(noinline)
 static void unshuffle(byte* data, uint32 size, uint64 seed)
