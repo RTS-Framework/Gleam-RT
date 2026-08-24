@@ -3065,8 +3065,14 @@ errno RT_SleepHR(DWORD dwMilliseconds)
         break;
     }
 
-    // detect environment after each sleep
-    runtime->Detector->Detect();
+    // record the error in hide, sleep and recover
+    runtime->RMSleep.LastError = error;
+
+    // detect environment again after each sleep
+    if (runtime->Options.EnableSecurityMode)
+    {
+        runtime->Detector->Detect();
+    }
 
     errno errum = RT_unlock_mods();
     if (errum != NO_ERROR)
