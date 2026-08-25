@@ -15,11 +15,6 @@
 #include "shield.h"
 #include "debug.h"
 
-#define SHIELD_TARGET_MEM_ADDRESS 1
-#define SHIELD_TARGET_SHILED_STUB 2
-#define SHIELD_TARGET_EXE_MODULE  3
-#define SHIELD_TARGET_DLL_MODULE  4
-
 #define METHOD_SLEEP 1
 #define METHOD_STOP  2
 
@@ -246,12 +241,16 @@ static errno initShieldEnv(Shield* shield, Context* context)
     shield->DecoySize = decoySize;
 
     // deploy shield
+    #define SHIELD_TARGET_MEM_ADDRESS 1
+    #define SHIELD_TARGET_SHIELD_STUB 2
+    #define SHIELD_TARGET_EXE_MODULE  3
+    #define SHIELD_TARGET_DLL_MODULE  4
     int target;
     if (context->ShieldMemAddress != 0)
     {
         target = SHIELD_TARGET_MEM_ADDRESS;
     } else if (context->ShieldModuleHash == 0) {
-        target = SHIELD_TARGET_SHILED_STUB;
+        target = SHIELD_TARGET_SHIELD_STUB;
     } else if (context->ShieldModuleHash == SHIELD_MAIN_MODULE) {
         target = SHIELD_TARGET_EXE_MODULE;
     } else {
@@ -264,7 +263,7 @@ static errno initShieldEnv(Shield* shield, Context* context)
         shield->status.BaseAddress = 0;
         shield->status.Source      = SHIELD_SRC_EXTERNAL;
         break;
-    case SHIELD_TARGET_SHILED_STUB:
+    case SHIELD_TARGET_SHIELD_STUB:
         // allocate RWX memory page for shield
         SIZE_T size = shieldSize + (2 + RandUintN(0, 8)) * 1024;
         DWORD  type = MEM_COMMIT|MEM_RESERVE;
