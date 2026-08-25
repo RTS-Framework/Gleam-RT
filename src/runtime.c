@@ -3069,7 +3069,11 @@ errno RT_SleepHR(DWORD dwMilliseconds)
     runtime->RMSleep.LastError = error;
 
     // detect environment again after each sleep
-    if (runtime->Options.EnableSecurityMode)
+    //
+    // when Security Mode is enabled, upper program must
+    // call Detect manually, because Detect itself maybe
+    // appear some signature of behavior
+    if (!runtime->Options.EnableSecurityMode)
     {
         runtime->Detector->Detect();
     }
