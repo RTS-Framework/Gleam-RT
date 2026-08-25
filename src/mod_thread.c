@@ -461,6 +461,10 @@ HANDLE tt_createThread(
         {
             break;
         }
+        if (track)
+        {
+            tracker->NumCreated++;
+        }
         dbg_log("[thread]", "Fake Address: 0x%zX", fakeAddr);
         dbg_log("[thread]", "CreateThread: 0x%zX, %lu", lpStartAddress, threadID);
         success = true;
@@ -712,7 +716,6 @@ static bool addThread(ThreadTracker* tracker, DWORD threadID, HANDLE hThread)
         tracker->CloseHandle(dupHandle);
         return false;
     }
-    tracker->NumCreated++;
     return true;
 }
 
