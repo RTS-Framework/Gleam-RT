@@ -203,15 +203,15 @@ func Sleep(d time.Duration) error {
 	return nil
 }
 
-// SleepSim is used to simulate kernel32.Sleep in Thread Tracker.
-// But in Go, use time.Sleep is enough, this function is test only.
-func SleepSim(d time.Duration) {
-	_, _, _ = procSleep.Call(uintptr(d.Milliseconds())) // #nosec G115
-}
-
 // ExitProcess is used to call original ExitProcess.
 func ExitProcess(code int) {
 	_, _, _ = procExitProcess.Call(uintptr(code)) // #nosec G115
+}
+
+// sleepSim is used to simulate kernel32.Sleep in Thread Tracker.
+// But in Go, use time.Sleep is enough, this function is test only.
+func sleepSim(d time.Duration) {
+	_, _, _ = procSleep.Call(uintptr(d.Milliseconds())) // #nosec G115
 }
 
 func boolToUintptr(b bool) uintptr {

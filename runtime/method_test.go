@@ -307,7 +307,7 @@ func TestSleep(t *testing.T) {
 func TestSleepSim(t *testing.T) {
 	now := time.Now()
 
-	SleepSim(time.Second)
+	sleepSim(time.Second)
 
 	d := time.Since(now)
 	require.Greater(t, d, time.Second)
