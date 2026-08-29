@@ -785,8 +785,7 @@ errno LT_Decrypt()
     byte* iv   = tracker->ModulesIV;
     DecryptBuffer(list->Data, List_Size(list), key, iv);
 
-    dbg_log("[library]", "modules:    %zu", list->Len);
-    dbg_log("[library]", "procedures: %zu", tracker->NumProcedures);
+    dbg_log("[library]", "modules: %zu", list->Len);
     return NO_ERROR;
 }
 
@@ -828,8 +827,7 @@ errno LT_FreeAll()
         num++;
     }
 
-    dbg_log("[library]", "modules:    %zu", modules->Len);
-    dbg_log("[library]", "procedures: %zu", tracker->NumProcedures);
+    dbg_log("[library]", "modules: %zu", modules->Len);
     return errno;
 }
 
@@ -874,8 +872,7 @@ errno LT_Clean()
         errno = ERR_LIBRARY_CLOSE_MUTEX;
     }
 
-    dbg_log("[library]", "modules:    %zu", modules->Len);
-    dbg_log("[library]", "procedures: %zu", tracker->NumProcedures);
+    dbg_log("[library]", "modules: %zu", modules->Len);
     return errno;
 }
 
