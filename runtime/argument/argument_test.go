@@ -69,7 +69,7 @@ func TestMain(m *testing.M) {
 func TestGetValue(t *testing.T) {
 	t.Run("common", func(t *testing.T) {
 		data, exist := GetValue(0)
-		require.True(t, exist, "argument 0 is not exists")
+		require.True(t, exist, "argument 0 does not exist")
 
 		expected := []byte{0x78, 0x56, 0x34, 0x12}
 		require.Equal(t, expected, data)
@@ -83,7 +83,7 @@ func TestGetValue(t *testing.T) {
 
 	t.Run("empty data", func(t *testing.T) {
 		data, exist := GetValue(2)
-		require.True(t, exist, "argument 2 is not exists")
+		require.True(t, exist, "argument 2 does not exist")
 		require.Nil(t, data)
 	})
 }
@@ -91,7 +91,7 @@ func TestGetValue(t *testing.T) {
 func TestGetPointer(t *testing.T) {
 	t.Run("common", func(t *testing.T) {
 		ptr, size, exist := GetPointer(1)
-		require.True(t, exist, "argument 1 is not exists")
+		require.True(t, exist, "argument 1 does not exist")
 		require.Equal(t, uint32(10), size)
 		require.NotZero(t, ptr)
 
