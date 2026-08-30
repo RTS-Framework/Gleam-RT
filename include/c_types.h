@@ -71,8 +71,8 @@ typedef struct {
 
 // process memory page or data size alignment
 // argument a must be a power of two
-#define align_up(x, a)   (((x) + ((a)-1)) & ~((a)-1))
-#define align_down(x, a) (((x) + (00000)) & ~((a)-1))
+#define alignup(x, a)   (((x) + ((a)-1)) & ~((a)-1))
+#define aligndown(x, a) (((x) + (00000)) & ~((a)-1))
 
 // calculate the array length
 #ifndef arrlen
