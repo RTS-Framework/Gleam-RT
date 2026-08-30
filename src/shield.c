@@ -355,7 +355,7 @@ static errno initShieldEnv(Shield* shield, Context* context)
     // copy runtime data
     shield->MainMemPage = (void*)(context->MainMemPage);
     shield->InstAddr    = (void*)(context->Prologue);
-    shield->InstSize    = align_up(context->InstSize, sizeof(uint));
+    shield->InstSize    = alignup(context->InstSize, sizeof(uint));
     return NO_ERROR;
 }
 
