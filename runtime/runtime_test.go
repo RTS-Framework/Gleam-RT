@@ -69,9 +69,12 @@ func TestRuntime(t *testing.T) {
 		}
 
 		now := time.Now()
+
 		err = Runtime.Sleep(time.Second)
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, time.Since(now).Milliseconds(), int64(1000))
+
+		d := time.Since(now)
+		require.Greater(t, d, time.Second)
 
 		ret, _, en := syscall.SyscallN(Runtime.Memory.Free, mem)
 		if ret != 1 {
@@ -173,7 +176,8 @@ func TestRuntime_Shield(t *testing.T) {
 		err := Runtime.Sleep(time.Second)
 		require.NoError(t, err)
 
-		require.GreaterOrEqual(t, time.Since(now).Milliseconds(), int64(1000))
+		d := time.Since(now)
+		require.Greater(t, d, time.Second)
 	}()
 	time.Sleep(time.Millisecond * 250)
 
@@ -216,7 +220,8 @@ func TestRuntime_EraseMagic(t *testing.T) {
 	err = Runtime.Sleep(time.Second)
 	require.NoError(t, err)
 
-	require.GreaterOrEqual(t, time.Since(now).Milliseconds(), int64(1000))
+	d := time.Since(now)
+	require.Greater(t, d, time.Second)
 }
 
 func loadInstance(t *testing.T, inst []byte) uintptr {
