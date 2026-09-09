@@ -20,12 +20,6 @@
 #define DEFAULT_SEND_TIMEOUT    (300 * 1000) // 5m
 #define DEFAULT_RECEIVE_TIMEOUT (300 * 1000) // 5m
 
-#ifdef SMALL_CHUNK_SIZE
-    #define CHUNK_SIZE 64
-#else
-    #define CHUNK_SIZE 4096
-#endif
-
 typedef struct {
     // store HashAPI with spoof call
     FindAPI_MA_t FindAPI_MA;
