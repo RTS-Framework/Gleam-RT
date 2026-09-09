@@ -587,6 +587,9 @@ BOOL IMS_GetStatus(IS_Status* status)
         return false;
     }
 
+    int64 numItems  = 0;
+    int64 totalSize = 0;
+
     List* items = &storage->Items;
 
     uint len = items->Len;
@@ -598,10 +601,13 @@ BOOL IMS_GetStatus(IS_Status* status)
         {
             continue;
         }
-        status->NumItems++;
-        status->TotalSize += item->size;
+        numItems++;
+        totalSize += item->size;
         num++;
     }
+
+    status->NumItems  = numItems;
+    status->TotalSize = totalSize;
 
     if (!IMS_Unlock())
     {
