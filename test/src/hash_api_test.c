@@ -26,7 +26,8 @@ static bool TestFindMod_W();
 static bool TestFindAPI_A();
 static bool TestFindAPI_W();
 static bool TestOrdinal();
-static bool TestForwarded();
+static bool TestForwarded_Name();
+static bool TestForwarded_Ordinal();
 static bool TestNotFound();
 static bool TestNULLArgument();
 static bool TestCalcModHash32();
@@ -38,24 +39,25 @@ bool TestHashAPI()
 {
     test_t tests[] = 
     {
-        { TestFindMod_MH     },
-        { TestFindAPI_MA     },
-        { TestFindAPI_MH     },
-        { TestFindMod_MHL    },
-        { TestFindAPI_MAL    },
-        { TestFindAPI_MHL    },
-        { TestFindMod_A      },
-        { TestFindMod_W      },
-        { TestFindAPI_A      },
-        { TestFindAPI_W      },
-        { TestOrdinal        },
-        { TestForwarded      },
-        { TestNotFound       },
-        { TestNULLArgument   },
-        { TestCalcModHash32  },
-        { TestCalcModHash64  },
-        { TestCalcProcHash32 },
-        { TestCalcProcHash64 },
+        { TestFindMod_MH        },
+        { TestFindAPI_MA        },
+        { TestFindAPI_MH        },
+        { TestFindMod_MHL       },
+        { TestFindAPI_MAL       },
+        { TestFindAPI_MHL       },
+        { TestFindMod_A         },
+        { TestFindMod_W         },
+        { TestFindAPI_A         },
+        { TestFindAPI_W         },
+        { TestOrdinal           },
+        { TestForwarded_Name    },
+        { TestForwarded_Ordinal },
+        { TestNotFound          },
+        { TestNULLArgument      },
+        { TestCalcModHash32     },
+        { TestCalcModHash64     },
+        { TestCalcProcHash32    },
+        { TestCalcProcHash64    },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -341,7 +343,7 @@ static bool TestOrdinal()
     return true;
 }
 
-static bool TestForwarded()
+static bool TestForwarded_Name()
 {
     HMODULE hModule = LoadLibraryA("kernel32.dll");
     if (hModule == NULL)
@@ -350,6 +352,11 @@ static bool TestForwarded()
         return false;
     }
     void* closeState = GetProcAddress(hModule, "CloseState");
+    if (closeState == NULL)
+    {
+        printf_s("procedure is not found\n");
+        return false;
+    }
 
     byte* module    = "kernel32.dll";
     byte* procedure = "CloseState";
@@ -360,7 +367,6 @@ static bool TestForwarded()
 #endif
     uint modHash  = CalcModHash_A(module, key);
     uint procHash = CalcProcHash(procedure, key);
-
     void* proc = FindAPI_MH(modHash, procHash, key);
     if (proc != closeState)
     {
@@ -370,6 +376,52 @@ static bool TestForwarded()
         return false;
     }
     printf_s("CloseState: 0x%llX\n", (uint64)proc);
+    return true;
+}
+
+static bool TestForwarded_Ordinal()
+{
+    HMODULE hModule = LoadLibraryA("ole32.dll");
+    if (hModule == NULL)
+    {
+        printf_s("failed to load ole32.dll\n");
+        return false;
+    }
+
+    // ole32!CoRegisterChannelHook is a forwarded export to "COMBASE.#112"
+    // on Windows 10/11, GetProcAddress follows the forwarder and returns
+    // the final address inside combase.dll
+    void* expected = GetProcAddress(hModule, "CoRegisterChannelHook");
+    if (expected == NULL)
+    {
+        printf_s("ole32.dll does not export CoRegisterChannelHook\n");
+        return false;
+    }
+
+    byte* module    = "ole32.dll";
+    byte* procedure = "CoRegisterChannelHook";
+#ifdef _WIN64
+    uint key = 0x6A6867C72D518853;
+#elif _WIN32
+    uint key = 0xCADE960B;
+#endif
+    uint modHash  = CalcModHash_A(module, key);
+    uint procHash = CalcProcHash(procedure, key);
+
+    void* proc = FindAPI_MH(modHash, procHash, key);
+    if (proc == NULL)
+    {
+        printf_s("failed to resolve the ordinal forwarder\n");
+        return false;
+    }
+    if (proc != expected)
+    {
+        printf_s("Result:   %llX\n", (uint64)proc);
+        printf_s("Expected: %llX\n", (uint64)expected);
+        printf_s("CoRegisterChannelHook address is incorrect\n");
+        return false;
+    }
+    printf_s("CoRegisterChannelHook: 0x%llX\n", (uint64)proc);
     return true;
 }
 
