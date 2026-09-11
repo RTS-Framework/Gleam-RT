@@ -2,6 +2,7 @@
 #include "win_types.h"
 #include "win_structs.h"
 #include "lib_memory.h"
+#include "lib_string.h"
 #include "pe_image.h"
 #include "hash_api.h"
 
@@ -101,15 +102,25 @@ void* FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
     uint keyHash  = calcKeyHash(seedHash, key);
     // parse pe image structure
     uintptr dllBase  = (uintptr)(module);
-    uintptr ntOffset = (uintptr)(*(uint32*)(dllBase + DOS_HEADER_SIZE - 4));
-    Image_NTHeaders* ntHeaders = (Image_NTHeaders*)(dllBase + ntOffset);
-#ifdef _WIN64
-    // check this module actually a x64 PE image
-    if (ntHeaders->OptionalHeader.Magic != 0x020B)
+    // check image magic
+    byte magic[] = { 'M', 'Z' };
+    if (!strnequ_a(module, magic, 2))
     {
         return NULL;
     }
-#endif
+    uintptr ntOffset = (uintptr)(*(uint32*)(dllBase + DOS_HEADER_SIZE - 4));
+    Image_NTHeaders* ntHeaders = (Image_NTHeaders*)(dllBase + ntOffset);
+    // check NT header signature
+    byte signature[] = { 'P', 'E', 0x00, 0x00 };
+    if (ntHeaders->Signature != *(DWORD*)signature)
+    {
+        return NULL;
+    }
+    // check optional header magic
+    if (ntHeaders->OptionalHeader.Magic != IMAGE_OPT_HEADER_MAGIC)
+    {
+        return NULL;
+    }
     // get RVA of export address tables(EAT)
     Image_DataDirectory* DD = &ntHeaders->OptionalHeader.DataDirectory[0];
     Image_DataDirectory EAT = DD[IMAGE_DIRECTORY_ENTRY_EXPORT];
@@ -204,12 +215,31 @@ void* FindAPI_MAL(PML* pml, void* module, uint procedure, uint key)
     dllName[dot + 4] = 0x00;
     // build procedure name
     byte* procName = (byte*)((uintptr)exportName + dot + 1);
-    // build module and procedure hash
-    uint mHash = CalcModHash_A(dllName, key);
-    uint pHash = CalcProcHash(procName, key);
+    // forwarder with procedure name
+    if (*procName != '#')
+    {
+        // build module and procedure hash
+        uint mHash = CalcModHash_A(dllName, key);
+        uint pHash = CalcProcHash(procName, key);
+        // erase data in the large stack
+        mem_init(dllName, sizeof(dllName));
+        return FindAPI_MHL(pml, mHash, pHash, key);
+    }
+    // support the ordinal forwarder: "<dll>.#<ordinal>"
+    uint ordinal = 0;
+    if (!str2uint_a(procName + 1, &ordinal))
+    {
+        // erase data in the large stack
+        mem_init(dllName, sizeof(dllName));
+        return NULL;
+    }
+    // when the procedure hash is HASHAPI_ORDINAL,
+    // the "key" argument is the target ordinal,
+    // so the module hash must use the same key
+    uint mHash = CalcModHash_A(dllName, ordinal);
     // erase data in the large stack
     mem_init(dllName, sizeof(dllName));
-    return FindAPI_MHL(pml, mHash, pHash, key);
+    return FindAPI_MHL(pml, mHash, HASHAPI_ORDINAL, ordinal);
 }
 
 __declspec(noinline)
