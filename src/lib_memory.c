@@ -51,6 +51,8 @@ void* mem_move(void* dst, void* src, uint num)
     return dst;
 }
 
+#pragma optimize("t", off)
+
 #pragma optimize("", off)
 void* mem_init(void* ptr, uint num)
 {
@@ -78,6 +80,8 @@ void* mem_set(void* ptr, byte val, uint num)
     return ptr;
 }
 #pragma optimize("", on)
+
+#pragma optimize("t", on)
 
 __declspec(noinline)
 int mem_cmp(void* a, void* b, uint num)
