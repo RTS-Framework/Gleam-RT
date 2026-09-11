@@ -394,4 +394,78 @@ uint strncpy_w(UTF16 dst, UTF16 src, uint n)
     return l;
 }
 
+__declspec(noinline)
+bool str2uint_a(ANSI s, uint* value)
+{
+    if (s == NULL || value == NULL)
+    {
+        return false;
+    }
+    byte b = *s;
+    if (b < '0' || b > '9')
+    {
+        return false;
+    }
+    uint num = 0;
+    for (;;)
+    {
+        if (b == 0x00)
+        {
+            break;
+        }
+        if (b < '0' || b > '9')
+        {
+            return false;
+        }
+        uint digit = (uint)(b - '0');
+        // prevent the unsigned integer overflow
+        if (num > (((uint)-1 - digit) / 10))
+        {
+            return false;
+        }
+        num = num * 10 + digit;
+        s++;
+        b = *s;
+    }
+    *value = num;
+    return true;
+}
+
+__declspec(noinline)
+bool str2uint_w(UTF16 s, uint* value)
+{
+    if (s == NULL || value == NULL)
+    {
+        return false;
+    }
+    uint16 c = *s;
+    if (c < L'0' || c > L'9')
+    {
+        return false;
+    }
+    uint num = 0;
+    for (;;)
+    {
+        if (c == 0x0000)
+        {
+            break;
+        }
+        if (c < L'0' || c > L'9')
+        {
+            return false;
+        }
+        uint digit = (uint)(c - L'0');
+        // prevent the unsigned integer overflow
+        if (num > (((uint)-1 - digit) / 10))
+        {
+            return false;
+        }
+        num = num * 10 + digit;
+        s++;
+        c = *s;
+    }
+    *value = num;
+    return true;
+}
+
 #pragma optimize("t", off)
