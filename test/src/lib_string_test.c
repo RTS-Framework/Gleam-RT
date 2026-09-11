@@ -26,10 +26,12 @@ static bool TestStriequ_a();
 static bool TestStriequ_w();
 static bool TestStrniequ_a();
 static bool TestStrniequ_w();
+static bool TestStr2uint_a();
+static bool TestStr2uint_w();
 
 bool TestLibString()
 {
-    test_t tests[] = 
+    test_t tests[] =
     {
         { TestStrlen_a   },
         { TestStrlen_w   },
@@ -53,6 +55,8 @@ bool TestLibString()
         { TestStriequ_w  },
         { TestStrniequ_a },
         { TestStrniequ_w },
+        { TestStr2uint_a },
+        { TestStr2uint_w },
     };
     for (int i = 0; i < arrlen(tests); i++)
     {
@@ -689,5 +693,170 @@ static bool TestStrniequ_w()
         return false;
     }
     printf_s("test strniequ_w with different strings passed\n");
+    return true;
+}
+
+static bool TestStr2uint_a()
+{
+    uint num = 0;
+    ANSI str = "123";
+
+    if (!str2uint_a(str, &num) || num != 123)
+    {
+        printf_s("str2uint_a convert incorrect value\n");
+        return false;
+    }
+
+    str = "0";
+    if (!str2uint_a(str, &num) || num != 0)
+    {
+        printf_s("str2uint_a convert incorrect value with zero\n");
+        return false;
+    }
+
+    str = "007";
+    if (!str2uint_a(str, &num) || num != 7)
+    {
+        printf_s("str2uint_a convert incorrect value with leading zeros\n");
+        return false;
+    }
+    printf_s("test str2uint_a passed\n");
+
+    // the ordinal only contains digits, other characters must be rejected
+    str = "";
+    if (str2uint_a(str, &num))
+    {
+        printf_s("str2uint_a accept empty string\n");
+        return false;
+    }
+
+    str = "#1";
+    if (str2uint_a(str, &num))
+    {
+        printf_s("str2uint_a accept invalid first character\n");
+        return false;
+    }
+
+    str = "12x";
+    num = 0xFFFFFFFF;
+    if (str2uint_a(str, &num) || num != 0xFFFFFFFF)
+    {
+        printf_s("str2uint_a accept invalid character\n");
+        return false;
+    }
+    printf_s("test str2uint_a with invalid string passed\n");
+
+#ifdef _WIN64
+    ANSI maxStr  = "18446744073709551615"; // UINT64_MAX
+    ANSI overStr = "18446744073709551616"; // UINT64_MAX + 1
+#elif _WIN32
+    ANSI maxStr  = "4294967295";           // UINT32_MAX
+    ANSI overStr = "4294967296";           // UINT32_MAX + 1
+#endif
+    if (!str2uint_a(maxStr, &num) || num != (uint)-1)
+    {
+        printf_s("str2uint_a convert incorrect value with uint max\n");
+        return false;
+    }
+
+    if (str2uint_a(overStr, &num))
+    {
+        printf_s("str2uint_a accept overflow value\n");
+        return false;
+    }
+    printf_s("test str2uint_a with uint max passed\n");
+
+    if (str2uint_a(NULL, &num) || str2uint_a(str, NULL))
+    {
+        printf_s("str2uint_a accept null argument\n");
+        return false;
+    }
+    printf_s("test str2uint_a with null argument passed\n");
+    return true;
+}
+
+static bool TestStr2uint_w()
+{
+    uint num = 0;
+    UTF16 str = L"123";
+
+    if (!str2uint_w(str, &num) || num != 123)
+    {
+        printf_s("str2uint_w convert incorrect value\n");
+        return false;
+    }
+
+    str = L"0";
+    if (!str2uint_w(str, &num) || num != 0)
+    {
+        printf_s("str2uint_w convert incorrect value with zero\n");
+        return false;
+    }
+
+    str = L"007";
+    if (!str2uint_w(str, &num) || num != 7)
+    {
+        printf_s("str2uint_w convert incorrect value with leading zeros\n");
+        return false;
+    }
+    printf_s("test str2uint_w passed\n");
+
+    // the ordinal only contains ASCII digits, other characters must be rejected
+    str = L"";
+    if (str2uint_w(str, &num))
+    {
+        printf_s("str2uint_w accept empty string\n");
+        return false;
+    }
+
+    str = L"#1";
+    if (str2uint_w(str, &num))
+    {
+        printf_s("str2uint_w accept invalid first character\n");
+        return false;
+    }
+
+    str = L"12x";
+    num = 0xFFFFFFFF;
+    if (str2uint_w(str, &num) || num != 0xFFFFFFFF)
+    {
+        printf_s("str2uint_w accept invalid character\n");
+        return false;
+    }
+
+    str = L"1\xFF11"; // U+FF11, full width digit one
+    if (str2uint_w(str, &num))
+    {
+        printf_s("str2uint_w accept full width digit\n");
+        return false;
+    }
+    printf_s("test str2uint_w with invalid string passed\n");
+
+#ifdef _WIN64
+    UTF16 maxStr  = L"18446744073709551615"; // UINT64_MAX
+    UTF16 overStr = L"18446744073709551616"; // UINT64_MAX + 1
+#elif _WIN32
+    UTF16 maxStr  = L"4294967295";           // UINT32_MAX
+    UTF16 overStr = L"4294967296";           // UINT32_MAX + 1
+#endif
+    if (!str2uint_w(maxStr, &num) || num != (uint)-1)
+    {
+        printf_s("str2uint_w convert incorrect value with uint max\n");
+        return false;
+    }
+
+    if (str2uint_w(overStr, &num))
+    {
+        printf_s("str2uint_w accept overflow value\n");
+        return false;
+    }
+    printf_s("test str2uint_w with uint max passed\n");
+
+    if (str2uint_w(NULL, &num) || str2uint_w(str, NULL))
+    {
+        printf_s("str2uint_w accept null argument\n");
+        return false;
+    }
+    printf_s("test str2uint_w with null argument passed\n");
     return true;
 }
