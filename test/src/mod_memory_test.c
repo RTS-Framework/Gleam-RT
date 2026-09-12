@@ -270,22 +270,28 @@ static bool TestMemory_GlobalHeap()
     GlobalAlloc_t   GlobalAlloc   = runtime->Library.GetProc(hKernel32, "GlobalAlloc");
     GlobalReAlloc_t GlobalReAlloc = runtime->Library.GetProc(hKernel32, "GlobalReAlloc");
     GlobalFree_t    GlobalFree    = runtime->Library.GetProc(hKernel32, "GlobalFree");
+    GlobalLock_t    GlobalLock    = runtime->Library.GetProc(hKernel32, "GlobalLock");
+    GlobalUnlock_t  GlobalUnlock  = runtime->Library.GetProc(hKernel32, "GlobalUnlock");
 
-    HGLOBAL hGlobal = GlobalAlloc(GPTR, 4);
+    HGLOBAL hGlobal = GlobalAlloc(GHND, 4);
     if (hGlobal == NULL)
     {
         printf_s("failed to alloc global heap 0x%X\n", GetLastErrno());
         return false;
     }
-    *(uint*)hGlobal = 0x1234;
+    void* ptr = GlobalLock(hGlobal);
+    *(uint*)ptr = 0x1234;
+    GlobalUnlock(hGlobal);
 
-    hGlobal = GlobalReAlloc(hGlobal, 8, GPTR);
+    hGlobal = GlobalReAlloc(hGlobal, 8, GHND);
     if (hGlobal == NULL)
     {
         printf_s("failed to realloc global heap 0x%X\n", GetLastErrno());
         return false;
     }
-    *(uint*)hGlobal = 0x5678;
+    ptr = GlobalLock(hGlobal);
+    *(uint*)ptr = 0x5678;
+    GlobalUnlock(hGlobal);
 
     if (GlobalFree(hGlobal) != NULL)
     {
@@ -310,22 +316,28 @@ static bool TestMemory_LocalHeap()
     LocalAlloc_t   LocalAlloc   = runtime->Library.GetProc(hKernel32, "LocalAlloc");
     LocalReAlloc_t LocalReAlloc = runtime->Library.GetProc(hKernel32, "LocalReAlloc");
     LocalFree_t    LocalFree    = runtime->Library.GetProc(hKernel32, "LocalFree");
+    LocalLock_t    LocalLock    = runtime->Library.GetProc(hKernel32, "LocalLock");
+    LocalUnlock_t  LocalUnlock  = runtime->Library.GetProc(hKernel32, "LocalUnlock");
 
-    HLOCAL hLocal = LocalAlloc(LPTR, 4);
+    HLOCAL hLocal = LocalAlloc(LHND, 4);
     if (hLocal == NULL)
     {
         printf_s("failed to alloc local heap 0x%X\n", GetLastErrno());
         return false;
     }
-    *(uint*)hLocal = 0x1234;
+    void* ptr = LocalLock(hLocal);
+    *(uint*)ptr = 0x1234;
+    LocalUnlock(hLocal);
 
-    hLocal = LocalReAlloc(hLocal, 8, LPTR);
+    hLocal = LocalReAlloc(hLocal, 8, LHND);
     if (hLocal == NULL)
     {
         printf_s("failed to realloc local heap 0x%X\n", GetLastErrno());
         return false;
     }
-    *(uint*)hLocal = 0x5678;
+    ptr = LocalLock(hLocal);
+    *(uint*)ptr = 0x5678;
+    LocalUnlock(hLocal);
 
     if (LocalFree(hLocal) != NULL)
     {
