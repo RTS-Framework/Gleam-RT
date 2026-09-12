@@ -404,6 +404,16 @@ typedef HGLOBAL (*GlobalFree_t)
     HGLOBAL lpMem
 );
 
+typedef LPVOID (*GlobalLock_t)
+(
+    HGLOBAL hMem
+);
+
+typedef BOOL (*GlobalUnlock_t)
+(
+    HGLOBAL hMem
+);
+
 typedef HLOCAL (*LocalAlloc_t)
 (
     UINT uFlags, SIZE_T dwBytes
@@ -417,6 +427,16 @@ typedef HLOCAL (*LocalReAlloc_t)
 typedef HLOCAL (*LocalFree_t)
 (
     HLOCAL lpMem
+);
+
+typedef LPVOID (*LocalLock_t)
+(
+    HLOCAL hMem
+);
+
+typedef BOOL (*LocalUnlock_t)
+(
+    HLOCAL hMem
 );
 
 typedef HANDLE (*CreateThread_t)
