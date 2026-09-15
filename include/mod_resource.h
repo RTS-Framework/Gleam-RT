@@ -21,6 +21,9 @@ typedef struct {
     int64 NumSockets;
 } RT_Status;
 
+typedef BOOL (*ResWait_t)(HANDLE hHandle, DWORD dwMilliseconds);
+typedef BOOL (*ResClose_t)(HANDLE hHandle);
+
 typedef BOOL (*ResLockMutex_t)(HANDLE hMutex);
 typedef BOOL (*ResUnlockMutex_t)(HANDLE hMutex);
 typedef BOOL (*ResLockEvent_t)(HANDLE hEvent);
@@ -103,6 +106,8 @@ typedef struct {
     WSACleanup_t WSACleanup;
 
     // for user
+    ResWait_t                Wait;
+    ResClose_t               Close;
     ResLockMutex_t           LockMutex;
     ResUnlockMutex_t         UnlockMutex;
     ResLockEvent_t           LockEvent;
