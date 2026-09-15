@@ -300,7 +300,12 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
         SetLastErrno(ERR_RUNTIME_INIT_DEBUGGER);
         return NULL;
     }
-    // load runtime options
+    if (!isValidArgumentStub())
+    {
+        SetLastErrno(ERR_RUNTIME_INVALID_ARG_STUB);
+        return NULL;
+    }
+    // load and check runtime options
     Runtime_Opts opt;
     if (opts == NULL)
     {
@@ -311,13 +316,6 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     {
         mem_init(&opt, sizeof(opt));
         SetLastErrno(ERR_RUNTIME_OPTION_CONFLICT);
-        return NULL;
-    }
-    // check argument stub for calculate Epilogue
-    if (!isValidArgumentStub())
-    {
-        mem_init(&opt, sizeof(opt));
-        SetLastErrno(ERR_RUNTIME_INVALID_ARG_STUB);
         return NULL;
     }
     // prepare runtime basic environment
@@ -519,6 +517,8 @@ Runtime_M* InitRuntime(void* boot, Runtime_Opts* opts)
     module->Thread.Status  = runtime->ThreadTracker->GetStatus;
     module->Thread.KillAll = runtime->ThreadTracker->KillAllMu;
     // resource tracker
+    module->Resource.Wait                = runtime->ResourceTracker->Wait;
+    module->Resource.Close               = runtime->ResourceTracker->Close;
     module->Resource.LockMutex           = runtime->ResourceTracker->LockMutex;
     module->Resource.UnlockMutex         = runtime->ResourceTracker->UnlockMutex;
     module->Resource.LockEvent           = runtime->ResourceTracker->LockEvent;
