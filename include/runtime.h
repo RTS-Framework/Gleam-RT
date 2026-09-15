@@ -67,6 +67,7 @@ typedef struct {
 
 typedef HANDLE (*ThdNew_t)(ThreadProc_t address, LPVOID parameter, BOOL track);
 typedef void   (*ThdExit_t)();
+typedef void   (*ThdSleep_t)(uint32 milliseconds);
 typedef BOOL   (*ThdLockThread_t)(DWORD id);
 typedef BOOL   (*ThdUnlockThread_t)(DWORD id);
 typedef BOOL   (*ThdGetStatus_t)(TT_Status* status);
@@ -87,6 +88,8 @@ typedef struct {
 } RT_Status;
 #endif // MOD_RESOURCE_H
 
+typedef BOOL (*ResWait_t)(HANDLE hHandle, DWORD dwMilliseconds);
+typedef BOOL (*ResClose_t)(HANDLE hHandle);
 typedef BOOL (*ResLockMutex_t)(HANDLE hMutex);
 typedef BOOL (*ResUnlockMutex_t)(HANDLE hMutex);
 typedef BOOL (*ResLockEvent_t)(HANDLE hEvent);
@@ -631,9 +634,9 @@ typedef struct {
     } Memory;
 
     struct {
-        ThdNew_t  New;
-        ThdExit_t Exit;
-        Sleep_t   Sleep;
+        ThdNew_t   New;
+        ThdExit_t  Exit;
+        ThdSleep_t Sleep;
 
         ThdLockThread_t   Lock;
         ThdUnlockThread_t Unlock;
@@ -642,6 +645,9 @@ typedef struct {
     } Thread;
 
     struct {
+        ResWait_t  Wait;
+        ResClose_t Close;
+
         ResLockMutex_t           LockMutex;
         ResUnlockMutex_t         UnlockMutex;
         ResLockEvent_t           LockEvent;
