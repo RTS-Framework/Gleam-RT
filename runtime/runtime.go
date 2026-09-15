@@ -101,6 +101,9 @@ type RuntimeM struct {
 	}
 
 	Resource struct {
+		Wait  uintptr
+		Close uintptr
+
 		LockMutex           uintptr
 		UnlockMutex         uintptr
 		LockEvent           uintptr
