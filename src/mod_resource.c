@@ -299,6 +299,8 @@ int RT_WSAStartup(WORD wVersionRequired, POINTER lpWSAData);
 int RT_WSACleanup();
 
 // methods for user
+BOOL RT_Wait(HANDLE hHandle, DWORD dwMilliseconds);
+BOOL RT_Close(HANDLE hHandle);
 BOOL RT_LockMutex(HANDLE hMutex);
 BOOL RT_UnlockMutex(HANDLE hMutex);
 BOOL RT_LockEvent(HANDLE hEvent);
@@ -427,6 +429,8 @@ ResourceTracker_M* InitResourceTracker(Context* context)
     module->WSAStartup             = GetFuncAddr(&RT_WSAStartup);
     module->WSACleanup             = GetFuncAddr(&RT_WSACleanup);
     // methods for user
+    module->Wait                = GetFuncAddr(&RT_Wait);
+    module->Close               = GetFuncAddr(&RT_Close);
     module->LockMutex           = GetFuncAddr(&RT_LockMutex);
     module->UnlockMutex         = GetFuncAddr(&RT_UnlockMutex);
     module->LockEvent           = GetFuncAddr(&RT_LockEvent);
@@ -2694,6 +2698,47 @@ static HMODULE getWs2_32Handle(ResourceTracker* tracker)
     }
     tracker->hWs2_32 = module;
     return module;
+}
+
+__declspec(noinline)
+BOOL RT_Wait(HANDLE hHandle, DWORD dwMilliseconds)
+{
+    ResourceTracker* tracker = getTrackerPointer();
+
+    if (!RT_Lock())
+    {
+        return false;
+    }
+
+    WaitForSingleObject_t WaitForSingleObject = tracker->WaitForSingleObject;
+
+    if (!RT_Unlock())
+    {
+        return false;
+    }
+
+    DWORD event = WaitForSingleObject(hHandle, dwMilliseconds);
+    return event == WAIT_OBJECT_0;
+}
+
+__declspec(noinline)
+BOOL RT_Close(HANDLE hHandle)
+{
+    ResourceTracker* tracker = getTrackerPointer();
+
+    if (!RT_Lock())
+    {
+        return false;
+    }
+
+    CloseHandle_t CloseHandle = tracker->CloseHandle;
+
+    if (!RT_Unlock())
+    {
+        return false;
+    }
+
+    return CloseHandle(hHandle);
 }
 
 __declspec(noinline)
